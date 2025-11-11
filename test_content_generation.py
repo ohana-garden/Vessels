@@ -63,7 +63,10 @@ async def test_content_generation():
     
     content3 = await content_generator.generate_content(context3)
     print(f"Title: {content3.title}")
-    print(f"Sections: {len(content3.body.split('\\n\\n'))}")
+            _delim = "\n\n"
+        _sections = len(content3.body.split(_delim))
+        print(f"Sections: {_sections}")
+
     print(f"✅ Formal structure with data requirements")
     
     # Test 4: Volunteer script for Japanese context
