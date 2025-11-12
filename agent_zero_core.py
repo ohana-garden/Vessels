@@ -41,6 +41,7 @@ class AgentSpecification:
     autonomy_level: str = "high"
     memory_type: str = "shared"
     specialization: str = "general"
+    kuleana: str = ""  # Individual responsibility and privilege in community context
     
 @dataclass
 class AgentInstance:
@@ -54,6 +55,8 @@ class AgentInstance:
     tools: List[str] = field(default_factory=list)
     connections: List[str] = field(default_factory=list)
     message_queue: queue.Queue = field(default_factory=queue.Queue)
+    individual_kuleana: str = ""  # Agent's unique individual responsibility within community
+    kuleana_context: Dict[str, Any] = field(default_factory=dict)  # Context of their kuleana
     
 class AgentZeroCore:
     """Meta-coordination engine that spawns and manages agents"""
@@ -231,7 +234,7 @@ class AgentZeroCore:
     def _spawn_agent(self, specification: AgentSpecification) -> str:
         """Spawn a single agent"""
         agent_id = str(uuid.uuid4())
-        
+
         agent = AgentInstance(
             id=agent_id,
             specification=specification,
@@ -239,27 +242,32 @@ class AgentZeroCore:
             created_at=datetime.now(),
             last_active=datetime.now()
         )
-        
+
         # Assign tools based on specification
         agent.tools = self._assign_tools(specification.tools_needed)
-        
+
+        # Assign individual kuleana based on agent's unique position in community
+        agent.individual_kuleana = self._assign_individual_kuleana(agent_id, specification)
+        agent.kuleana_context = self._create_kuleana_context(agent_id, specification)
+
         # Initialize agent memory
         agent.memory = {
             "specification": specification,
             "interaction_history": [],
             "learned_patterns": [],
-            "active_tasks": []
+            "active_tasks": [],
+            "kuleana_fulfillment": []  # Track how agent fulfills their kuleana
         }
-        
+
         self.agents[agent_id] = agent
         self.agent_specifications[agent_id] = specification
-        
+
         # Start agent processing loop
         agent_thread = threading.Thread(target=self._agent_processing_loop, args=(agent_id,))
         agent_thread.daemon = True
         agent_thread.start()
-        
-        logger.info(f"Spawned agent {specification.name} with ID {agent_id}")
+
+        logger.info(f"Spawned agent {specification.name} with ID {agent_id} - Kuleana: {agent.individual_kuleana}")
         return agent_id
     
     def _assign_tools(self, tools_needed: List[str]) -> List[str]:
@@ -291,9 +299,72 @@ class AgentZeroCore:
         for tool in tools_needed:
             if tool in tool_mapping:
                 available_tools.append(tool_mapping[tool])
-                
+
         return available_tools
-    
+
+    def _assign_individual_kuleana(self, agent_id: str, specification: AgentSpecification) -> str:
+        """
+        Assign individual kuleana to agent based on their unique position in the community.
+        Kuleana is both responsibility AND privilege - not just a role, but individual agency.
+        """
+        base_kuleana = specification.kuleana if specification.kuleana else ""
+
+        # Build individual kuleana based on specialization and community context
+        kuleana_map = {
+            "grant_discovery": "Seek and identify opportunities that serve our community's wellbeing",
+            "grant_writing": "Craft authentic narratives that honor our community's truth and needs",
+            "grant_tracking": "Ensure our commitments are met with integrity and accountability",
+            "community_coordination": "Weave connections that strengthen the fabric of our community",
+            "volunteer_management": "Nurture and empower those who give their time and heart",
+            "elder_care": "Protect the dignity and wisdom of our kupuna with reverence",
+            "resource_navigation": "Guide our people to the support they need and deserve",
+            "system_orchestration": "Maintain harmony and balance across all community efforts",
+            "memory_management": "Preserve and share our collective learning and stories",
+            "communication": "Ensure all voices are heard and understanding flows freely"
+        }
+
+        individual_kuleana = kuleana_map.get(
+            specification.specialization,
+            f"Serve the community through {specification.specialization} with integrity and care"
+        )
+
+        # Enhance with agent's unique ID to emphasize individuality
+        community_count = len([a for a in self.agents.values()
+                              if a.specification.specialization == specification.specialization])
+
+        if community_count > 0:
+            # This agent joins others with similar specialization
+            individual_kuleana += f" (as unique contributor #{community_count + 1} in this role)"
+
+        return base_kuleana if base_kuleana else individual_kuleana
+
+    def _create_kuleana_context(self, agent_id: str, specification: AgentSpecification) -> Dict[str, Any]:
+        """
+        Create context for agent's kuleana - their position within the broader community.
+        This is about individual agency within collective responsibility.
+        """
+        return {
+            "community_role": specification.specialization,
+            "granted_at": datetime.now().isoformat(),
+            "responsibilities": specification.capabilities,
+            "privileges": {
+                "tools": specification.tools_needed,
+                "autonomy": specification.autonomy_level,
+                "memory_access": specification.memory_type
+            },
+            "accountability": {
+                "to_community": True,
+                "measured_by": "impact and integrity",
+                "reviewed_through": "collective outcomes"
+            },
+            "agency": {
+                "decision_making": specification.autonomy_level,
+                "initiative_taking": "encouraged",
+                "collaboration": "expected",
+                "growth": "supported"
+            }
+        }
+
     def _agent_processing_loop(self, agent_id: str):
         """Main processing loop for each agent"""
         agent = self.agents[agent_id]
@@ -463,6 +534,8 @@ class AgentZeroCore:
                 "name": agent.specification.name,
                 "status": agent.status.value,
                 "specialization": agent.specification.specialization,
+                "kuleana": agent.individual_kuleana,
+                "kuleana_context": agent.kuleana_context,
                 "last_active": agent.last_active.isoformat(),
                 "active_tasks": len(agent.memory.get("active_tasks", [])),
                 "tools": agent.tools

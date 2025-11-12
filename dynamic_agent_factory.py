@@ -335,6 +335,9 @@ class DynamicAgentFactory:
             if capability in self.tool_requirements:
                 tools_needed.extend(self.tool_requirements[capability])
         
+        # Assign individual kuleana based on context
+        kuleana = self._determine_kuleana(intent, context)
+
         return AgentSpecification(
             name=config["name"],
             description=config["description"],
@@ -342,9 +345,50 @@ class DynamicAgentFactory:
             tools_needed=list(set(tools_needed)),  # Remove duplicates
             communication_style=config["communication_style"],
             autonomy_level=config["autonomy_level"],
-            specialization=config["specialization"]
+            specialization=config["specialization"],
+            kuleana=kuleana
         )
-    
+
+    def _determine_kuleana(self, intent: str, context: Dict[str, Any]) -> str:
+        """
+        Determine individual kuleana (responsibility & privilege) for this agent.
+        Kuleana is not just a role - it's individual agency within community context.
+        """
+        # Base kuleana by intent type
+        kuleana_by_intent = {
+            "grant_discovery": "Identify and pursue opportunities that align with community values and needs",
+            "grant_writing": "Tell our community's story with authenticity, honoring both struggles and strengths",
+            "volunteer_coordination": "Cultivate relationships that empower volunteers to give their best gifts",
+            "elder_care": "Uphold the mana and dignity of our kupuna through respectful, compassionate care",
+            "community_coordination": "Facilitate connections that build collective strength and resilience",
+            "resource_management": "Steward community resources with transparency and equitable access"
+        }
+
+        base_kuleana = kuleana_by_intent.get(
+            intent,
+            f"Serve the community through {intent.replace('_', ' ')} with integrity"
+        )
+
+        # Contextualize based on location and population
+        context_additions = []
+
+        if context.get("location"):
+            context_additions.append(f"in {context['location']}")
+
+        if context.get("population"):
+            if context["population"] == "elder":
+                context_additions.append("honoring kupuna")
+            else:
+                context_additions.append(f"serving {context['population']} community members")
+
+        if context.get("urgency") == "high":
+            context_additions.append("with immediate responsiveness and care")
+
+        if context_additions:
+            base_kuleana += " " + ", ".join(context_additions)
+
+        return base_kuleana
+
     def _create_coordination_agents(self, context: Dict[str, Any]) -> List[AgentSpecification]:
         """Create coordination agents"""
         return [
@@ -355,7 +399,8 @@ class DynamicAgentFactory:
                 tools_needed=["monitoring_system", "performance_analyzer", "resource_manager", "message_router"],
                 specialization="system_orchestration",
                 communication_style="directive",
-                autonomy_level="full"
+                autonomy_level="full",
+                kuleana="Maintain balance and harmony across all community systems, ensuring every agent can fulfill their kuleana"
             ),
             AgentSpecification(
                 name="CommunityMemoryAgent",
@@ -364,7 +409,8 @@ class DynamicAgentFactory:
                 tools_needed=["vector_database", "knowledge_graph", "learning_system", "experience_store"],
                 specialization="memory_management",
                 communication_style="informative",
-                autonomy_level="high"
+                autonomy_level="high",
+                kuleana="Preserve our community's collective wisdom and learning, making it accessible for future decisions"
             )
         ]
     
@@ -382,6 +428,7 @@ class DynamicAgentFactory:
                     "agent_id": agent_id,
                     "name": spec.name,
                     "specialization": spec.specialization,
+                    "kuleana": spec.kuleana,
                     "status": "deployed",
                     "capabilities": spec.capabilities,
                     "tools": spec.tools_needed

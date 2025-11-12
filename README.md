@@ -38,8 +38,11 @@ Simply tell Shoghi what you need:
 ### **Agent Zero Core** (`agent_zero_core.py`)
 - Meta-coordination engine that spawns and manages agents
 - Interprets community needs into agent specifications
+- Assigns **individual kuleana** to each agent (responsibility + privilege in community context)
 - Coordinates entire agent ecosystem
 - Self-organizing agent networks
+
+> **Kuleana**: Every agent has its own kuleana - not just as a role, but as an individual operating in a community context. This Hawaiian concept means both responsibility AND privilege, transforming agents from tools into community members with individual agency. See [AGENT_KULEANA.md](./AGENT_KULEANA.md) for full details.
 
 ### **Dynamic Agent Factory** (`dynamic_agent_factory.py`)
 - Creates agents from natural language descriptions
@@ -149,15 +152,21 @@ agent_ids = shoghi.agent_core.spawn_agents(agents)
 
 ### **Custom Agent Creation**
 ```python
-# Create specialized agents
+# Create specialized agents with individual kuleana
 spec = AgentSpecification(
     name="ElderCareSpecialist",
     description="Specializes in elder care programs",
     capabilities=["needs_assessment", "program_design"],
-    tools_needed=["assessment_tools", "program_templates"]
+    tools_needed=["assessment_tools", "program_templates"],
+    kuleana="Uphold the mana and dignity of our kupuna through respectful, compassionate care"
 )
 
 agent_id = shoghi.agent_core.spawn_agent(spec)
+
+# Check agent's individual kuleana
+status = shoghi.agent_core.get_agent_status(agent_id)
+print(f"Agent Kuleana: {status['kuleana']}")
+print(f"Agency Context: {status['kuleana_context']}")
 ```
 
 ## 🔧 Configuration
@@ -211,11 +220,12 @@ The platform tracks and optimizes for:
 
 Shoghi is designed to:
 - **Empower Communities**: Automatic coordination of complex needs
+- **Honor Individual Agency**: Each agent has kuleana - responsibility and privilege in community context
 - **Increase Funding**: Comprehensive grant discovery and application
 - **Build Capacity**: Shared learning and tool creation
 - **Scale Solutions**: Replicable coordination patterns
 - **Reduce Barriers**: Natural language interface
-- **Ensure Sustainability**: Self-managing systems
+- **Ensure Sustainability**: Self-managing systems with cultural grounding
 
 ## 🔮 Future Capabilities
 
