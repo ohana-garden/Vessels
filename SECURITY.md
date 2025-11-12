@@ -181,6 +181,76 @@ This document provides a comprehensive security and production readiness assessm
 
 ---
 
+### ✅ mcp_discovery_agent.py - PRODUCTION READY WITH NOTES
+
+**Status**: New module for dynamic MCP server discovery
+
+**Features**:
+- ✅ Discovers MCP (Model Context Protocol) servers from multiple sources
+- ✅ Context-sensitive recommendations based on current task
+- ✅ Automatic catalog updates for universal connector
+- ✅ Background discovery with configurable intervals
+- ✅ Local configuration support
+- ✅ Safe parsing and validation of server specifications
+
+**What It Does**:
+- Hunts for MCP servers in registries, GitHub, local configs, environment variables
+- Analyzes server capabilities and converts to connector specifications
+- Provides intelligent recommendations: "Need to search for grants?" → recommends grant-search servers
+- Dynamically updates universal connector catalog
+- Supports custom local servers via `~/.mcp/servers.json`
+
+**Security Considerations**:
+- ✅ **Validated parsing**: Server configs validated before use
+- ✅ **No code execution**: Parses JSON configs, doesn't execute arbitrary code
+- ⚠️ **GitHub API rate limits**: Limited to 60 requests/hour without authentication
+  - **Recommended**: Add GitHub token for higher rate limits
+- ⚠️ **Untrusted sources**: Servers from GitHub need manual review
+  - **Required**: Implement approval workflow for discovered servers
+- ⚠️ **Credential exposure**: MCP servers may require credentials
+  - **Required**: Use same secrets management as universal connector
+
+**Production Requirements**:
+1. **Server Approval Workflow**:
+   - Don't auto-activate servers from untrusted sources
+   - Implement manual review/approval process
+   - Whitelist trusted server publishers
+
+2. **Rate Limiting**:
+   - Add GitHub authentication token for API access
+   - Implement caching to reduce API calls
+   - Respect discovery source rate limits
+
+3. **Validation Enhancement**:
+   - Validate MCP server schemas strictly
+   - Test server connectivity before activation
+   - Implement server health checks
+
+4. **Security Scanning**:
+   - Scan discovered server code for vulnerabilities
+   - Check server reputation/trust score
+   - Monitor for malicious servers
+
+**Usage Example**:
+```python
+from mcp_discovery_agent import mcp_agent
+
+# Discover servers
+servers = mcp_agent.discover_servers()
+
+# Get context-sensitive recommendations
+recommendations = mcp_agent.recommend_for_context(
+    "I need to search for grants in Hawaii"
+)
+
+# Auto-update connector catalog
+mcp_agent.update_connector_catalog()
+```
+
+**Recommendation**: Ready for development and staging. Production use requires implementing approval workflow and security scanning.
+
+---
+
 ## General Security Best Practices
 
 ### Implemented ✅
