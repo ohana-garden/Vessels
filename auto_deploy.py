@@ -6,6 +6,10 @@ Self-deploying infrastructure that:
 - Deploys to cloud/edge as needed
 - Scales based on demand
 - Includes monitoring, logging, self-healing
+
+SECURITY NOTE: This system requires careful input validation and sanitization.
+All user-provided configuration values must be validated before being used in
+shell commands, Dockerfiles, or docker-compose configurations.
 """
 
 import json
@@ -16,6 +20,7 @@ import time
 import os
 import sys
 import shutil
+import re
 from datetime import datetime
 from typing import Dict, List, Any, Optional
 from dataclasses import dataclass, field
@@ -26,6 +31,83 @@ import docker
 import requests
 
 logger = logging.getLogger(__name__)
+
+
+def sanitize_env_var_name(name: str) -> str:
+    """
+    Sanitize environment variable name to prevent injection.
+    Only allows alphanumeric characters and underscores.
+    """
+    if not re.match(r'^[A-Z_][A-Z0-9_]*$', name):
+        raise ValueError(f"Invalid environment variable name: {name}")
+    return name
+
+
+def sanitize_env_var_value(value: str) -> str:
+    """
+    Sanitize environment variable value to prevent injection.
+    Removes potentially dangerous characters and validates format.
+    """
+    # Check for shell metacharacters and control characters
+    dangerous_chars = ['$', '`', '\\', '\n', '\r', ';', '|', '&', '<', '>']
+    if any(char in str(value) for char in dangerous_chars):
+        raise ValueError(f"Environment variable value contains dangerous characters: {value}")
+
+    # Limit length to prevent resource exhaustion
+    if len(str(value)) > 1000:
+        raise ValueError(f"Environment variable value too long: {len(value)} characters")
+
+    return str(value)
+
+
+def sanitize_port_number(port: Any) -> int:
+    """
+    Validate and sanitize port numbers.
+    """
+    try:
+        port_num = int(port)
+        if not (1 <= port_num <= 65535):
+            raise ValueError(f"Port number out of range: {port_num}")
+        return port_num
+    except (ValueError, TypeError) as e:
+        raise ValueError(f"Invalid port number: {port}") from e
+
+
+def sanitize_resource_value(value: str, resource_type: str) -> str:
+    """
+    Validate resource specifications (CPU, memory, storage).
+    """
+    if resource_type in ["cpu", "replicas"]:
+        # CPU and replicas should be numeric
+        try:
+            num = float(value) if resource_type == "cpu" else int(value)
+            if num <= 0 or num > 1000:
+                raise ValueError(f"Invalid {resource_type} value: {value}")
+            return str(value)
+        except ValueError as e:
+            raise ValueError(f"Invalid {resource_type} format: {value}") from e
+
+    elif resource_type in ["memory", "storage"]:
+        # Memory and storage should match pattern like "4Gi", "8GB"
+        if not re.match(r'^\d+[KMGT]i?$', value):
+            raise ValueError(f"Invalid {resource_type} format: {value}")
+        return value
+
+    else:
+        raise ValueError(f"Unknown resource type: {resource_type}")
+
+
+def sanitize_image_name(name: str) -> str:
+    """
+    Validate Docker image names to prevent injection.
+    """
+    # Docker image names can contain lowercase letters, digits, and separators
+    if not re.match(r'^[a-z0-9][a-z0-9_.-]*$', name):
+        raise ValueError(f"Invalid image name: {name}")
+    if len(name) > 255:
+        raise ValueError(f"Image name too long: {name}")
+    return name
+
 
 class DeploymentType(Enum):
     LOCAL = "local"
@@ -279,9 +361,25 @@ class AutoDeploySystem:
             deployment.metrics["error"] = str(e)
     
     def _generate_dockerfile(self, config: DeploymentConfig) -> str:
-        """Generate Dockerfile for deployment"""
-        dockerfile = f"""
-FROM python:3.9-slim
+        """
+        Generate Dockerfile for deployment with proper input validation.
+
+        Raises:
+            ValueError: If configuration values fail validation
+        """
+        # Validate port number
+        try:
+            metrics_port = sanitize_port_number(config.monitoring['metrics_port'])
+        except (KeyError, ValueError) as e:
+            logger.error(f"Invalid metrics port in config: {e}")
+            raise ValueError(f"Invalid metrics port configuration") from e
+
+        # Validate health check path (basic validation)
+        health_check_path = config.monitoring.get('health_check_path', '/health')
+        if not re.match(r'^/[a-zA-Z0-9/_-]*$', health_check_path):
+            raise ValueError(f"Invalid health check path: {health_check_path}")
+
+        dockerfile = f"""FROM python:3.9-slim
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \\
@@ -300,24 +398,32 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY . .
 
-# Set environment variables
 """
-        
+
+        # Add environment variables with validation
+        dockerfile += "# Set environment variables\n"
         for key, value in config.environment.items():
-            dockerfile += f"ENV {key}={value}\n"
-        
+            try:
+                safe_key = sanitize_env_var_name(key)
+                safe_value = sanitize_env_var_value(value)
+                dockerfile += f"ENV {safe_key}={safe_value}\n"
+            except ValueError as e:
+                logger.warning(f"Skipping invalid environment variable {key}: {e}")
+                # Continue with other variables instead of failing completely
+                continue
+
         dockerfile += f"""
 # Expose port
-EXPOSE {config.monitoring['metrics_port']}
+EXPOSE {metrics_port}
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \\
-    CMD curl -f http://localhost:{config.monitoring['metrics_port']}{config.monitoring['health_check_path']} || exit 1
+    CMD curl -f http://localhost:{metrics_port}{health_check_path} || exit 1
 
 # Start application
 CMD ["python", "shoghi.py", "--mode", "deployed"]
 """
-        
+
         return dockerfile
     
     def _create_deployment_package(self, config: DeploymentConfig, dockerfile_content: str) -> str:
@@ -336,9 +442,9 @@ CMD ["python", "shoghi.py", "--mode", "deployed"]
         with open(compose_path, 'w') as f:
             f.write(compose_content)
         
-        # Copy application files
-        self._copy_application_files(temp_dir)
-        
+        # Copy application files (pass config for nginx generation)
+        self._copy_application_files(temp_dir, config)
+
         # Create deployment script
         deploy_script = self._generate_deploy_script(config)
         script_path = os.path.join(temp_dir, "deploy.sh")
@@ -349,32 +455,52 @@ CMD ["python", "shoghi.py", "--mode", "deployed"]
         return temp_dir
     
     def _generate_docker_compose(self, config: DeploymentConfig) -> str:
-        """Generate docker-compose configuration"""
-        compose = f"""
-version: '3.8'
+        """
+        Generate docker-compose configuration with proper input validation.
+
+        Raises:
+            ValueError: If configuration values fail validation
+        """
+        # Validate configuration values
+        try:
+            metrics_port = sanitize_port_number(config.monitoring['metrics_port'])
+            replicas = int(sanitize_resource_value(str(config.resources['replicas']), 'replicas'))
+            cpu = sanitize_resource_value(str(config.resources['cpu']), 'cpu')
+            memory = sanitize_resource_value(config.resources['memory'], 'memory')
+        except (KeyError, ValueError) as e:
+            logger.error(f"Invalid resource configuration: {e}")
+            raise ValueError(f"Invalid docker-compose configuration") from e
+
+        compose = f"""version: '3.8'
 
 services:
   shoghi-core:
     build: .
     ports:
-      - "{config.monitoring['metrics_port']}:{config.monitoring['metrics_port']}"
+      - "{metrics_port}:{metrics_port}"
     environment:
 """
-        
+
+        # Add environment variables with validation
         for key, value in config.environment.items():
-            compose += f"      - {key}={value}\n"
-        
-        compose += f"""
-    depends_on:
+            try:
+                safe_key = sanitize_env_var_name(key)
+                safe_value = sanitize_env_var_value(value)
+                compose += f"      - {safe_key}={safe_value}\n"
+            except ValueError as e:
+                logger.warning(f"Skipping invalid environment variable {key}: {e}")
+                continue
+
+        compose += f"""    depends_on:
       - redis
       - postgres
     restart: unless-stopped
     deploy:
-      replicas: {config.resources['replicas']}
+      replicas: {replicas}
       resources:
         limits:
-          cpus: '{config.resources['cpu']}'
-          memory: {config.resources['memory']}
+          cpus: '{cpu}'
+          memory: {memory}
 
   redis:
     image: redis:alpine
@@ -408,10 +534,10 @@ services:
 volumes:
   postgres_data:
 """
-        
+
         return compose
     
-    def _copy_application_files(self, dest_dir: str):
+    def _copy_application_files(self, dest_dir: str, config: DeploymentConfig):
         """Copy application files to deployment directory"""
         # Get the current directory (where this script is located)
         current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -486,15 +612,20 @@ if __name__ == "__main__":
         with open(main_path, 'w') as f:
             f.write(main_py_content)
         
-        # Create nginx configuration
-        nginx_conf = f"""
-events {{
+        # Create nginx configuration with validated port
+        try:
+            metrics_port = sanitize_port_number(config.monitoring['metrics_port'])
+        except (KeyError, ValueError) as e:
+            logger.warning(f"Invalid metrics port for nginx config, using default 8080: {e}")
+            metrics_port = 8080
+
+        nginx_conf = f"""events {{
     worker_connections 1024;
 }}
 
 http {{
     upstream shoghi {{
-        server shoghi-core:{config.monitoring['metrics_port']};
+        server shoghi-core:{metrics_port};
     }}
 
     server {{
@@ -514,7 +645,7 @@ http {{
     }}
 }}
 """
-        
+
         nginx_path = os.path.join(dest_dir, "nginx.conf")
         with open(nginx_path, 'w') as f:
             f.write(nginx_conf)
@@ -910,20 +1041,36 @@ docker-compose logs --tail=20 shoghi-core
         return report
     
     def shutdown(self):
-        """Shutdown the deployment system"""
+        """
+        Shutdown the deployment system gracefully.
+
+        Stops all background threads and running deployments.
+        """
+        logger.info("Initiating Auto Deploy System shutdown...")
         self.running = False
-        
-        if self.monitoring_thread:
-            self.monitoring_thread.join(timeout=10)
-        if self.scaling_thread:
-            self.scaling_thread.join(timeout=10)
-        if self.health_check_thread:
-            self.health_check_thread.join(timeout=10)
-        
+
+        # Wait for threads to finish with timeout
+        threads = [
+            ("monitoring", self.monitoring_thread),
+            ("scaling", self.scaling_thread),
+            ("health_check", self.health_check_thread)
+        ]
+
+        for thread_name, thread in threads:
+            if thread and thread.is_alive():
+                logger.info(f"Waiting for {thread_name} thread to finish...")
+                thread.join(timeout=10)
+                if thread.is_alive():
+                    logger.warning(f"{thread_name} thread did not finish within timeout")
+
         # Stop all deployments
+        logger.info("Stopping all active deployments...")
         for deployment_id in list(self.deployments.keys()):
-            self.stop_deployment(deployment_id)
-        
+            try:
+                self.stop_deployment(deployment_id)
+            except Exception as e:
+                logger.error(f"Error stopping deployment {deployment_id}: {e}")
+
         logger.info("Auto Deploy System shutdown complete")
 
 # Global instance

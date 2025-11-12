@@ -323,15 +323,23 @@ class UniversalConnector:
 
     def _make_request(self, connector: ConnectorInstance, endpoint: str, parameters: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Make an HTTP GET request to the given endpoint.  Handles API key
-        authentication and returns a standardized response structure.  The
-        method can be extended to support POST, PUT, DELETE as needed.
+        Make an HTTP GET request to the given endpoint with retry logic.
+
+        Implements exponential backoff for transient failures:
+        - Retries up to 3 times for network errors and 5xx server errors
+        - Uses exponential backoff: 1s, 2s, 4s
+        - Does not retry 4xx client errors (except 429 rate limit)
+
+        Handles API key and basic authentication and returns a standardized
+        response structure. The method can be extended to support POST, PUT,
+        DELETE as needed.
         """
         url = connector.specification.base_url.rstrip("/") + endpoint
         headers: Dict[str, str] = {
             "User-Agent": "Shoghi-Universal-Connector/2.0",
             "Accept": "application/json",
         }
+
         # API key authentication
         if connector.specification.authentication == AuthenticationType.API_KEY:
             api_key = connector.credentials.get("api_key")
@@ -342,24 +350,68 @@ class UniversalConnector:
             import base64
             auth_str = f"{connector.credentials.get('username')}:{connector.credentials.get('password')}"
             headers["Authorization"] = "Basic " + base64.b64encode(auth_str.encode()).decode()
-        # Make request
-        try:
-            response = requests.get(url, headers=headers, params=parameters, timeout=30)
-            response.raise_for_status()
+
+        # Retry configuration
+        max_retries = 3
+        retry_delay = 1.0  # Initial delay in seconds
+
+        last_error = None
+
+        for attempt in range(max_retries):
             try:
-                data = response.json()
-            except ValueError:
-                data = response.text
-            return {"success": True, "data": data, "status_code": response.status_code}
-        except requests.HTTPError as e:
-            # Capture non‑2xx responses
-            status = e.response.status_code if hasattr(e, "response") else 0
-            text = e.response.text if hasattr(e, "response") else str(e)
-            logger.warning(f"HTTP error {status} for {url}: {text}")
-            return {"success": False, "error": f"HTTP {status}: {text}", "status_code": status}
-        except requests.RequestException as e:
-            logger.error(f"Request to {url} failed: {e}")
-            return {"success": False, "error": f"Request failed: {e}"}
+                response = requests.get(url, headers=headers, params=parameters, timeout=30)
+                response.raise_for_status()
+
+                # Parse response
+                try:
+                    data = response.json()
+                except ValueError:
+                    data = response.text
+
+                return {"success": True, "data": data, "status_code": response.status_code}
+
+            except requests.HTTPError as e:
+                # Capture non-2xx responses
+                status = e.response.status_code if hasattr(e, "response") else 0
+                text = e.response.text if hasattr(e, "response") else str(e)
+
+                # Determine if we should retry
+                should_retry = False
+                if status == 429:  # Rate limit - always retry
+                    should_retry = True
+                    logger.info(f"Rate limit hit for {url}, retrying (attempt {attempt + 1}/{max_retries})")
+                elif 500 <= status < 600:  # Server errors - retry
+                    should_retry = True
+                    logger.warning(f"Server error {status} for {url}, retrying (attempt {attempt + 1}/{max_retries})")
+                else:
+                    # 4xx client errors - don't retry
+                    logger.warning(f"HTTP error {status} for {url}: {text}")
+                    return {"success": False, "error": f"HTTP {status}: {text}", "status_code": status}
+
+                last_error = e
+
+                # If this is not the last attempt and we should retry, wait
+                if should_retry and attempt < max_retries - 1:
+                    time.sleep(retry_delay)
+                    retry_delay *= 2  # Exponential backoff
+                else:
+                    # Final attempt failed or shouldn't retry
+                    return {"success": False, "error": f"HTTP {status}: {text}", "status_code": status}
+
+            except requests.RequestException as e:
+                logger.warning(f"Request to {url} failed (attempt {attempt + 1}/{max_retries}): {e}")
+                last_error = e
+
+                # Retry on network errors
+                if attempt < max_retries - 1:
+                    time.sleep(retry_delay)
+                    retry_delay *= 2  # Exponential backoff
+                else:
+                    # Final attempt failed
+                    return {"success": False, "error": f"Request failed after {max_retries} attempts: {e}"}
+
+        # Should not reach here, but just in case
+        return {"success": False, "error": f"Request failed after {max_retries} attempts: {last_error}"}
 
     # ---------------------------------------------------------------------
     # Connector insights and cleanup
