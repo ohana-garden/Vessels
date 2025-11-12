@@ -219,6 +219,97 @@ class CommunityMemory:
                 })
         
         return results
+
+    def dynamic_find_similar(self, query: Dict[str, Any], agent_id: str = None,
+                              tags: Optional[List[str]] = None, limit: int = 10) -> List[Dict[str, Any]]:
+        """Find memories similar to query with dynamic weighting and proximity considerations.
+
+        This method augments the standard vector similarity search with additional
+        heuristics to exploit both homogeneity (similar agents or tags) and
+        heterogeneity (diverse agents with related domains).  It first
+        calculates cosine similarity between the query and all memory
+        embeddings, then adjusts the score based on tag overlap, recency and
+        whether the memory comes from the same agent.  Memories sharing more
+        tags or originating from the same agent receive a higher weight,
+        encouraging local reuse, while still allowing relevant knowledge
+        from other agents to surface when no local results exist.
+
+        Parameters
+        ----------
+        query : Dict[str, Any]
+            Dictionary representing the content to search for.  Can include
+            arbitrary keys but will be converted into an embedding for
+            similarity and can include a "tags" field for tag-based weighting.
+        agent_id : str, optional
+            Identifier of the querying agent.  If provided, memories from
+            this agent are preferentially ranked higher to exploit local
+            homogeneity.  If None, agent-specific weighting is skipped.
+        tags : List[str], optional
+            Additional tags to consider for proximity.  When provided,
+            memories containing overlapping tags get a boost in relevance.
+        limit : int
+            Maximum number of results to return.
+
+        Returns
+        -------
+        List[Dict[str, Any]]
+            A list of dictionaries containing the memory entry, the raw
+            similarity score and the combined dynamic score.
+        """
+        # Generate query vector
+        query_vector = self._generate_embedding(query)
+        query_tags = set(tags or query.get("tags", []))
+
+        similarities = []
+        for memory_id, embedding in self.vector_embeddings.items():
+            # Base cosine similarity
+            base_sim = self._cosine_similarity(query_vector, embedding.vector)
+
+            # Retrieve memory entry
+            if memory_id not in self.memories:
+                continue
+            memory = self.memories[memory_id]
+
+            # Tag overlap factor: number of overlapping tags / total query tags
+            mem_tags = set(memory.tags)
+            tag_overlap = len(query_tags.intersection(mem_tags))
+            tag_factor = 0.0
+            if query_tags:
+                tag_factor = tag_overlap / len(query_tags)
+
+            # Recency factor (same as _calculate_relevance_score)
+            time_diff = (datetime.now() - memory.timestamp).total_seconds()
+            recency_factor = 1.0 / (1.0 + time_diff / 86400)
+
+            # Agent factor: give a small boost to memories from the same agent
+            agent_factor = 0.0
+            if agent_id is not None and memory.agent_id == agent_id:
+                agent_factor = 0.1
+
+            # Combine factors with weights
+            # Weights chosen empirically: similarity (0.6), tag factor (0.2), recency (0.1), agent factor (0.1)
+            combined_score = (
+                base_sim * 0.6 +
+                tag_factor * 0.2 +
+                recency_factor * 0.1 +
+                agent_factor * 0.1
+            )
+
+            similarities.append((memory_id, base_sim, combined_score))
+
+        # Sort by combined score first, then base similarity
+        similarities.sort(key=lambda x: (x[2], x[1]), reverse=True)
+
+        results = []
+        for memory_id, base_sim, combined_score in similarities[:limit]:
+            memory = self.memories[memory_id]
+            memory.access_count += 1
+            results.append({
+                "memory": memory,
+                "similarity": base_sim,
+                "dynamic_score": combined_score
+            })
+        return results
     
     def search_memories(self, query: str, filters: Dict[str, Any] = None) -> List[MemoryEntry]:
         """Search memories using text query and filters"""
