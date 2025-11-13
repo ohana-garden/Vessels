@@ -1,0 +1,105 @@
+version: '3.8'
+
+services:
+  shoghi:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: shoghi-platform
+    image: shoghi/platform:latest
+    restart: unless-stopped
+
+    ports:
+      - "5000:5000"  # Web UI
+      - "5001:5001"  # API endpoint (if needed)
+
+    environment:
+      # Application settings
+      - FLASK_ENV=production
+      - FLASK_APP=shoghi_web_server.py
+      - LOG_LEVEL=INFO
+
+      # Optional: Run tests on startup
+      - RUN_TESTS=false
+
+      # Database settings (if using external DB)
+      # - DATABASE_URL=postgresql://user:pass@db:5432/shoghi
+
+      # Redis settings (if using external Redis)
+      # - REDIS_URL=redis://redis:6379/0
+
+      # API Keys (set these for production)
+      # - GRANTS_GOV_API_KEY=your_key_here
+      # - FOUNDATION_CENTER_API_KEY=your_key_here
+
+    volumes:
+      # Persist data
+      - shoghi-data:/app/data
+      - shoghi-logs:/app/logs
+      # Mount database (comment out if using external DB)
+      - ./shoghi_grants.db:/app/shoghi_grants.db
+      # Optional: Mount BMAD configs for easy editing
+      - ./.bmad:/app/.bmad
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+    networks:
+      - shoghi-network
+
+    # Resource limits (adjust as needed)
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+  # Optional: Redis service for caching and queuing
+  # redis:
+  #   image: redis:7-alpine
+  #   container_name: shoghi-redis
+  #   restart: unless-stopped
+  #   ports:
+  #     - "6379:6379"
+  #   volumes:
+  #     - redis-data:/data
+  #   networks:
+  #     - shoghi-network
+  #   command: redis-server --appendonly yes
+
+  # Optional: PostgreSQL database
+  # postgres:
+  #   image: postgres:15-alpine
+  #   container_name: shoghi-postgres
+  #   restart: unless-stopped
+  #   environment:
+  #     - POSTGRES_USER=shoghi
+  #     - POSTGRES_PASSWORD=shoghi_password
+  #     - POSTGRES_DB=shoghi
+  #   ports:
+  #     - "5432:5432"
+  #   volumes:
+  #     - postgres-data:/var/lib/postgresql/data
+  #   networks:
+  #     - shoghi-network
+
+volumes:
+  shoghi-data:
+    driver: local
+  shoghi-logs:
+    driver: local
+  # redis-data:
+  #   driver: local
+  # postgres-data:
+  #   driver: local
+
+networks:
+  shoghi-network:
+    driver: bridge
