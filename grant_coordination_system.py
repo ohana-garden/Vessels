@@ -1,12 +1,36 @@
 #!/usr/bin/env python3
 """
-GRANT COORDINATION SYSTEM
-Complete grant management system that:
-- Finds ALL relevant grants RIGHT NOW
-- Writes complete applications automatically
-- Handles all formats and submissions
-- Tracks entire pipeline
-- Generates compliance reports
+GRANT COORDINATION SYSTEM - PROTOTYPE IMPLEMENTATION
+
+⚠️  IMPORTANT: This is a prototype/proof-of-concept implementation. ⚠️
+
+CURRENT LIMITATIONS:
+1. Grant discovery returns SIMULATED DATA, not real API responses
+2. Application generation creates TEMPLATE content, not custom narratives
+3. Submission tracking is SIMULATED, not integrated with real grant portals
+4. No real authentication or API integration with grant databases
+
+PRODUCTION REQUIREMENTS:
+- Integrate with Grants.gov API (requires API key and authentication)
+- Integrate with Foundation Center/Candid API (subscription required)
+- Implement custom web scraping with proper rate limiting
+- Add OAuth flows for grant portal integrations
+- Implement secure credential storage (e.g., AWS Secrets Manager)
+- Add comprehensive error handling and retry logic
+- Implement proper PDF generation for application documents
+- Add document management system for supporting materials
+
+INTENDED FUNCTIONALITY (when fully implemented):
+- Find relevant grant opportunities from multiple sources
+- Generate customized grant application narratives
+- Handle various application formats and submission workflows
+- Track application pipeline and deadlines
+- Generate compliance and progress reports
+
+USE CASE:
+This prototype demonstrates the conceptual architecture and workflow for
+an automated grant coordination system. It should be used for planning,
+demonstration, and proof-of-concept purposes only.
 """
 
 import json
@@ -249,8 +273,22 @@ class GrantCoordinationSystem:
         return grants
     
     def _search_grants_gov(self, criteria: Dict[str, Any]) -> List[GrantOpportunity]:
-        """Search Grants.gov for opportunities"""
-        # Simulated search results (in real implementation, use actual API)
+        """
+        Search Grants.gov for opportunities.
+
+        ⚠️  PROTOTYPE: Returns simulated data. Production implementation should:
+        1. Use Grants.gov API with proper authentication
+        2. Implement rate limiting (API allows 1000 requests/hour)
+        3. Handle pagination for large result sets
+        4. Parse real opportunity data structures
+        5. Implement error handling and retries
+
+        TODO: Integrate with https://www.grants.gov/web/grants/xml-extract.html
+        API Key required: https://www.grants.gov/web/grants/applicants/api.html
+        """
+        logger.warning("Using simulated Grants.gov data - not real API results")
+
+        # SIMULATED DATA - Replace with real API call
         return [
             GrantOpportunity(
                 id="GRANT-2025-001",
@@ -287,7 +325,22 @@ class GrantCoordinationSystem:
         ]
     
     def _search_hcf_grants(self, criteria: Dict[str, Any]) -> List[GrantOpportunity]:
-        """Search Hawaii Community Foundation grants"""
+        """
+        Search Hawaii Community Foundation grants.
+
+        ⚠️  PROTOTYPE: Returns simulated data. Production implementation should:
+        1. Implement web scraping with proper user agent and rate limiting
+        2. Parse grant listing pages for current opportunities
+        3. Extract structured data from grant detail pages
+        4. Handle authentication if required for full details
+        5. Cache results to minimize requests
+
+        TODO: Website: https://www.hawaiicommunityfoundation.org/grants
+        Note: May require contacting HCF for API access or partnership
+        """
+        logger.warning("Using simulated HCF data - not real grant listings")
+
+        # SIMULATED DATA - Replace with real scraping/API
         return [
             GrantOpportunity(
                 id="HCF-2025-001",
@@ -324,7 +377,24 @@ class GrantCoordinationSystem:
         ]
     
     def _search_elder_care_grants(self, criteria: Dict[str, Any]) -> List[GrantOpportunity]:
-        """Search elder care specific grants"""
+        """
+        Search elder care specific grants.
+
+        ⚠️  PROTOTYPE: Returns simulated data. Production implementation should:
+        1. Query multiple elder care funding sources (ACL, NIA, RWJF, etc.)
+        2. Implement proper API authentication for each source
+        3. Standardize data formats across different sources
+        4. Add intelligent filtering based on eligibility criteria
+        5. Implement caching and incremental updates
+
+        TODO: Key APIs to integrate:
+        - ACL Grants: https://acl.gov/grants
+        - NIA Grants: https://www.nia.nih.gov/research/grants-funding
+        - RWJF Grants: https://www.rwjf.org/en/how-we-work/grants.html
+        """
+        logger.warning("Using simulated elder care grant data - not real API results")
+
+        # SIMULATED DATA - Replace with real API calls
         return [
             GrantOpportunity(
                 id="ELDER-2025-001",
@@ -1142,21 +1212,43 @@ This budget represents excellent value, providing comprehensive services to 150+
         return report
     
     def shutdown(self):
-        """Shutdown the grant coordination system"""
+        """
+        Shutdown the grant coordination system gracefully.
+
+        Stops all background threads and closes database connections.
+        """
+        logger.info("Initiating Grant Coordination System shutdown...")
         self.running = False
-        
-        if self.discovery_thread:
-            self.discovery_thread.join(timeout=10)
-        if self.monitoring_thread:
-            self.monitoring_thread.join(timeout=10)
-        if self.writing_thread:
-            self.writing_thread.join(timeout=10)
-        
-        if self.grants_db:
-            self.grants_db.close()
-        if self.applications_db:
-            self.applications_db.close()
-        
+
+        # Wait for threads to finish with timeout
+        threads = [
+            ("discovery", self.discovery_thread),
+            ("monitoring", self.monitoring_thread),
+            ("writing", self.writing_thread)
+        ]
+
+        for thread_name, thread in threads:
+            if thread and thread.is_alive():
+                logger.info(f"Waiting for {thread_name} thread to finish...")
+                thread.join(timeout=10)
+                if thread.is_alive():
+                    logger.warning(f"{thread_name} thread did not finish within timeout")
+
+        # Close database connections
+        try:
+            if self.grants_db:
+                self.grants_db.close()
+                logger.info("Grants database closed")
+        except Exception as e:
+            logger.error(f"Error closing grants database: {e}")
+
+        try:
+            if self.applications_db:
+                self.applications_db.close()
+                logger.info("Applications database closed")
+        except Exception as e:
+            logger.error(f"Error closing applications database: {e}")
+
         logger.info("Grant Coordination System shutdown complete")
 
 # Global instance
