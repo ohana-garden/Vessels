@@ -3,6 +3,8 @@
 COMMUNITY MEMORY SYSTEM
 Vector store + graph database + event streaming
 Agents share context, learn from each other, build on previous work
+
+Now includes Kala contribution tracking for valuing community contributions.
 """
 
 import json
@@ -26,6 +28,7 @@ class MemoryType(Enum):
     PATTERN = "pattern"
     RELATIONSHIP = "relationship"
     EVENT = "event"
+    CONTRIBUTION = "contribution"  # Kala-valued contributions
 
 @dataclass
 class MemoryEntry:
@@ -49,7 +52,7 @@ class VectorEmbedding:
 
 class CommunityMemory:
     """Distributed memory system for agent coordination"""
-    
+
     def __init__(self):
         self.memories: Dict[str, MemoryEntry] = {}
         self.agent_memories: Dict[str, List[str]] = defaultdict(list)
@@ -60,9 +63,22 @@ class CommunityMemory:
         self.running = False
         self.memory_thread = None
         self.vector_dimension = 384  # Standard embedding size
-        
+
+        # Kala system integration
+        self.kala_system = None
+        self._init_kala_system()
+
         # Initialize in-memory vector storage
         self.initialize_memory_system()
+
+    def _init_kala_system(self):
+        """Initialize kala value tracking system"""
+        try:
+            from kala import kala_system
+            self.kala_system = kala_system
+            logger.info("Kala system integrated with Community Memory")
+        except ImportError:
+            logger.warning("Kala system not available - contribution tracking disabled")
         
     def initialize_memory_system(self):
         """Initialize the memory system"""
@@ -367,19 +383,147 @@ class CommunityMemory:
         
         return sorted(knowledge, key=lambda k: (k["confidence"], k["access_count"]), reverse=True)
     
-    def share_learning(self, source_agent_id: str, target_agent_ids: List[str], 
+    def store_contribution(self, agent_id: str, contribution_data: Dict[str, Any]) -> Optional[str]:
+        """
+        Store a community contribution with kala valuation.
+
+        Args:
+            agent_id: ID of agent/person making contribution
+            contribution_data: Dict containing:
+                - type: ContributionType name (e.g., "TIME", "CARE", "FOOD")
+                - description: Human-readable description
+                - kala_value: Value in kala (or omit to auto-calculate)
+                - hours: For time contributions
+                - skill_level: For time contributions
+                - market_value_usd: For resource contributions
+                - recipient_id: Optional recipient
+                - tags: Optional tags
+                - metadata: Optional additional data
+
+        Returns:
+            Contribution ID if successful, None otherwise
+        """
+        if not self.kala_system:
+            logger.warning("Kala system not available - cannot store contribution")
+            return None
+
+        try:
+            from kala import ContributionType
+
+            # Extract contribution details
+            contribution_type_str = contribution_data.get("type", "OTHER")
+            contribution_type = ContributionType[contribution_type_str.upper()]
+            description = contribution_data.get("description", "")
+            recipient_id = contribution_data.get("recipient_id")
+            tags = contribution_data.get("tags", [])
+            metadata = contribution_data.get("metadata", {})
+
+            # Calculate kala value
+            if "kala_value" in contribution_data:
+                kala_value = contribution_data["kala_value"]
+            elif contribution_type == ContributionType.TIME:
+                hours = contribution_data.get("hours", 1.0)
+                skill_level = contribution_data.get("skill_level", "general")
+                kala_value = self.kala_system.value_time_contribution(hours, skill_level)
+            elif "market_value_usd" in contribution_data:
+                kala_value = self.kala_system.value_resource_contribution(
+                    description,
+                    market_value_usd=contribution_data["market_value_usd"]
+                )
+            else:
+                logger.error("Cannot calculate kala value - insufficient data")
+                return None
+
+            # Record in kala system
+            contribution = self.kala_system.record_contribution(
+                contributor_id=agent_id,
+                contribution_type=contribution_type,
+                description=description,
+                kala_value=kala_value,
+                recipient_id=recipient_id,
+                metadata=metadata,
+                tags=tags
+            )
+
+            # Store in memory system
+            memory_id = str(uuid.uuid4())
+            memory_entry = MemoryEntry(
+                id=memory_id,
+                type=MemoryType.CONTRIBUTION,
+                content={
+                    "contribution_id": contribution.id,
+                    "type": contribution_type.value,
+                    "description": description,
+                    "kala_value": kala_value,
+                    "usd_equivalent": contribution.usd_equivalent,
+                    "recipient_id": recipient_id,
+                    **metadata
+                },
+                agent_id=agent_id,
+                timestamp=datetime.now(),
+                tags=tags + ["contribution", "kala"],
+                confidence=1.0
+            )
+
+            self.memories[memory_id] = memory_entry
+            self.agent_memories[agent_id].append(memory_id)
+            self._persist_memory(memory_entry)
+
+            # Log event
+            self._store_event({
+                "type": "contribution_recorded",
+                "agent_id": agent_id,
+                "contribution_id": contribution.id,
+                "kala_value": kala_value,
+                "contribution_type": contribution_type.value
+            })
+
+            logger.info(
+                f"Stored contribution: {agent_id} contributed {kala_value} kala "
+                f"({contribution_type.value})"
+            )
+
+            return contribution.id
+
+        except Exception as e:
+            logger.error(f"Error storing contribution: {e}")
+            return None
+
+    def get_contribution_summary(
+        self,
+        agent_id: Optional[str] = None,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None
+    ) -> Dict[str, Any]:
+        """
+        Get summary of contributions (kala-valued).
+
+        Args:
+            agent_id: Specific agent (None = community-wide)
+            start_date: Start of period
+            end_date: End of period
+
+        Returns:
+            Summary of contributions in kala
+        """
+        if not self.kala_system:
+            return {"error": "Kala system not available"}
+
+        return self.kala_system.generate_report(agent_id, start_date, end_date)
+
+    def share_learning(self, source_agent_id: str, target_agent_ids: List[str],
                       learning_type: str) -> bool:
         """Share learning between agents"""
         try:
             # Get relevant memories from source agent
             source_memories = self.get_agent_memories(source_agent_id)
-            
+
             # Filter by learning type
             relevant_memories = [
-                m for m in source_memories 
+                m for m in source_memories
                 if learning_type in m.tags or learning_type in m.content.get("type", "")
             ]
-            
+
             # Share with target agents
             for target_agent_id in target_agent_ids:
                 for memory in relevant_memories:
@@ -394,10 +538,10 @@ class CommunityMemory:
                         relationships=[memory.id],
                         confidence=memory.confidence * 0.9  # Slightly reduce confidence for shared knowledge
                     )
-                    
+
                     self.memories[shared_memory.id] = shared_memory
                     self.agent_memories[target_agent_id].append(shared_memory.id)
-            
+
             # Log sharing event
             self._store_event({
                 "type": "learning_shared",
@@ -406,10 +550,10 @@ class CommunityMemory:
                 "learning_type": learning_type,
                 "memories_shared": len(relevant_memories)
             })
-            
+
             logger.info(f"Shared {len(relevant_memories)} memories from {source_agent_id} to {len(target_agent_ids)} agents")
             return True
-            
+
         except Exception as e:
             logger.error(f"Error sharing learning: {e}")
             return False
