@@ -26,6 +26,37 @@ class MemoryType(Enum):
     PATTERN = "pattern"
     RELATIONSHIP = "relationship"
     EVENT = "event"
+    OFFER = "offer"
+    CONTEXT_EVENT = "context_event"
+
+class EventType(Enum):
+    ORDER = "order"
+    TASK = "task"
+    INTERACTION = "interaction"
+    DELIVERY = "delivery"
+    SERVICE_VISIT = "service_visit"
+
+class EventStatus(Enum):
+    PLANNED = "planned"
+    IN_PROGRESS = "in_progress"
+    COMPLETED = "completed"
+    CANCELLED = "cancelled"
+
+@dataclass
+class KalaAnnotation:
+    """Kala metric annotation for events - NOT A CURRENCY
+
+    Kala is a descriptive, system-level metric attached to events/structures.
+    It is NEVER used as currency, points, rewards, or to gate/prioritize individuals.
+    """
+    dimension: str  # e.g., "connection", "care", "resilience", "community_strength"
+    value: float    # magnitude (no fixed units, not a currency)
+    notes: str      # description of what this signifies
+
+    def __post_init__(self):
+        """Validate that this is not being used as currency"""
+        if "balance" in self.notes.lower() or "price" in self.notes.lower() or "payment" in self.notes.lower():
+            raise ValueError("Kala cannot be used as currency - found currency-like terminology in notes")
 
 @dataclass
 class MemoryEntry:
@@ -39,6 +70,53 @@ class MemoryEntry:
     relationships: List[str] = field(default_factory=list)
     confidence: float = 1.0
     access_count: int = 0
+
+@dataclass
+class OfferEntry:
+    """Entry for product/service offers"""
+    offer_id: str
+    owner_actor_id: str
+    offer_type: str  # "product" or "service"
+    categories: List[str]
+    description: Dict[str, Any]
+    capacity_info: Dict[str, Any]
+    location: str
+    radius_miles: float
+    pricing_usd: Dict[str, Any]
+    constraints: Dict[str, Any]
+    status: str  # "active", "paused", "retired"
+    created_at: datetime
+    updated_at: datetime
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+@dataclass
+class ContextEvent:
+    """Context event representing a specific interaction (order/task/visit)
+
+    This is where Kala annotations live - describing qualities of the interaction.
+    Payment information is stored separately in payment_info.
+    """
+    event_id: str
+    event_type: EventType
+    requestor_actor_id: str
+    provider_actor_id: str
+    offer_id: str
+    timestamp: datetime
+    location: str
+    status: EventStatus
+    payment_info: Dict[str, Any]  # Contains amount_usd, payment_status, payment_rail - NO KALA
+    kala_annotations: List[KalaAnnotation] = field(default_factory=list)
+    notes: str = ""
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+    def add_kala_annotation(self, dimension: str, value: float, notes: str):
+        """Add a Kala annotation to this event"""
+        annotation = KalaAnnotation(dimension=dimension, value=value, notes=notes)
+        self.kala_annotations.append(annotation)
+
+    def get_payment_amount(self) -> float:
+        """Get payment amount in USD - completely separate from Kala"""
+        return self.payment_info.get("amount_usd", 0.0)
     
 @dataclass
 class VectorEmbedding:
@@ -49,7 +127,7 @@ class VectorEmbedding:
 
 class CommunityMemory:
     """Distributed memory system for agent coordination"""
-    
+
     def __init__(self):
         self.memories: Dict[str, MemoryEntry] = {}
         self.agent_memories: Dict[str, List[str]] = defaultdict(list)
@@ -60,7 +138,13 @@ class CommunityMemory:
         self.running = False
         self.memory_thread = None
         self.vector_dimension = 384  # Standard embedding size
-        
+
+        # New: Offers and context events storage
+        self.offers: Dict[str, OfferEntry] = {}
+        self.context_events: Dict[str, ContextEvent] = {}
+        self.offers_by_owner: Dict[str, List[str]] = defaultdict(list)
+        self.events_by_actor: Dict[str, List[str]] = defaultdict(list)
+
         # Initialize in-memory vector storage
         self.initialize_memory_system()
         
@@ -187,10 +271,170 @@ class CommunityMemory:
         })
         
         self._persist_memory(memory_entry)
-        
+
         logger.info(f"Stored knowledge from agent {agent_id}: {memory_id}")
         return memory_id
-    
+
+    def store_offer(self, offer: OfferEntry) -> str:
+        """Store a product/service offer"""
+        self.offers[offer.offer_id] = offer
+        self.offers_by_owner[offer.owner_actor_id].append(offer.offer_id)
+
+        # Store as memory entry for vector search
+        memory_id = str(uuid.uuid4())
+        memory_entry = MemoryEntry(
+            id=memory_id,
+            type=MemoryType.OFFER,
+            content={
+                "offer_id": offer.offer_id,
+                "owner_id": offer.owner_actor_id,
+                "type": offer.offer_type,
+                "description": offer.description,
+                "categories": offer.categories,
+                "location": offer.location
+            },
+            agent_id=offer.owner_actor_id,
+            timestamp=offer.created_at,
+            tags=offer.categories + [offer.offer_type, "offer"]
+        )
+
+        self.memories[memory_id] = memory_entry
+
+        # Generate vector embedding
+        vector = self._generate_embedding(memory_entry.content)
+        self.vector_embeddings[memory_id] = VectorEmbedding(
+            memory_id=memory_id,
+            vector=vector,
+            metadata={"type": "offer", "offer_id": offer.offer_id}
+        )
+
+        logger.info(f"Stored offer {offer.offer_id} from {offer.owner_actor_id}")
+        return offer.offer_id
+
+    def get_offer(self, offer_id: str) -> Optional[OfferEntry]:
+        """Retrieve a specific offer"""
+        return self.offers.get(offer_id)
+
+    def get_offers_by_owner(self, owner_actor_id: str) -> List[OfferEntry]:
+        """Get all offers from a specific owner"""
+        offer_ids = self.offers_by_owner.get(owner_actor_id, [])
+        return [self.offers[oid] for oid in offer_ids if oid in self.offers]
+
+    def find_matching_offers(self, need: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Find offers that match a given need"""
+        results = []
+
+        # First, use vector search to find similar offers
+        similar_offers = self.find_similar_memories(need, limit=20)
+
+        for result in similar_offers:
+            memory = result["memory"]
+            if memory.type == MemoryType.OFFER:
+                offer_id = memory.content.get("offer_id")
+                if offer_id and offer_id in self.offers:
+                    offer = self.offers[offer_id]
+
+                    # Only include active offers
+                    if offer.status == "active":
+                        results.append({
+                            "offer": offer,
+                            "similarity": result["similarity"],
+                            "memory_id": memory.id
+                        })
+
+        return results
+
+    def store_context_event(self, event: ContextEvent) -> str:
+        """Store a context event (order/task/interaction)
+
+        This is where Kala annotations are stored - as descriptive metrics
+        attached to events, NOT as currency or points for individuals.
+        """
+        self.context_events[event.event_id] = event
+
+        # Index by actors
+        self.events_by_actor[event.requestor_actor_id].append(event.event_id)
+        self.events_by_actor[event.provider_actor_id].append(event.event_id)
+
+        # Store as memory entry
+        memory_id = str(uuid.uuid4())
+        memory_entry = MemoryEntry(
+            id=memory_id,
+            type=MemoryType.CONTEXT_EVENT,
+            content={
+                "event_id": event.event_id,
+                "event_type": event.event_type.value,
+                "requestor": event.requestor_actor_id,
+                "provider": event.provider_actor_id,
+                "offer_id": event.offer_id,
+                "location": event.location,
+                "status": event.status.value,
+                "kala_annotations": [
+                    {"dimension": ka.dimension, "value": ka.value, "notes": ka.notes}
+                    for ka in event.kala_annotations
+                ]
+            },
+            agent_id=event.provider_actor_id,
+            timestamp=event.timestamp,
+            tags=[event.event_type.value, event.status.value, "context_event"]
+        )
+
+        self.memories[memory_id] = memory_entry
+
+        logger.info(f"Stored context event {event.event_id}: {event.event_type.value}")
+        return event.event_id
+
+    def get_context_event(self, event_id: str) -> Optional[ContextEvent]:
+        """Retrieve a specific context event"""
+        return self.context_events.get(event_id)
+
+    def get_events_by_actor(self, actor_id: str) -> List[ContextEvent]:
+        """Get all events involving a specific actor"""
+        event_ids = self.events_by_actor.get(actor_id, [])
+        return [self.context_events[eid] for eid in event_ids if eid in self.context_events]
+
+    def analyze_kala_metrics(self, filters: Dict[str, Any] = None) -> Dict[str, Any]:
+        """Analyze Kala metrics across events - ANALYTIC ONLY
+
+        This analysis is for understanding patterns, NOT for
+        gating access, prioritizing individuals, or affecting pricing.
+        """
+        analysis = {
+            "total_events": len(self.context_events),
+            "events_with_kala": 0,
+            "kala_dimensions": defaultdict(list),
+            "aggregate_by_dimension": {},
+            "event_type_distribution": defaultdict(int)
+        }
+
+        for event in self.context_events.values():
+            # Apply filters if provided
+            if filters:
+                if filters.get("event_type") and event.event_type.value != filters["event_type"]:
+                    continue
+                if filters.get("actor_id"):
+                    if event.requestor_actor_id != filters["actor_id"] and event.provider_actor_id != filters["actor_id"]:
+                        continue
+
+            analysis["event_type_distribution"][event.event_type.value] += 1
+
+            if event.kala_annotations:
+                analysis["events_with_kala"] += 1
+                for annotation in event.kala_annotations:
+                    analysis["kala_dimensions"][annotation.dimension].append(annotation.value)
+
+        # Compute aggregates per dimension
+        for dimension, values in analysis["kala_dimensions"].items():
+            analysis["aggregate_by_dimension"][dimension] = {
+                "count": len(values),
+                "mean": sum(values) / len(values) if values else 0,
+                "total": sum(values),
+                "min": min(values) if values else 0,
+                "max": max(values) if values else 0
+            }
+
+        return analysis
+
     def find_similar_memories(self, query: Dict[str, Any], limit: int = 10) -> List[Dict[str, Any]]:
         """Find memories similar to query using vector search"""
         

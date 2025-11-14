@@ -79,6 +79,30 @@ class DynamicAgentFactory:
                 r"distribut.*resource",
                 r"resource.*coordinat",
                 r"asset.*management"
+            ],
+            "offer_product": [
+                r"i\s+(sell|have|offer|provide).*",
+                r"selling\s+",
+                r"offering\s+",
+                r"i\s+can\s+provide\s+",
+                r"i\s+have\s+\d+.*available"
+            ],
+            "offer_service": [
+                r"i\s+(can|do|provide|offer).*",
+                r"i\s+offer\s+(rides|care|help|cleaning|repair|yard)",
+                r"i\s+can\s+(cook|drive|care|repair|clean|help)"
+            ],
+            "find_product": [
+                r"find\s+(someone\s+with|a|some).*",
+                r"looking\s+for.*",
+                r"need.*",
+                r"who\s+has.*"
+            ],
+            "find_service": [
+                r"find\s+someone\s+who\s+can.*",
+                r"need\s+help\s+with.*",
+                r"looking\s+for\s+someone\s+to.*",
+                r"who\s+can.*"
             ]
         }
     

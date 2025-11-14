@@ -30,6 +30,16 @@ class AgentStatus(Enum):
     COMPLETED = "completed"
     ERROR = "error"
 
+class OfferType(Enum):
+    PRODUCT = "product"
+    SERVICE = "service"
+
+class OfferStatus(Enum):
+    ACTIVE = "active"
+    PAUSED = "paused"
+    RETIRED = "retired"
+    UNAVAILABLE = "unavailable"
+
 @dataclass
 class AgentSpecification:
     """Dynamic agent specification from natural language"""
@@ -41,6 +51,223 @@ class AgentSpecification:
     autonomy_level: str = "high"
     memory_type: str = "shared"
     specialization: str = "general"
+
+@dataclass
+class OfferAgentSpecification(AgentSpecification):
+    """Specification for offers (products/services) as agents"""
+    offer_type: OfferType = OfferType.PRODUCT
+    owner_actor_id: str = ""
+    categories: List[str] = field(default_factory=list)
+    constraints: Dict[str, Any] = field(default_factory=dict)
+    capacity_info: Dict[str, Any] = field(default_factory=dict)
+    pricing_usd: Dict[str, Any] = field(default_factory=dict)
+    location: str = ""
+    radius_miles: float = 0.0
+    status: OfferStatus = OfferStatus.ACTIVE
+
+    def __post_init__(self):
+        """Ensure offers are specialized correctly"""
+        if self.offer_type == OfferType.PRODUCT:
+            self.specialization = "product_offer"
+        else:
+            self.specialization = "service_offer"
+
+@dataclass
+class ProductAgent:
+    """Agent representing a specific product offering"""
+    id: str
+    owner_actor_id: str
+    name: str
+    description: str
+    categories: List[str]
+    constraints: Dict[str, Any]
+    quantity_available: int
+    unit: str
+    pricing_usd: float
+    location: str
+    radius_miles: float
+    status: OfferStatus
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+    def get_canonical_description(self) -> Dict[str, Any]:
+        """Get human-readable description of this product"""
+        return {
+            "name": self.name,
+            "description": self.description,
+            "owner_id": self.owner_actor_id,
+            "categories": self.categories,
+            "availability": f"{self.quantity_available} {self.unit}",
+            "price": f"${self.pricing_usd:.2f}",
+            "location": self.location,
+            "radius": f"{self.radius_miles} miles",
+            "constraints": self.constraints,
+            "status": self.status.value
+        }
+
+    def matches_need(self, need: Dict[str, Any]) -> Dict[str, Any]:
+        """Determine if this product matches a given need"""
+        match_score = 0.0
+        reasons = []
+
+        # Check categories
+        need_categories = need.get("categories", [])
+        if need_categories:
+            category_overlap = len(set(need_categories) & set(self.categories))
+            if category_overlap > 0:
+                match_score += 0.4
+                reasons.append(f"Matches {category_overlap} categories")
+
+        # Check location
+        need_location = need.get("location", "")
+        if need_location and need_location.lower() in self.location.lower():
+            match_score += 0.3
+            reasons.append("Location match")
+
+        # Check quantity
+        need_quantity = need.get("quantity", 1)
+        if self.quantity_available >= need_quantity:
+            match_score += 0.2
+            reasons.append(f"Sufficient quantity ({self.quantity_available} available)")
+
+        # Check constraints
+        need_constraints = need.get("constraints", {})
+        constraint_matches = True
+        for key, value in need_constraints.items():
+            if key in self.constraints:
+                if self.constraints[key] != value:
+                    constraint_matches = False
+                    reasons.append(f"Constraint mismatch: {key}")
+
+        if constraint_matches and need_constraints:
+            match_score += 0.1
+            reasons.append("Constraints compatible")
+
+        return {
+            "is_match": match_score >= 0.5,
+            "score": match_score,
+            "reasons": reasons,
+            "explanation": " | ".join(reasons) if reasons else "No match criteria met"
+        }
+
+    def check_capacity(self) -> Dict[str, Any]:
+        """Check current capacity/availability"""
+        return {
+            "available": self.quantity_available > 0 and self.status == OfferStatus.ACTIVE,
+            "quantity": self.quantity_available,
+            "unit": self.unit,
+            "status": self.status.value
+        }
+
+    def reserve_capacity(self, quantity: int) -> bool:
+        """Reserve capacity for an order"""
+        if self.quantity_available >= quantity and self.status == OfferStatus.ACTIVE:
+            self.quantity_available -= quantity
+            return True
+        return False
+
+    def release_capacity(self, quantity: int):
+        """Release reserved capacity"""
+        self.quantity_available += quantity
+
+@dataclass
+class ServiceAgent:
+    """Agent representing a specific service offering"""
+    id: str
+    owner_actor_id: str
+    name: str
+    description: str
+    categories: List[str]
+    constraints: Dict[str, Any]
+    available_slots: List[Dict[str, Any]]
+    max_jobs_per_period: int
+    pricing_usd: float
+    pricing_unit: str
+    location: str
+    radius_miles: float
+    status: OfferStatus
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+    def get_canonical_description(self) -> Dict[str, Any]:
+        """Get human-readable description of this service"""
+        return {
+            "name": self.name,
+            "description": self.description,
+            "owner_id": self.owner_actor_id,
+            "categories": self.categories,
+            "availability": f"{len(self.available_slots)} slots available",
+            "max_jobs": f"{self.max_jobs_per_period} per period",
+            "price": f"${self.pricing_usd:.2f} per {self.pricing_unit}",
+            "location": self.location,
+            "radius": f"{self.radius_miles} miles",
+            "constraints": self.constraints,
+            "status": self.status.value
+        }
+
+    def matches_need(self, need: Dict[str, Any]) -> Dict[str, Any]:
+        """Determine if this service matches a given need"""
+        match_score = 0.0
+        reasons = []
+
+        # Check categories
+        need_categories = need.get("categories", [])
+        if need_categories:
+            category_overlap = len(set(need_categories) & set(self.categories))
+            if category_overlap > 0:
+                match_score += 0.4
+                reasons.append(f"Matches {category_overlap} service categories")
+
+        # Check location
+        need_location = need.get("location", "")
+        if need_location and need_location.lower() in self.location.lower():
+            match_score += 0.3
+            reasons.append("Location match")
+
+        # Check schedule availability
+        need_schedule = need.get("schedule", {})
+        if need_schedule and self.available_slots:
+            match_score += 0.2
+            reasons.append(f"{len(self.available_slots)} time slots available")
+
+        # Check constraints
+        need_constraints = need.get("constraints", {})
+        constraint_matches = True
+        for key, value in need_constraints.items():
+            if key in self.constraints:
+                if self.constraints[key] != value:
+                    constraint_matches = False
+                    reasons.append(f"Constraint mismatch: {key}")
+
+        if constraint_matches and need_constraints:
+            match_score += 0.1
+            reasons.append("Constraints compatible")
+
+        return {
+            "is_match": match_score >= 0.5,
+            "score": match_score,
+            "reasons": reasons,
+            "explanation": " | ".join(reasons) if reasons else "No match criteria met"
+        }
+
+    def check_capacity(self) -> Dict[str, Any]:
+        """Check current capacity/availability"""
+        return {
+            "available": len(self.available_slots) > 0 and self.status == OfferStatus.ACTIVE,
+            "slots": len(self.available_slots),
+            "max_jobs": self.max_jobs_per_period,
+            "status": self.status.value
+        }
+
+    def reserve_slot(self, slot_info: Dict[str, Any]) -> bool:
+        """Reserve a time slot for service"""
+        for i, slot in enumerate(self.available_slots):
+            if slot.get("id") == slot_info.get("id"):
+                self.available_slots.pop(i)
+                return True
+        return False
+
+    def release_slot(self, slot_info: Dict[str, Any]):
+        """Release a time slot back to availability"""
+        self.available_slots.append(slot_info)
     
 @dataclass
 class AgentInstance:

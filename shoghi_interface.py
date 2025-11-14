@@ -23,6 +23,7 @@ from agent_zero_core import agent_zero
 from community_memory import community_memory
 from grant_coordination_system import grant_system
 from adaptive_tools import adaptive_tools
+from offer_management import create_offer_from_text, find_offers
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +33,8 @@ class InteractionType(Enum):
     REQUEST = "request"
     FEEDBACK = "feedback"
     STATUS = "status"
+    OFFER = "offer"  # "I offer/sell/provide..."
+    FIND = "find"    # "Find someone who can..." or "I need..."
 
 @dataclass
 class UserInteraction:
@@ -98,7 +101,24 @@ class ShoghiInterface:
     def _classify_interaction(self, message: str) -> InteractionType:
         """Classify the type of user interaction"""
         message_lower = message.lower().strip()
-        
+
+        # Offer patterns - "I offer/sell/provide..."
+        offer_patterns = [
+            r'i\s+(sell|have|offer|provide|can\s+provide)',
+            r'selling\s+',
+            r'offering\s+',
+            r'i\s+can\s+(cook|drive|care|repair|clean|help|do\s+yard)'
+        ]
+
+        # Find patterns - "Find someone who can..." or "I need..."
+        find_patterns = [
+            r'find\s+(someone|a|local)',
+            r'looking\s+for\s+(someone|a|local)',
+            r'need\s+(someone|a|help)',
+            r'who\s+(has|can|offers)',
+            r'where\s+can\s+i\s+(get|find)'
+        ]
+
         # Command patterns
         command_patterns = [
             r'shoghi\s+(start|begin|initiate|launch|deploy)',
@@ -106,7 +126,7 @@ class ShoghiInterface:
             r'run\s+(grant|coordination|management)',
             r'activate\s+(system|platform|agents)'
         ]
-        
+
         # Question patterns
         question_patterns = [
             r'what\s+(is|are|can|do|does)',
@@ -115,7 +135,7 @@ class ShoghiInterface:
             r'where\s+(can|do|is)',
             r'why\s+(is|are|do|does)'
         ]
-        
+
         # Status patterns
         status_patterns = [
             r'status\s+(of|on|for)',
@@ -123,10 +143,19 @@ class ShoghiInterface:
             r'what\'s\s+the\s+(status|progress|update)',
             r'show\s+(status|progress|results)'
         ]
-        
-        # Check patterns
+
+        # Check patterns - order matters!
         import re
-        
+
+        # Check offer patterns first
+        if any(re.search(pattern, message_lower) for pattern in offer_patterns):
+            return InteractionType.OFFER
+
+        # Check find patterns
+        if any(re.search(pattern, message_lower) for pattern in find_patterns):
+            return InteractionType.FIND
+
+        # Then other patterns
         if any(re.search(pattern, message_lower) for pattern in command_patterns):
             return InteractionType.COMMAND
         elif any(re.search(pattern, message_lower) for pattern in question_patterns):
@@ -140,8 +169,12 @@ class ShoghiInterface:
     
     def _process_interaction(self, interaction: UserInteraction) -> Dict[str, Any]:
         """Process the user interaction and generate response"""
-        
-        if interaction.interaction_type == InteractionType.COMMAND:
+
+        if interaction.interaction_type == InteractionType.OFFER:
+            return self._process_offer(interaction)
+        elif interaction.interaction_type == InteractionType.FIND:
+            return self._process_find(interaction)
+        elif interaction.interaction_type == InteractionType.COMMAND:
             return self._process_command(interaction)
         elif interaction.interaction_type == InteractionType.QUESTION:
             return self._process_question(interaction)
@@ -150,6 +183,130 @@ class ShoghiInterface:
         else:
             return self._process_request(interaction)
     
+    def _process_offer(self, interaction: UserInteraction) -> Dict[str, Any]:
+        """Process offer creation - 'I offer/sell/provide...'"""
+        user_id = interaction.user_id
+        message = interaction.message
+
+        try:
+            # Create offer from natural language
+            result = create_offer_from_text(user_id, message)
+
+            if result.get("success"):
+                offer_type = result["offer_type"]
+                offer_id = result["offer_id"]
+                details = result["details"]
+
+                response = f"""
+✅ **{offer_type.title()} Offer Created!**
+
+Your offering has been added to the community marketplace.
+
+**Details:**
+- Name: {details['name']}
+- Categories: {', '.join(details.get('categories', ['General']))}
+- Location: {details.get('location', 'Not specified')}
+- Price: ${details.get('price', 0):.2f}
+"""
+
+                if offer_type == "product":
+                    response += f"- Quantity: {details.get('quantity', 1)} {details.get('unit', 'units')}\n"
+                else:
+                    response += f"- Availability: {details.get('max_jobs', 10)} jobs per period\n"
+
+                response += f"""
+**Offer ID:** `{offer_id}`
+
+Your offer is now visible to people searching for {', '.join(details.get('categories', ['items']))} in your area.
+"""
+
+                return {
+                    "response": response,
+                    "offer_created": True,
+                    "offer_id": offer_id,
+                    "follow_up_needed": False
+                }
+            else:
+                return {
+                    "response": f"I couldn't create your offer: {result.get('error', 'Unknown error')}. Could you describe what you're offering in more detail?",
+                    "offer_created": False,
+                    "follow_up_needed": True
+                }
+
+        except Exception as e:
+            logger.error(f"Error creating offer: {e}")
+            return {
+                "response": "I encountered an issue creating your offer. Please try describing it differently or contact support.",
+                "error": str(e),
+                "follow_up_needed": True
+            }
+
+    def _process_find(self, interaction: UserInteraction) -> Dict[str, Any]:
+        """Process find request - 'Find someone who can...' or 'I need...'"""
+        message = interaction.message
+
+        try:
+            # Find matching offers
+            matching_offers = find_offers(message)
+
+            if matching_offers:
+                response = f"""
+🔍 **Found {len(matching_offers)} Matching {len(matching_offers) > 1 and 'Offers' or 'Offer'}**
+
+"""
+
+                for i, match in enumerate(matching_offers[:5], 1):
+                    offer = match["offer"]
+                    desc = offer.description
+
+                    response += f"""
+**{i}. {desc.get('name', 'Unnamed')}**
+- Provider: {desc.get('owner_id', 'Unknown')[:8]}...
+- Location: {desc.get('location', 'Not specified')} ({desc.get('radius', 'N/A')} radius)
+- Categories: {', '.join(desc.get('categories', []))}
+- Price: {desc.get('price', 'Contact for pricing')}
+- Status: {desc.get('status', 'unknown')}
+"""
+
+                if len(matching_offers) > 5:
+                    response += f"\n... and {len(matching_offers) - 5} more matches\n"
+
+                response += "\n💡 To contact a provider, note their Offer ID and use the contact feature."
+
+                return {
+                    "response": response,
+                    "offers_found": len(matching_offers),
+                    "matches": matching_offers[:5],
+                    "follow_up_needed": False
+                }
+            else:
+                response = """
+😕 **No Matching Offers Found**
+
+I couldn't find any offers matching your request right now.
+
+**Suggestions:**
+- Try a broader search (e.g., "food" instead of "plate lunch")
+- Check a wider area
+- Post what you need - providers in your area might respond
+
+Would you like to post your need to the community?
+"""
+
+                return {
+                    "response": response,
+                    "offers_found": 0,
+                    "follow_up_needed": True
+                }
+
+        except Exception as e:
+            logger.error(f"Error finding offers: {e}")
+            return {
+                "response": "I encountered an issue searching for offers. Please try rephrasing your request.",
+                "error": str(e),
+                "follow_up_needed": True
+            }
+
     def _process_command(self, interaction: UserInteraction) -> Dict[str, Any]:
         """Process command-type interaction"""
         message = interaction.message
