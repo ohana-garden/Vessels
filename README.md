@@ -8,7 +8,9 @@ But here's the thing - it works.
 
 ## What Is This Thing?
 
-Shoghi is named after a guy who coordinated a community once. Now it's a computer program that spawns other computer programs to help your community. These little programs are called agents, which is what we call software that pretends to think.
+Shoghi is named after Shoghi Effendi (1897-1957), the Guardian of the Bahá'í Faith, who for 36 years led a global religious community through some of history's most turbulent decades. He transformed a nascent movement into a worldwide administrative system built on principles of unity, consultation, and service to humanity. His approach to coordination - meticulous, visionary, and deeply respectful of human dignity - inspired the design philosophy of this platform.
+
+Now it's a computer program that spawns other computer programs to help your community. These little programs are called agents, which is what we call software that pretends to think.
 
 They don't really think, of course. But they're useful anyway.
 
