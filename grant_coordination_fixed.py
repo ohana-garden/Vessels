@@ -509,8 +509,35 @@ class RealGrantCoordinator:
         strong local partnerships, and demonstrated ability to manage federal/state grants effectively.
         
         SUSTAINABILITY PLAN:
-        This grant will catalyze long-term sustainability through diversified funding, community engagement,
-        and integration with existing service systems.
+        This grant serves as seed funding for a service designed to become financially self-sustaining.
+        Our sustainability strategy includes:
+
+        Revenue Generation Timeline:
+        - Year 1 (Grant-funded): Establish service operations, build community trust, demonstrate value
+        - Year 2 (Transition): Implement sliding-scale fees, membership model, or social enterprise components
+          targeting 30-50% cost recovery
+        - Year 3 (Self-sustaining): Achieve 80-100% cost recovery through earned revenue
+
+        Revenue Strategies:
+        1. Sliding-scale fees that ensure accessibility while generating income from those who can pay
+        2. Membership/cooperative model where community members share ownership and costs
+        3. Service contracts with local government or institutions for specialized services
+        4. Social enterprise activities (e.g., products/services sold to broader market)
+        5. Time banking and service exchange to reduce operational costs
+
+        Financial Projections:
+        - Monthly operating cost: {self._calculate_budget(grant) / 12:,.0f}
+        - Target monthly revenue (Year 3): {self._calculate_budget(grant) / 12:,.0f}
+        - Break-even timeline: 24-36 months from grant award
+
+        Success Metrics Beyond Financials:
+        - Community well-being indicators (health outcomes, food security, etc.)
+        - Service quality and user satisfaction scores
+        - Volunteer engagement and community ownership
+        - Replication potential in similar communities
+
+        This approach ensures the grant creates lasting infrastructure, not temporary programs.
+        We are committed to building a service the community values enough to sustain.
         """
     
     def _load_grant_from_db(self, grant_id: str) -> Optional[GrantOpportunity]:

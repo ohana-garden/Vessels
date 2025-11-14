@@ -15,6 +15,14 @@ import asyncio
 # Import fixed grant system
 from grant_coordination_fixed import grant_system, GrantOpportunity
 
+# Import sustainable services system
+from sustainable_services import (
+    SustainableServicesOrchestrator,
+    ServiceType,
+    RevenueModel,
+    SustainabilityStage
+)
+
 # Import voice interface
 from voice_interface import hume_interface, voice_processor, VoiceSession
 
@@ -23,7 +31,7 @@ from menu_builder import menu_orchestrator, MenuState
 
 # Import contextual content generation
 from content_generation import (
-    content_generator, 
+    content_generator,
     effectiveness_tracker,
     ContentContext,
     ContentType,
@@ -43,6 +51,7 @@ class ShoghiPlatform:
     
     def __init__(self):
         self.grant_system = grant_system
+        self.sustainable_services = SustainableServicesOrchestrator()
         self.voice_interface = hume_interface
         self.voice_processor = voice_processor
         self.menu_builder = menu_orchestrator
@@ -51,7 +60,7 @@ class ShoghiPlatform:
         self.agents = {}
         self.active_voice_sessions = {}
         self.generated_content_cache = {}
-        logger.info("🌺 Shoghi Platform initialized with voice and content generation")
+        logger.info("🌺 Shoghi Platform initialized with sustainable services, voice, and content generation")
     
     async def start_voice_session(self, user_id: str, context: str = "general") -> VoiceSession:
         """Start a voice interaction session"""

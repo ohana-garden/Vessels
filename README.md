@@ -1,10 +1,12 @@
 # SHOGHI
 
-Listen: This is a computer program that helps communities get money.
+Listen: This is a computer program that helps communities build things that last.
 
-That's all it is, really.
+Not just get money. Build services that sustain themselves. Services that increase well-being long after the grant money runs out.
 
-But here's the thing - it works.
+Grants are okay. But they're seed money. The real work is growing something that doesn't need grants anymore.
+
+That's what this does.
 
 ## What Is This Thing?
 
@@ -16,21 +18,25 @@ So it goes.
 
 ## What Does It Do Right This Minute?
 
-It does seven things:
+It does nine things:
 
-1. **It makes agents**. You tell it what you need in regular human language. It makes little software robots to do that thing.
+1. **It builds sustainable services**. Community kitchens. Elder care. Childcare. Health clinics. Food systems. Things people need that can eventually pay for themselves through sliding scale fees, memberships, or social enterprise. The computer tracks whether services are becoming self-sufficient or still need help.
 
-2. **It finds grants**. All of them. Every single boring, bureaucratic, soul-crushing grant opportunity that might give you money.
+2. **It plans transitions from grants to sustainability**. Takes a service that needs $5000 a month to run and figures out how to generate that $5000 through the service itself. Tracks progress. Warns you when things aren't working. This is the main point of the whole thing.
 
-3. **It writes grant applications**. This is perhaps the most useful thing anyone has ever made a computer do. Grant applications are designed to crush the human spirit. Now a computer can have its spirit crushed instead.
+3. **It finds grants**. All of them. Every single boring, bureaucratic, soul-crushing grant opportunity that might give you *seed money* to start a service. Not money to depend on forever. Money to get started.
 
-4. **It remembers everything**. The agents talk to each other and learn from each other. This is called Community Memory, which is a nice name for a database.
+4. **It writes grant applications**. This is perhaps the most useful thing anyone has ever made a computer do. Grant applications are designed to crush the human spirit. Now a computer can have its spirit crushed instead. And the applications include sustainability plans because that's what funders want anyway.
 
-5. **It makes new tools when it needs them**. This should probably worry us, but it turns out to be helpful.
+5. **It makes agents**. You tell it what you need in regular human language. It makes little software robots to do that thing.
 
-6. **It connects to anything**. Government websites, foundation databases, all the places where money hides from communities.
+6. **It remembers everything**. The agents talk to each other and learn from each other. This is called Community Memory, which is a nice name for a database. They remember what worked, what didn't, and which services became self-sustaining.
 
-7. **It deploys itself**. You run one command and it sets everything up. This is convenient.
+7. **It makes new tools when it needs them**. This should probably worry us, but it turns out to be helpful.
+
+8. **It connects to anything**. Government websites, foundation databases, all the places where money hides from communities.
+
+9. **It deploys itself**. You run one command and it sets everything up. This is convenient.
 
 ## How To Start It
 
@@ -80,20 +86,37 @@ All the agents share their memories here. When one agent learns something, they 
 
 The memory uses three technologies at once: vectors, graphs, and event streams. If you don't know what those are, that's fine. They're just fancy databases.
 
-### grant_coordination_system.py
+### sustainable_services.py
 
 This is why Shoghi exists.
 
+Most community services start with a grant and die when the grant runs out. This is wasteful and sad.
+
+This part of Shoghi:
+- Plans services that can become self-sustaining
+- Tracks revenue models: sliding scale fees, memberships, social enterprise, time banking
+- Measures financial sustainability: how much of operating costs are covered by earned income
+- Measures community well-being: people served, satisfaction scores, actual impact
+- Warns you when a service won't become sustainable before grant money runs out
+- Identifies successful services that can be replicated elsewhere
+
+It turns grants into seed money for things that last. That's the point.
+
+### grant_coordination_system.py
+
 Grants are how money moves from big organizations to small communities. The process is designed by people who have never needed a grant. It is baroque and cruel and necessary.
+
+But grants should be seed money, not life support.
 
 This part of Shoghi:
 - Finds every grant you might qualify for
-- Writes complete applications with narratives and budgets
+- Writes complete applications with narratives and budgets (including sustainability plans)
 - Fills out all the forms in whatever format they want
 - Submits everything
 - Tracks it all
+- Integrates with sustainable_services.py to ensure grant funds launch services that will survive
 
-It saves communities from drowning in paperwork. That's worth something.
+It saves communities from drowning in paperwork and from building grant-dependent services. That's worth something.
 
 ### adaptive_tools.py
 
@@ -174,15 +197,83 @@ result = shoghi.process_request("coordinate volunteers for community support")
 
 It makes agents that coordinate volunteers. They share information through Community Memory. They get better at it over time.
 
+## Building Something Sustainable
+
+Here is how you would build a service that lasts:
+
+```python
+from sustainable_services import SustainableServicesOrchestrator, ServiceType, RevenueModel
+
+# Start the orchestrator
+orchestrator = SustainableServicesOrchestrator()
+
+# Create a community kitchen with seed grant funding
+kitchen = orchestrator.create_service(
+    name="Puna Community Kitchen",
+    service_type=ServiceType.FOOD_SYSTEMS,
+    description="Pay-what-you-can community meals",
+    monthly_operating_cost=5000,  # Rent, supplies, utilities
+    seed_grant_amount=60000  # One year runway
+)
+
+# Add revenue strategies
+orchestrator.add_revenue_strategy(
+    service_id=kitchen.id,
+    revenue_model=RevenueModel.SLIDING_SCALE_FEES,
+    description="Suggested $8/meal, pay what you can",
+    target_monthly_revenue=3000,  # 500 meals at avg $6
+    timeline_months=6,
+    implementation_steps=[
+        "Set up payment system",
+        "Train volunteers on sliding scale conversations",
+        "Market to community"
+    ]
+)
+
+orchestrator.add_revenue_strategy(
+    service_id=kitchen.id,
+    revenue_model=RevenueModel.SERVICE_CONTRACTS,
+    description="Catering for local events",
+    target_monthly_revenue=2000,
+    timeline_months=9,
+    implementation_steps=[
+        "Get health permits",
+        "Build catering menu",
+        "Network with event organizers"
+    ]
+)
+
+# Track well-being impact, not just money
+orchestrator.add_wellbeing_metric(
+    service_id=kitchen.id,
+    metric_name="food_security",
+    description="Households with reliable meal access",
+    target_value=200,
+    measurement_method="Monthly survey"
+)
+
+# Get sustainability report
+report = orchestrator.generate_sustainability_report(kitchen.id)
+print(f"Self-sufficiency: {report['financial_health']['self_sufficiency_percentage']}%")
+print(f"Months to sustainability: {report['financial_health']['estimated_months_to_sustainability']}")
+print(f"Recommendations: {report['recommendations']}")
+```
+
+The computer tracks whether you're on track. It warns you if the grant will run out before the service becomes sustainable. It tells you what to adjust.
+
+This is better than just getting a grant and hoping.
+
 ## What It's For
 
 Here is what it's for:
 
-- **Communities that need money**. Finding and applying for grants is a full-time job. Most communities can't afford a full-time grant writer. Now they don't need one.
+- **Communities that want to build things that last**. Not just services that survive on grants year to year. Services that become self-sustaining and serve the community for decades. Community kitchens that generate revenue. Elder care co-ops that members support. Childcare centers that run on sliding scale fees. Things that work.
 
-- **Elders who need care**. Puna has a lot of elders. They need support. Support needs money. Money comes from grants. Grants come from this program.
+- **People tired of the grant treadmill**. Chasing grants every year is exhausting. Building a service that pays for itself is better. This helps you do that.
 
-- **Anyone trying to do something good**. Communities are complicated. Coordinating them is hard. This makes it less hard.
+- **Elders who need care**. Puna has a lot of elders. They need support. Support needs funding initially, then it needs a sustainable model. This provides both.
+
+- **Anyone trying to do something good that will still be there in ten years**. Communities are complicated. Coordinating them is hard. Making things sustainable is harder. This makes it less hard.
 
 ## Configuration
 
