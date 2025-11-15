@@ -5,11 +5,12 @@ Main entry point for the complete Shoghi system
 """
 
 import asyncio
+import json
 import logging
 import sys
-import os
-from datetime import datetime
-from typing import Dict, List, Any, Optional
+import textwrap
+from datetime import datetime, timedelta
+from typing import Any, Callable, Dict, List, Optional, TextIO
 
 # Import all core modules
 from agent_zero_core import agent_zero, AgentZeroCore
@@ -21,26 +22,99 @@ from shoghi_interface import shoghi_interface, ShoghiInterface
 from auto_deploy import auto_deploy, deploy_shoghi_platform
 from universal_connector import universal_connector, UniversalConnector
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(sys.stdout),
-        logging.FileHandler('shoghi.log')
-    ]
-)
-
 logger = logging.getLogger(__name__)
+
+
+def configure_logging(
+    level: int = logging.INFO,
+    stream: Optional[TextIO] = None,
+    log_file: Optional[str] = "shoghi.log"
+) -> None:
+    """Configure application logging once for CLI entrypoints.
+
+    The platform previously configured logging at import time which caused
+    duplicate handlers when the module was re-imported (common during tests).
+    This helper applies the desired configuration only when no handlers are
+    present so embedding applications can supply their own logging strategy.
+    """
+
+    root_logger = logging.getLogger()
+    if root_logger.handlers:
+        return
+
+    resolved_stream = stream or sys.stdout
+    handlers: List[logging.Handler] = [logging.StreamHandler(resolved_stream)]
+
+    if log_file:
+        handlers.append(logging.FileHandler(log_file))
+
+    logging.basicConfig(
+        level=level,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        handlers=handlers,
+    )
+
+
+class InteractiveConsole:
+    """Console rendering helper for interactive development sessions."""
+
+    def __init__(
+        self,
+        input_func: Optional[Callable[[str], str]] = None,
+        output_stream: Optional[TextIO] = None,
+    ) -> None:
+        self._input = input_func or input
+        self._output = output_stream or sys.stdout
+
+    def render_banner(self) -> None:
+        banner = textwrap.dedent(
+            """
+            ============================================================
+            🌺 SHOGHI INTERACTIVE MODE
+            ============================================================
+            Type your requests in natural language
+            Examples:
+              - 'find grants for elder care in Puna'
+              - 'coordinate volunteers for community support'
+              - 'deploy grant management system'
+              - 'what is your status?'
+              - 'exit' to quit
+            ============================================================
+            """
+        ).strip("\n")
+        print("\n" + banner, file=self._output)
+
+    def prompt_user(self) -> str:
+        return self._input("\n🗣️  You: ").strip()
+
+    def notify_processing(self) -> None:
+        print("🤔 Processing...", file=self._output)
+
+    def display_response(self, message: str) -> None:
+        print(f"\n🤖 Shoghi: {message}", file=self._output)
+
+    def display_suggestions(self, suggestions: List[str]) -> None:
+        if not suggestions:
+            return
+
+        print("\n💡 Suggestions:", file=self._output)
+        for suggestion in suggestions:
+            print(f"  - {suggestion}", file=self._output)
+
+    def display_error(self, message: str) -> None:
+        print(f"❌ Error: {message}", file=self._output)
+
+    def say_goodbye(self) -> None:
+        print("👋 Goodbye! Shutting down Shoghi...", file=self._output)
 
 class ShoghiPlatform:
     """Main Shoghi adaptive coordination platform"""
-    
-    def __init__(self):
+
+    def __init__(self, console: Optional[InteractiveConsole] = None):
         self.running = False
         self.start_time = None
         self.mode = "development"  # development, production, deployed
-        
+
         # Core system components
         self.agent_core = None
         self.memory_system = None
@@ -49,10 +123,12 @@ class ShoghiPlatform:
         self.connector_system = None
         self.interface_system = None
         self.deploy_system = None
-        
+
+        self.console = console or InteractiveConsole()
+
         logger.info("🌺 Shoghi Platform initializing...")
     
-    def start(self, mode: str = "development"):
+    def start(self, mode: str = "development", run_loop: bool = True):
         """Start the complete Shoghi platform"""
         
         self.mode = mode
@@ -71,8 +147,9 @@ class ShoghiPlatform:
             # Log startup completion
             self._log_startup_completion()
             
-            # Enter main operation loop
-            self._main_operation_loop()
+            # Enter main operation loop when requested
+            if run_loop:
+                self._main_operation_loop()
             
         except Exception as e:
             logger.error(f"❌ Platform startup failed: {e}")
@@ -85,14 +162,20 @@ class ShoghiPlatform:
         logger.info("🔧 Initializing core systems...")
         
         # Initialize Community Memory (must be first)
+        # TODO: Lazy-load large subsystems (e.g., memory system) only when
+        # explicitly used to shorten cold-start time for CLI status queries.
         self.memory_system = community_memory
         logger.info("✅ Community Memory System initialized")
         
         # Initialize Adaptive Tools
+        # TODO: Adaptive tools initialization could pre-compute capability
+        # indexes asynchronously so startup remains responsive.
         self.tool_system = adaptive_tools
         logger.info("✅ Adaptive Tools System initialized")
         
         # Initialize Agent Zero Core
+        # TODO: Agent core initialization currently performs synchronous
+        # bootstrap; consider deferring heavy network calls to background tasks.
         self.agent_core = agent_zero
         self.agent_core.initialize(
             memory_system=self.memory_system,
@@ -124,12 +207,17 @@ class ShoghiPlatform:
         # Start grant discovery if in production mode
         if self.mode == "production":
             logger.info("🔍 Starting grant discovery...")
+            # NOTE: discover_all_opportunities() appears to do a full crawl.
+            # Introducing incremental sync with persisted checkpoints would
+            # avoid redundant requests and lower latency here.
             grants = self.grant_system.discover_all_opportunities()
             logger.info(f"📊 Discovered {len(grants)} grant opportunities")
         
         # Deploy platform if requested
         if self.mode == "deployed":
             logger.info("🚀 Deploying Shoghi platform...")
+            # TODO: Deployment currently blocks the main thread; offload to an
+            # executor or async worker so startup logging continues promptly.
             deployment_id = self.deploy_system.deploy_shoghi_platform()
             logger.info(f"✅ Platform deployed: {deployment_id}")
         
@@ -196,47 +284,34 @@ class ShoghiPlatform:
     
     def _interactive_mode(self):
         """Interactive mode for development/testing"""
-        
-        print("\n" + "="*60)
-        print("🌺 SHOGHI INTERACTIVE MODE")
-        print("="*60)
-        print("Type your requests in natural language")
-        print("Examples:")
-        print("  - 'find grants for elder care in Puna'")
-        print("  - 'coordinate volunteers for community support'")
-        print("  - 'deploy grant management system'")
-        print("  - 'what is your status?'")
-        print("  - 'exit' to quit")
-        print("="*60)
-        
+
+        self.console.render_banner()
+
         while self.running:
             try:
-                user_input = input("\n🗣️  You: ").strip()
-                
+                user_input = self.console.prompt_user()
+
                 if user_input.lower() in ['exit', 'quit', 'bye']:
-                    print("👋 Goodbye! Shutting down Shoghi...")
+                    self.console.say_goodbye()
                     break
-                
+
                 if not user_input:
                     continue
-                
+
                 # Process user input
-                print("🤔 Processing...")
+                self.console.notify_processing()
                 response = self.interface_system.process_message("user", user_input)
-                
-                print(f"\n🤖 Shoghi: {response['response']}")
-                
+
+                self.console.display_response(response['response'])
+
                 if response.get('follow_up_needed'):
                     suggestions = response.get('suggestions', [])
-                    if suggestions:
-                        print("\n💡 Suggestions:")
-                        for suggestion in suggestions:
-                            print(f"  - {suggestion}")
-                
+                    self.console.display_suggestions(suggestions)
+
             except KeyboardInterrupt:
                 break
             except Exception as e:
-                print(f"❌ Error: {e}")
+                self.console.display_error(str(e))
                 logger.error(f"Interactive mode error: {e}")
     
     def _service_mode(self):
@@ -267,6 +342,8 @@ class ShoghiPlatform:
         
         # Start grant monitoring
         try:
+            # NOTE: track_and_manage() is invoked every loop; cache results or
+            # emit only deltas to avoid expensive recomputation and logging.
             grants = self.grant_system.track_and_manage()
             logger.info(f"📊 Background monitoring: {len(grants)} grants tracked")
         except Exception as e:
@@ -277,6 +354,8 @@ class ShoghiPlatform:
         
         try:
             # Check agent status
+            # TODO: get_all_agents_status() can be costly; consider batching or
+            # sampling agents during frequent health checks to minimize load.
             agent_status = self.agent_core.get_all_agents_status()
             active_agents = len([a for a in agent_status if a['status'] == 'active'])
             
@@ -324,11 +403,13 @@ class ShoghiPlatform:
             connector_insights = self.connector_system.get_connector_insights()
             
             # Grant system status
+            # NOTE: Re-running track_and_manage() here duplicates background
+            # work; reuse cached metrics gathered by background monitors.
             grant_info = self.grant_system.track_and_manage()
-            
+
             # Deployment status
             deployment_status = self.deploy_system.get_all_deployments()
-            
+
             status = {
                 "platform_status": "running",
                 "mode": self.mode,
@@ -336,32 +417,32 @@ class ShoghiPlatform:
                 "systems": {
                     "agent_network": {
                         "total_agents": len(agent_status),
-                        "active_agents": len([a for a in agent_status if a['status'] == 'active']),
-                        "specializations": len(set(a['specialization'] for a in agent_status))
+                        "active_agents": len([a for a in agent_status if a.get('status') == 'active']),
+                        "specializations": len(set(a.get('specialization') for a in agent_status if a.get('specialization')))
                     },
                     "memory_system": {
-                        "total_memories": memory_insights['total_memories'],
-                        "memory_types": memory_insights['memory_types'],
-                        "active_agents": len(memory_insights['agent_contributions'])
+                        "total_memories": memory_insights.get('total_memories', 0),
+                        "memory_types": memory_insights.get('memory_types', {}),
+                        "active_agents": len(memory_insights.get('agent_contributions', {}))
                     },
                     "tool_system": {
-                        "total_tools": tool_insights['total_tools'],
-                        "tool_types": len(tool_insights['tools_by_type']),
-                        "recent_creations": len(tool_insights['recently_created'])
+                        "total_tools": tool_insights.get('total_tools', 0),
+                        "tool_types": len(tool_insights.get('tools_by_type', {})),
+                        "recent_creations": len(tool_insights.get('recently_created', []))
                     },
                     "connector_system": {
-                        "total_connectors": connector_insights['total_connectors'],
-                        "connector_types": len(connector_insights['connectors_by_type']),
-                        "system_coverage": len(connector_insights['system_coverage'])
+                        "total_connectors": connector_insights.get('total_connectors', 0),
+                        "connector_types": len(connector_insights.get('connectors_by_type', {})),
+                        "active_connectors": len(connector_insights.get('recently_used', []))
                     },
                     "grant_system": {
-                        "total_grants": grant_info['total_grants_discovered'],
-                        "active_applications": grant_info['total_applications_active'],
-                        "upcoming_deadlines": len(grant_info['upcoming_deadlines'])
+                        "total_grants": grant_info.get('total_grants_discovered', 0),
+                        "active_applications": grant_info.get('total_applications_active', 0),
+                        "upcoming_deadlines": len(grant_info.get('upcoming_deadlines', []))
                     },
                     "deployment_system": {
                         "total_deployments": len(deployment_status),
-                        "active_deployments": len([d for d in deployment_status if d and d['status'] == 'running'])
+                        "active_deployments": len([d for d in deployment_status if d and d.get('status') == 'running'])
                     }
                 }
             }
@@ -428,7 +509,9 @@ class ShoghiPlatform:
 
 def main():
     """Main entry point"""
-    
+
+    configure_logging()
+
     # Parse command line arguments
     import argparse
     
@@ -445,17 +528,19 @@ def main():
     
     try:
         if args.status:
-            # Show status and exit
+            # Start platform components long enough to collect status
+            platform.start(mode=args.mode, run_loop=False)
             status = platform.get_platform_status()
             print(json.dumps(status, indent=2))
-            
+            platform.shutdown()
+
         elif args.command:
             # Execute single command
-            platform.start(mode='production')
+            platform.start(mode='production', run_loop=False)
             result = platform.process_request(args.command)
             print(result['response'])
             platform.shutdown()
-            
+
         else:
             # Start full platform
             platform.start(mode=args.mode)
