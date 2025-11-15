@@ -324,8 +324,7 @@ class TestMenuConversationOrchestrator:
         assert self.orchestrator.current_menu_state is None
         assert self.orchestrator.active_agents == {}
 
-    @pytest.mark.asyncio
-    async def test_initialize_conversation(self):
+    def test_initialize_conversation(self):
         """Test conversation initialization"""
         menu_data = {
             "restaurant_name": "Test Restaurant",
@@ -335,7 +334,7 @@ class TestMenuConversationOrchestrator:
             ]
         }
 
-        state = await self.orchestrator.initialize_conversation(menu_data)
+        state = asyncio.run(self.orchestrator.initialize_conversation(menu_data))
 
         assert state is not None
         assert state.restaurant_name == "Test Restaurant"
@@ -408,8 +407,7 @@ class TestMenuConversationOrchestrator:
         assert intent["action"] == "redirect"
         assert intent["specialist_needed"] == "design_specialist"
 
-    @pytest.mark.asyncio
-    async def test_summon_specialist(self):
+    def test_summon_specialist(self):
         """Test summoning a specialist"""
         menu_data = {
             "restaurant_name": "Test",
@@ -417,15 +415,14 @@ class TestMenuConversationOrchestrator:
             "items": [{"name": "Pasta", "price": 15.0, "section": "mains"}]
         }
 
-        await self.orchestrator.initialize_conversation(menu_data)
+        asyncio.run(self.orchestrator.initialize_conversation(menu_data))
 
-        specialist_id = await self.orchestrator.summon_specialist("pricing_strategist")
+        specialist_id = asyncio.run(self.orchestrator.summon_specialist("pricing_strategist"))
 
         assert specialist_id in self.orchestrator.active_agents
         assert self.orchestrator.active_agents[specialist_id]["type"] == "pricing_strategist"
 
-    @pytest.mark.asyncio
-    async def test_apply_change(self):
+    def test_apply_change(self):
         """Test applying a change to menu"""
         menu_data = {
             "restaurant_name": "Test",
@@ -433,16 +430,15 @@ class TestMenuConversationOrchestrator:
             "items": [{"name": "Pasta", "price": 15.0, "section": "mains"}]
         }
 
-        await self.orchestrator.initialize_conversation(menu_data)
+        asyncio.run(self.orchestrator.initialize_conversation(menu_data))
 
         initial_version = self.orchestrator.current_menu_state.version
-        updated_state = await self.orchestrator.apply_change("pricing_update")
+        updated_state = asyncio.run(self.orchestrator.apply_change("pricing_update"))
 
         assert updated_state.version == initial_version + 1
         assert "pricing_update" in updated_state.improvements_made
 
-    @pytest.mark.asyncio
-    async def test_answer_user_question(self):
+    def test_answer_user_question(self):
         """Test answering user questions"""
         menu_data = {
             "restaurant_name": "Test",
@@ -450,9 +446,9 @@ class TestMenuConversationOrchestrator:
             "items": [{"name": "Pasta", "price": 15.0, "section": "mains"}]
         }
 
-        await self.orchestrator.initialize_conversation(menu_data)
+        asyncio.run(self.orchestrator.initialize_conversation(menu_data))
 
-        answer = await self.orchestrator.answer_user_question("Why this approach?")
+        answer = asyncio.run(self.orchestrator.answer_user_question("Why this approach?"))
 
         assert isinstance(answer, str)
         assert len(answer) > 0
