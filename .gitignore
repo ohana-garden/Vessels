@@ -49,3 +49,7 @@ htmlcov/
 
 # Logs
 *.log
+
+# Environment variables (API keys)
+.env
+.env.local
