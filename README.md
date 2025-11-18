@@ -56,6 +56,10 @@ Run locally — common entry points
 - Run the demo harness:
   python demo_shoghi.py
 
+- Run the Living Agents Framework demo (NEW):
+  python demo_living_agents.py
+  (Demonstrates contextual arrivals, agent creation, evolution, reproduction, multi-user coordination)
+
 - Run the web server (if desired):
   python shoghi_web_server.py
   Then open the configured port (default in .env or server script)
@@ -111,6 +115,13 @@ Configuration
   - SHOGHI_PORT — port for web server
   - LOG_LEVEL — INFO / DEBUG / WARNING
   - Any third-party API keys used by connectors
+
+- **For Ethical Agents Framework with LLM (optional but recommended):**
+  - LLM_PROVIDER — "anthropic", "openai", or "local" (default: "local")
+  - ANTHROPIC_API_KEY — your Anthropic Claude API key (if using Anthropic)
+  - OPENAI_API_KEY — your OpenAI API key (if using OpenAI)
+  - Note: Framework works without LLM using template-based responses
+
 - Add a .env.example for easy onboarding (if not present).
 
 Testing

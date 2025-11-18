@@ -317,7 +317,7 @@ class ConversationalAgentCreator:
 
         return dialogue
 
-    def process_user_input(
+    async def process_user_input(
         self,
         creation_id: str,
         user_input: str
@@ -347,7 +347,7 @@ class ConversationalAgentCreator:
         })
 
         # Extract information based on current phase
-        identity_updates = self.extract_identity_info(
+        identity_updates = await self.extract_identity_info(
             user_input,
             conversation.current_phase,
             conversation.identity
@@ -406,7 +406,7 @@ class ConversationalAgentCreator:
             "completeness": conversation.identity.completeness()
         }
 
-    def extract_identity_info(
+    async def extract_identity_info(
         self,
         user_input: str,
         phase: CreationPhase,
@@ -415,15 +415,39 @@ class ConversationalAgentCreator:
         """
         Extract identity information from user input based on phase
 
-        This is a simplified version - in production, would use LLM
+        Uses LLM if available, otherwise falls back to keyword extraction
         """
+        # Try LLM extraction first
+        try:
+            from llm_integration import get_creation_generator
+            generator = get_creation_generator()
+
+            # Convert identity to dict for LLM
+            identity_dict = {
+                "name": current_identity.name,
+                "kuleana": current_identity.kuleana,
+                "persona": current_identity.persona
+            }
+
+            updates = await generator.extract_creation_info(
+                user_input=user_input,
+                phase=phase.value,
+                current_identity=identity_dict
+            )
+
+            if updates:
+                return updates
+
+        except Exception as e:
+            logger.warning(f"LLM extraction failed: {e}, falling back to keywords")
+
+        # Fallback: Keyword-based extraction
         updates = {}
         lower_input = user_input.lower()
 
         if phase == CreationPhase.DISCOVERY:
             # Extract kuleana
             if not current_identity.kuleana:
-                # Simple extraction - in production use LLM
                 updates['kuleana'] = user_input.strip()
 
         elif phase == CreationPhase.CHARACTER:

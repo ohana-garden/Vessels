@@ -337,14 +337,33 @@ class ConversationOrchestrator:
         """
         Generate the actual text for agent's turn
 
-        In production, this would call an LLM with:
-        - Agent's persona, kuleana, knowledge
-        - Conversation history
-        - Turn type guidance
-        - Context
-
-        For now, using template-based generation
+        Uses LLM if available, otherwise falls back to templates
         """
+        # Try LLM generation if client available
+        if self.llm_client:
+            try:
+                from llm_integration import get_dialogue_generator
+                generator = get_dialogue_generator()
+
+                # Format conversation history for LLM
+                history = [
+                    {"speaker": turn.speaker_name, "text": turn.text}
+                    for turn in recent_turns
+                ]
+
+                response = await generator.generate_agent_response(
+                    agent_data=agent_data,
+                    conversation_history=history,
+                    turn_type=turn_type.value,
+                    topic=conversation.topic
+                )
+
+                return response
+
+            except Exception as e:
+                logger.warning(f"LLM generation failed: {e}, falling back to templates")
+
+        # Fallback: Template-based generation
         name = agent_data.get('name', 'Agent')
         persona = agent_data.get('persona', '')
         kuleana = agent_data.get('kuleana', '')

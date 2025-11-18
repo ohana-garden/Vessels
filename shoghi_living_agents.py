@@ -172,11 +172,22 @@ class ShoghiLivingAgents:
     def __init__(
         self,
         agent_registry: Optional[AgentRegistry] = None,
-        community_memory: Optional[SimpleCommunityMemory] = None
+        community_memory: Optional[SimpleCommunityMemory] = None,
+        use_llm: bool = True
     ):
         # Initialize registries
         self.agent_registry = agent_registry or AgentRegistry()
         self.community_memory = community_memory or SimpleCommunityMemory()
+
+        # Initialize LLM client
+        self.llm_client = None
+        if use_llm:
+            try:
+                from llm_integration import get_llm_client
+                self.llm_client = get_llm_client()
+                logger.info("LLM client initialized successfully")
+            except Exception as e:
+                logger.warning(f"LLM client initialization failed: {e}, using fallback templates")
 
         # Initialize core engines
         self.context_engine = ContextEngine(
@@ -188,7 +199,7 @@ class ShoghiLivingAgents:
 
         self.conversation_orchestrator = ConversationOrchestrator(
             self.agent_registry,
-            llm_client=None  # TODO: Add LLM client
+            llm_client=self.llm_client
         )
 
         self.conversational_creator = ConversationalAgentCreator(
