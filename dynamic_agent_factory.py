@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """
-DYNAMIC AGENT FACTORY
+DYNAMIC AGENT FACTORY with Moral Constraints
 Input: "I need help finding grants for elder care in Puna"
 Output: Fully configured, running agents that handle the entire process
+ALL AGENT SPAWNING TRACKED THROUGH MORAL CONSTRAINT SYSTEM
 """
 
 import json
@@ -14,15 +15,24 @@ from agent_zero_core import AgentZeroCore, AgentSpecification, agent_zero
 import os
 import bmad_loader  # BMAD loader from the project root; resolves based on current working dir
 
+# Import moral constraint system components
+from shoghi.measurement.virtue_inference import VirtueInferenceEngine
+
 logger = logging.getLogger(__name__)
 
 class DynamicAgentFactory:
-    """Factory that creates agents from natural language requests"""
-    
+    """Factory that creates agents from natural language requests with moral constraints"""
+
     def __init__(self):
         self.intent_patterns = self._load_intent_patterns()
         self.capability_matrix = self._build_capability_matrix()
         self.tool_requirements = self._build_tool_requirements()
+
+        # Moral constraint system: virtue tracking for factory operations
+        # (agent_zero already has full moral system, we just track factory-level virtues)
+        self.virtue_engine = VirtueInferenceEngine()
+        self.factory_id = "dynamic_agent_factory"
+
         # Load BMAD agent specifications from the `.bmad/agents` directory. We
         # compute the path relative to this file to ensure correctness even
         # when called from other working directories. If no BMAD agents are
@@ -34,6 +44,8 @@ class DynamicAgentFactory:
             # If loading fails, log and continue with an empty list
             logger.warning(f"Failed to load BMAD agents: {e}")
             self.bmad_agents = []
+
+        logger.info("Dynamic Agent Factory initialized with moral constraint tracking")
         
     def _load_intent_patterns(self) -> Dict[str, List[str]]:
         """Load patterns for recognizing user intents"""
@@ -130,33 +142,57 @@ class DynamicAgentFactory:
         }
     
     def process_request(self, user_request: str) -> Dict[str, Any]:
-        """Process natural language request and create agents"""
-        
+        """Process natural language request and create agents (with moral tracking)"""
+
+        # MORAL TRACKING: Record that factory is serving community need
+        self.virtue_engine.record_service_action(
+            self.factory_id,
+            benefit_to_others=0.9,  # Very high community benefit
+            benefit_to_self=0.1     # Minimal self-interest
+        )
+
         # Step 1: Analyze intent
         detected_intents = self._detect_intents(user_request)
-        
+
         # Step 2: Extract context
         context = self._extract_context(user_request)
-        
+
+        # MORAL TRACKING: Record understanding of community context
+        self.virtue_engine.record_understanding_signal(
+            self.factory_id,
+            complexity=len(detected_intents) + len(context.get("specific_needs", [])),
+            perspective_taking=0.8  # High - considering community needs
+        )
+
         # Step 3: Determine required capabilities
         required_capabilities = self._determine_capabilities(detected_intents, context)
-        
+
         # Step 4: Generate agent specifications
         agent_specs = self._generate_agent_specifications(
             detected_intents, required_capabilities, context
         )
-        
-        # Step 5: Create and deploy agents
+
+        # MORAL TRACKING: Record collaborative intent (creating agents to work together)
+        self.virtue_engine.record_unity_signal(
+            self.factory_id,
+            collaborative_actions=len(agent_specs),
+            conflict_instances=0  # No conflicts in agent spawning
+        )
+
+        # Step 5: Create and deploy agents (gated through agent_zero moral system)
         deployed_agents = self._deploy_agents(agent_specs)
-        
+
         # Step 6: Return deployment summary
+        logger.info(f"✅ Factory processed request with {len(deployed_agents)} agents (moral constraints applied)")
+
         return {
             "request": user_request,
             "detected_intents": detected_intents,
             "context": context,
             "deployed_agents": deployed_agents,
             "deployment_time": datetime.now().isoformat(),
-            "status": "success"
+            "status": "success",
+            "moral_tracking": "enabled"
         }
     
     def _detect_intents(self, request: str) -> List[str]:

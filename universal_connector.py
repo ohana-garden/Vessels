@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Universal Connector – production‑ready implementation.
+Universal Connector with Moral Constraints – production‑ready implementation.
 
 This module defines a safe and extensible connector system for interacting
 with external APIs and services.  The improved design focuses on robust error
@@ -8,6 +8,8 @@ handling, configurable rate limiting based on connector specifications, and
 secure handling of credentials through environment variables.  It avoids
 automatically generating connectors for unknown systems and encourages
 explicit configuration instead.
+
+ALL EXTERNAL API OPERATIONS GATED THROUGH MORAL CONSTRAINT SYSTEM
 """
 
 from __future__ import annotations
@@ -23,6 +25,12 @@ from enum import Enum
 from typing import Dict, List, Any, Optional
 
 import requests
+
+# Import moral constraint system
+from shoghi.constraints.bahai import BahaiManifold
+from shoghi.measurement.operational import OperationalMetrics
+from shoghi.measurement.virtue_inference import VirtueInferenceEngine
+from shoghi.gating.gate import ActionGate
 
 logger = logging.getLogger(__name__)
 
@@ -77,18 +85,36 @@ class ConnectorInstance:
 
 class UniversalConnector:
     """
-    Safe connector manager for external systems.
+    Safe connector manager for external systems with moral constraints.
 
     The connector system preloads a set of built‑in specifications and allows
     creation of new connectors via configuration.  Credentials may be
     provided explicitly or read from environment variables following the
     convention ``<SPEC_NAME>_API_KEY`` for API key authentication.
+
+    ALL EXTERNAL API CALLS GATED THROUGH MORAL CONSTRAINT SYSTEM
     """
 
     def __init__(self) -> None:
         self.connectors: Dict[str, ConnectorInstance] = {}
         self.connector_specs: Dict[str, ConnectorSpecification] = {}
         self.rate_limiter: Dict[str, Dict[str, int]] = {}
+
+        # Initialize moral constraint system
+        self.manifold = BahaiManifold()
+        self.operational_metrics = OperationalMetrics()
+        self.virtue_engine = VirtueInferenceEngine()
+        self.action_gate = ActionGate(
+            manifold=self.manifold,
+            operational_metrics=self.operational_metrics,
+            virtue_engine=self.virtue_engine,
+            latency_budget_ms=200.0,  # Higher for external API calls
+            block_on_timeout=True
+        )
+        self.system_id = "universal_connector"
+
+        logger.info("Universal Connector initialized with moral constraints")
+
         self._load_builtin_connectors()
 
     # ---------------------------------------------------------------------
@@ -266,15 +292,35 @@ class UniversalConnector:
 
     def execute_operation(self, connector_id: str, operation: str, parameters: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
-        Execute an operation on a connector.  Rate limits are respected based
-        on the connector's specification.  Returns a dictionary containing
-        ``success`` and either ``data`` or ``error``.
+        Execute an operation on a connector (GATED through moral constraints).
+        Rate limits are respected based on the connector's specification.
+        Returns a dictionary containing ``success`` and either ``data`` or ``error``.
+
+        ALL EXTERNAL API CALLS ARE MORALLY VALIDATED BEFORE EXECUTION
         """
         if parameters is None:
             parameters = {}
+
         connector = self.connectors.get(connector_id)
         if not connector:
             return {"success": False, "error": "Connector not found"}
+
+        # MORAL CONSTRAINT: Gate external API call
+        action_name = f"external_api_call_{connector.specification.name}_{operation}"
+        gate_result = self.action_gate.gate_action(self.system_id, action_name)
+
+        if not gate_result.allowed:
+            logger.error(f"❌ External API call BLOCKED by moral constraints: {gate_result.reason}")
+            return {
+                "success": False,
+                "error": f"Blocked by moral constraints: {gate_result.reason}",
+                "violations": gate_result.security_event.violations if gate_result.security_event else [],
+                "moral_validation": "failed"
+            }
+
+        # Record operational metrics
+        self.operational_metrics.record_action(self.system_id, action_name)
+
         # Check rate limit
         if not self._check_rate_limit(connector, operation):
             return {"success": False, "error": "Rate limit exceeded"}
@@ -289,11 +335,32 @@ class UniversalConnector:
             if result.get("success"):
                 # Weighted moving average for success rate
                 connector.success_rate = ((connector.success_rate * (connector.usage_count - 1)) + 1) / connector.usage_count
+
+                # MORAL TRACKING: Record successful task outcome
+                self.operational_metrics.record_task_outcome(self.system_id, success_rate=1.0)
+
+                # Record trustworthiness (reliable external operations)
+                self.virtue_engine.record_promise_or_commitment(
+                    self.system_id,
+                    fulfilled=True
+                )
+
+                logger.info(f"✅ External API call successful (moral constraints validated)")
             else:
                 connector.success_rate = (connector.success_rate * (connector.usage_count - 1)) / connector.usage_count
+
+                # Record failed outcome
+                self.operational_metrics.record_task_outcome(self.system_id, success_rate=0.0)
+
+            # Add moral validation marker to result
+            if result.get("success"):
+                result["moral_validation"] = "passed"
+
             return result
         except Exception as e:
             logger.error(f"Error executing operation {operation} on {connector.specification.name}: {e}")
+            # Record failed task
+            self.operational_metrics.record_task_outcome(self.system_id, success_rate=0.0)
             return {"success": False, "error": str(e)}
 
     def _check_rate_limit(self, connector: ConnectorInstance, operation: str) -> bool:

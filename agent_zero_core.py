@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """
-AGENT ZERO CORE - Meta-Coordination Engine
+AGENT ZERO CORE - Meta-Coordination Engine with Moral Constraints
 Spawns agents dynamically from natural language descriptions
 Self-organizes based on community needs
 Coordinates entire agent ecosystem
+ALL AGENT ACTIONS GATED THROUGH MORAL CONSTRAINT SYSTEM
 """
 
 import asyncio
@@ -18,6 +19,13 @@ import threading
 import queue
 from concurrent.futures import ThreadPoolExecutor
 import inspect
+
+# Import moral constraint system
+from shoghi.constraints.bahai import BahaiManifold
+from shoghi.measurement.operational import OperationalMetrics
+from shoghi.measurement.virtue_inference import VirtueInferenceEngine
+from shoghi.gating.gate import ActionGate
+from shoghi.phase_space.tracker import TrajectoryTracker
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -56,8 +64,8 @@ class AgentInstance:
     message_queue: queue.Queue = field(default_factory=queue.Queue)
     
 class AgentZeroCore:
-    """Meta-coordination engine that spawns and manages agents"""
-    
+    """Meta-coordination engine that spawns and manages agents with moral constraints"""
+
     def __init__(self):
         self.agents: Dict[str, AgentInstance] = {}
         self.agent_specifications: Dict[str, AgentSpecification] = {}
@@ -68,7 +76,22 @@ class AgentZeroCore:
         self.coordination_thread = None
         self.memory_system = None
         self.tool_system = None
-        
+
+        # Initialize moral constraint system
+        self.manifold = BahaiManifold()
+        self.operational_metrics = OperationalMetrics()
+        self.virtue_engine = VirtueInferenceEngine()
+        self.phase_space_tracker = TrajectoryTracker(db_path="shoghi_agent_zero.db")
+        self.action_gate = ActionGate(
+            manifold=self.manifold,
+            operational_metrics=self.operational_metrics,
+            virtue_engine=self.virtue_engine,
+            latency_budget_ms=100.0,
+            block_on_timeout=True  # Conservative: block if validation times out
+        )
+
+        logger.info("Moral constraint system initialized for Agent Zero Core")
+
     def initialize(self, memory_system=None, tool_system=None):
         """Initialize the coordination system"""
         self.memory_system = memory_system
@@ -77,7 +100,7 @@ class AgentZeroCore:
         self.coordination_thread = threading.Thread(target=self._coordination_loop)
         self.coordination_thread.daemon = True
         self.coordination_thread.start()
-        logger.info("Agent Zero Core initialized")
+        logger.info("Agent Zero Core initialized with moral constraints")
         
     def interpret_community_needs(self, need_description: str) -> List[AgentSpecification]:
         """Interpret natural language community needs into agent specifications"""
@@ -229,9 +252,20 @@ class AgentZeroCore:
         return spawned_ids
     
     def _spawn_agent(self, specification: AgentSpecification) -> str:
-        """Spawn a single agent"""
+        """Spawn a single agent (GATED through moral constraints)"""
         agent_id = str(uuid.uuid4())
-        
+
+        # MORAL CONSTRAINT: Gate agent spawning action
+        gate_result = self.action_gate.gate_action(
+            "agent_zero_core",
+            f"spawn_agent_{specification.specialization}"
+        )
+
+        if not gate_result.allowed:
+            logger.warning(f"Agent spawning blocked by moral constraints: {gate_result.reason}")
+            logger.warning(f"Violations: {gate_result.security_event.violations if gate_result.security_event else 'None'}")
+            raise PermissionError(f"Agent spawning blocked: {gate_result.reason}")
+
         agent = AgentInstance(
             id=agent_id,
             specification=specification,
@@ -239,10 +273,10 @@ class AgentZeroCore:
             created_at=datetime.now(),
             last_active=datetime.now()
         )
-        
+
         # Assign tools based on specification
         agent.tools = self._assign_tools(specification.tools_needed)
-        
+
         # Initialize agent memory
         agent.memory = {
             "specification": specification,
@@ -250,16 +284,19 @@ class AgentZeroCore:
             "learned_patterns": [],
             "active_tasks": []
         }
-        
+
         self.agents[agent_id] = agent
         self.agent_specifications[agent_id] = specification
-        
+
+        # Record operational metrics for spawning
+        self.operational_metrics.record_action("agent_zero_core", f"spawn_{specification.specialization}")
+
         # Start agent processing loop
         agent_thread = threading.Thread(target=self._agent_processing_loop, args=(agent_id,))
         agent_thread.daemon = True
         agent_thread.start()
-        
-        logger.info(f"Spawned agent {specification.name} with ID {agent_id}")
+
+        logger.info(f"✅ Spawned agent {specification.name} with ID {agent_id} (moral constraints validated)")
         return agent_id
     
     def _assign_tools(self, tools_needed: List[str]) -> List[str]:
@@ -366,13 +403,30 @@ class AgentZeroCore:
             })
     
     def _execute_agent_task(self, agent_id: str, task: Dict[str, Any]) -> Dict[str, Any]:
-        """Execute specific task for agent"""
+        """Execute specific task for agent (GATED through moral constraints)"""
         agent = self.agents[agent_id]
         spec = agent.specification
-        
+
+        task_type = task.get("type", "general")
+        action_name = f"execute_task_{task_type}"
+
+        # MORAL CONSTRAINT: Gate task execution
+        gate_result = self.action_gate.gate_action(agent_id, action_name)
+
+        if not gate_result.allowed:
+            logger.warning(f"Task execution blocked for agent {agent_id}: {gate_result.reason}")
+            return {
+                "success": False,
+                "error": f"Blocked by moral constraints: {gate_result.reason}",
+                "violations": gate_result.security_event.violations if gate_result.security_event else []
+            }
+
         result = {"success": False, "approach": spec.specialization}
-        
+
         try:
+            # Record action before execution
+            self.operational_metrics.record_action(agent_id, action_name)
+
             if spec.specialization == "grant_discovery":
                 result = self._execute_grant_discovery_task(task)
             elif spec.specialization == "grant_writing":
@@ -383,11 +437,30 @@ class AgentZeroCore:
                 result = self._execute_elder_care_task(task)
             else:
                 result = self._execute_general_task(task)
-                
+
+            # Record task outcome for virtue inference
+            success_rate = 1.0 if result.get("success") else 0.0
+            self.operational_metrics.record_task_outcome(agent_id, success_rate)
+
+            # Record service action (agents serving community)
+            self.virtue_engine.record_service_action(
+                agent_id,
+                benefit_to_others=0.8,  # High community benefit
+                benefit_to_self=0.2     # Low self-interest
+            )
+
+            # Log state transition to phase space tracker
+            current_state = self.action_gate.get_current_state(agent_id)
+            if current_state and gate_result.state_transition:
+                self.phase_space_tracker.log_state(agent_id, current_state)
+                self.phase_space_tracker.log_transition(gate_result.state_transition)
+
         except Exception as e:
             logger.error(f"Task execution error for agent {agent_id}: {e}")
             result["error"] = str(e)
-            
+            # Record failed outcome
+            self.operational_metrics.record_task_outcome(agent_id, success_rate=0.0)
+
         return result
     
     def _execute_grant_discovery_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
