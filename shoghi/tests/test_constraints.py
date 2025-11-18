@@ -177,3 +177,145 @@ class TestConstraintEnforcement:
         violated = self.manifold.get_violated_constraints(state)
         constraint_names = [c.name for c in violated]
         assert 'truthfulness_required_08' in constraint_names
+
+
+class TestVirtueOperationalConstraints:
+    """Test virtue-operational cross-space constraints (NEW in v1.1)."""
+
+    def setup_method(self):
+        """Set up test fixtures."""
+        self.manifold = BahaiManifold(include_operational_constraints=True)
+
+    def test_low_justice_high_activity_invalid(self):
+        """Low Justice + High Activity should be invalid (exploitation)."""
+        state = {
+            'truthfulness': 0.7,
+            'justice': 0.4,  # Low
+            'trustworthiness': 0.6,
+            'unity': 0.6,
+            'service': 0.6,
+            'detachment': 0.6,
+            'understanding': 0.6,
+            # Operational dims
+            'activity': 0.8,  # High
+            'coordination': 0.3,
+            'effectiveness': 0.6,
+            'resource_consumption': 0.4,
+            'system_health': 0.8
+        }
+
+        is_valid, violations = self.manifold.validate(state)
+        assert not is_valid
+        assert any('low_justice_high_activity' in v for v in violations)
+
+    def test_low_service_high_resource_invalid(self):
+        """Low Service + High Resource should be invalid (waste)."""
+        state = {
+            'truthfulness': 0.7,
+            'justice': 0.6,
+            'trustworthiness': 0.6,
+            'unity': 0.6,
+            'service': 0.3,  # Low
+            'detachment': 0.6,
+            'understanding': 0.6,
+            # Operational dims
+            'activity': 0.5,
+            'coordination': 0.3,
+            'effectiveness': 0.6,
+            'resource_consumption': 0.8,  # High
+            'system_health': 0.8
+        }
+
+        is_valid, violations = self.manifold.validate(state)
+        assert not is_valid
+        assert any('low_service_high_resource' in v for v in violations)
+
+    def test_low_truthfulness_high_coordination_invalid(self):
+        """Low Truthfulness + High Coordination should be invalid (manipulation)."""
+        state = {
+            'truthfulness': 0.4,  # Low
+            'justice': 0.6,
+            'trustworthiness': 0.5,
+            'unity': 0.6,
+            'service': 0.6,
+            'detachment': 0.6,
+            'understanding': 0.6,
+            # Operational dims
+            'activity': 0.5,
+            'coordination': 0.8,  # High
+            'effectiveness': 0.6,
+            'resource_consumption': 0.4,
+            'system_health': 0.8
+        }
+
+        is_valid, violations = self.manifold.validate(state)
+        assert not is_valid
+        assert any('low_truthfulness_high_coordination' in v for v in violations)
+
+    def test_low_health_high_activity_invalid(self):
+        """Low System Health + High Activity should be invalid (self-damage)."""
+        state = {
+            'truthfulness': 0.7,
+            'justice': 0.6,
+            'trustworthiness': 0.6,
+            'unity': 0.6,
+            'service': 0.6,
+            'detachment': 0.6,
+            'understanding': 0.6,
+            # Operational dims
+            'activity': 0.9,  # Very high
+            'coordination': 0.3,
+            'effectiveness': 0.6,
+            'resource_consumption': 0.4,
+            'system_health': 0.2  # Very low
+        }
+
+        is_valid, violations = self.manifold.validate(state)
+        assert not is_valid
+        assert any('low_health_high_activity' in v for v in violations)
+
+    def test_valid_with_operational_dims(self):
+        """A well-balanced state with operational dims should be valid."""
+        state = {
+            'truthfulness': 0.8,
+            'justice': 0.7,
+            'trustworthiness': 0.7,
+            'unity': 0.7,
+            'service': 0.7,
+            'detachment': 0.7,
+            'understanding': 0.7,
+            # Operational dims - balanced
+            'activity': 0.6,
+            'coordination': 0.5,
+            'effectiveness': 0.7,
+            'resource_consumption': 0.5,
+            'system_health': 0.8
+        }
+
+        is_valid, violations = self.manifold.validate(state)
+        assert is_valid, f"Balanced state should be valid, got violations: {violations}"
+
+    def test_operational_constraints_can_be_disabled(self):
+        """Test that operational constraints can be disabled."""
+        manifold_no_ops = BahaiManifold(include_operational_constraints=False)
+
+        # This would violate operational constraints, but should pass without them
+        state = {
+            'truthfulness': 0.7,
+            'justice': 0.4,  # Low
+            'trustworthiness': 0.6,
+            'unity': 0.6,
+            'service': 0.6,
+            'detachment': 0.6,
+            'understanding': 0.6,
+            # Operational dims
+            'activity': 0.8,  # High - would trigger constraint if enabled
+            'coordination': 0.3,
+            'effectiveness': 0.6,
+            'resource_consumption': 0.4,
+            'system_health': 0.8
+        }
+
+        is_valid, violations = manifold_no_ops.validate(state)
+        # Should be valid - no operational constraints to violate
+        assert is_valid

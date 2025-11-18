@@ -7,10 +7,13 @@ Implements the 7 core virtues and their coupling constraints:
 - Trustworthiness (Tr)
 - Unity (U)
 - Service (S)
-- Detachment (D) - ego-detachment
+- Detachment (D) - ego-detachment (focus on right action vs personal credit)
 - Understanding (Ust)
 
 All numeric thresholds are initial values and may be calibrated later.
+
+NOTE: Detachment is ego-detachment, NOT outcome-detachment.
+High detachment means not seeking recognition/credit, not being uncaring about results.
 """
 
 from typing import Dict
@@ -167,6 +170,96 @@ def _create_bahai_constraints() -> list[Constraint]:
     return constraints
 
 
+def _create_virtue_operational_constraints() -> list[Constraint]:
+    """
+    Create virtue-operational cross-space constraints.
+
+    These constraints involve both virtue (7D) and operational (5D) dimensions,
+    catching patterns like "high activity + low justice" that are invalid.
+
+    NEW in spec v1.1 - addresses gap from code review.
+    """
+    constraints = []
+
+    def low_justice_high_activity(state: Dict[str, float]) -> bool:
+        """
+        If Justice < 0.5 AND Activity > 0.7, INVALID.
+
+        High activity with low fairness is exploitation.
+        """
+        justice = state.get('justice', 0.7)
+        activity = state.get('activity', 0.0)
+
+        if justice < 0.5 and activity > 0.7:
+            return False
+        return True
+
+    constraints.append(Constraint(
+        name="low_justice_high_activity",
+        check=low_justice_high_activity,
+        description="If J < 0.5 AND Activity > 0.7, INVALID (exploitation pattern)"
+    ))
+
+    def low_service_high_resource(state: Dict[str, float]) -> bool:
+        """
+        If Service < 0.4 AND Resource Consumption > 0.7, INVALID.
+
+        High resource use without service is waste.
+        """
+        service = state.get('service', 0.7)
+        resource = state.get('resource_consumption', 0.0)
+
+        if service < 0.4 and resource > 0.7:
+            return False
+        return True
+
+    constraints.append(Constraint(
+        name="low_service_high_resource",
+        check=low_service_high_resource,
+        description="If S < 0.4 AND Resource > 0.7, INVALID (waste pattern)"
+    ))
+
+    def low_truthfulness_high_coordination(state: Dict[str, float]) -> bool:
+        """
+        If Truthfulness < 0.5 AND Coordination > 0.7, INVALID.
+
+        Coordinating while dishonest is manipulation.
+        """
+        truthfulness = state.get('truthfulness', 0.7)
+        coordination = state.get('coordination', 0.0)
+
+        if truthfulness < 0.5 and coordination > 0.7:
+            return False
+        return True
+
+    constraints.append(Constraint(
+        name="low_truthfulness_high_coordination",
+        check=low_truthfulness_high_coordination,
+        description="If T < 0.5 AND Coordination > 0.7, INVALID (manipulation pattern)"
+    ))
+
+    def low_health_high_activity(state: Dict[str, float]) -> bool:
+        """
+        If System Health < 0.3 AND Activity > 0.8, INVALID.
+
+        Pushing hard while broken causes damage.
+        """
+        health = state.get('system_health', 1.0)
+        activity = state.get('activity', 0.0)
+
+        if health < 0.3 and activity > 0.8:
+            return False
+        return True
+
+    constraints.append(Constraint(
+        name="low_health_high_activity",
+        check=low_health_high_activity,
+        description="If Health < 0.3 AND Activity > 0.8, INVALID (self-damage pattern)"
+    ))
+
+    return constraints
+
+
 class BahaiManifold(Manifold):
     """
     Bahá'í-derived reference manifold.
@@ -188,9 +281,19 @@ class BahaiManifold(Manifold):
         'understanding'
     ]
 
-    def __init__(self):
-        """Initialize the Bahá'í reference manifold."""
+    def __init__(self, include_operational_constraints: bool = True):
+        """
+        Initialize the Bahá'í reference manifold.
+
+        Args:
+            include_operational_constraints: If True, include virtue-operational
+                cross-space constraints (NEW in v1.1). Default True.
+        """
         constraints = _create_bahai_constraints()
+
+        # Add virtue-operational constraints (NEW in v1.1)
+        if include_operational_constraints:
+            constraints.extend(_create_virtue_operational_constraints())
 
         super().__init__(
             name="BahaiReference",

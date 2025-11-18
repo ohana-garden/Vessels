@@ -201,34 +201,51 @@ class AttractorDiscovery:
         """
         Classify attractor as beneficial, neutral, or detrimental.
 
-        Implements context-aware classification from spec section 1.4.1.
+        Implements context-aware classification from spec v1.1 section 6.2.
+
+        EFFICIENCY BIAS WARNING (spec section 6.3):
+        This classifier has a built-in efficiency bias - it penalizes high
+        resource consumption by default. Discount applied for complexity/urgency,
+        but baseline assumption is "cheaper is better".
+
+        This encourages agents toward "cheap, effective, liked" basins and away
+        from "expensive, deeply investigative" patterns unless task_complexity
+        is explicitly set high.
+
+        This is a deliberate value judgment. Domain manifolds may override.
         """
         effectiveness = outcomes.get('effectiveness', 0.0)
-        cost = outcomes.get('resource_consumption', 0.0)
+        resource_consumption = outcomes.get('resource_consumption', 0.0)
         feedback = outcomes.get('user_feedback', 0.0)
-        security = outcomes.get('security_events', 0.0)
+        security_events = outcomes.get('security_events', 0.0)
         complexity = outcomes.get('task_complexity', 0.0)
         urgency = outcomes.get('urgency', 0.0)
 
-        # Adjust cost for context
-        cost_adjusted = cost
+        # Context-aware cost adjustment (spec section 6.2)
+        # High complexity or urgency justifies higher resource use
+        complexity_factor = 0.5 + (complexity * 0.5)  # Range: 0.5 to 1.0
+        urgency_factor = 0.5 + (urgency * 0.5)        # Range: 0.5 to 1.0
+        cost_tolerance = max(complexity_factor, urgency_factor)
 
-        # Discount cost for complex tasks
-        if complexity > 0.7:
-            cost_adjusted *= 0.5
+        # Adjusted cost penalty (lower penalty for complex/urgent tasks)
+        cost_penalty = max(0, resource_consumption - cost_tolerance)
 
-        # Discount cost for urgent tasks
-        if urgency > 0.7:
-            cost_adjusted *= 0.5
+        # Security events are always bad
+        security_penalty = security_events * 2.0
 
-        # Classification logic
-        if effectiveness > 0.7 and cost_adjusted < 0.5 and feedback > 0 and security == 0:
+        # Effectiveness and feedback are good
+        positive_score = (effectiveness + feedback) / 2.0
+
+        # Net score
+        score = positive_score - cost_penalty - security_penalty
+
+        # Classification thresholds
+        if score > 0.6 and security_events < 0.1:
             return AttractorClassification.BENEFICIAL
-
-        if effectiveness < 0.3 or security > 0 or feedback < -0.5:
+        elif score < 0.3 or security_events > 0.3:
             return AttractorClassification.DETRIMENTAL
-
-        return AttractorClassification.NEUTRAL
+        else:
+            return AttractorClassification.NEUTRAL
 
     def find_nearest_attractor(
         self,

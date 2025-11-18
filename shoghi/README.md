@@ -111,7 +111,10 @@ Inferred from multi-signal behavior analysis:
 3. **Trustworthiness**: Reliability, follow-through on commitments
 4. **Unity**: Collaboration quality, conflict reduction
 5. **Service**: Benefit to others vs self-serving behavior
-6. **Detachment**: Ego-detachment (right action vs personal credit)
+6. **Detachment**: **Ego-detachment** (focus on right action vs personal credit)
+   - **NOT outcome-detachment** - high detachment means not seeking recognition, not being uncaring
+   - Allows passionate, committed service and urgent high-stakes work
+   - Forbids performative service, credit-hoarding, ego-driven action
 7. **Understanding**: Depth of comprehension, context awareness
 
 ## Constraint System
@@ -139,6 +142,24 @@ The Bahá'í reference manifold defines **numeric coupling constraints** between
 **E. Service requires ego-detachment**
 - If Service > 0.7, require Detachment ≥ 0.6
 - If Service > 0.7, require Understanding ≥ 0.5
+
+### Virtue-Operational Constraints (NEW in v1.1)
+
+Cross-space constraints that catch dangerous operational+virtue patterns:
+
+**A. Low Justice + High Activity → INVALID**
+- If Justice < 0.5 AND Activity > 0.7: Exploitation pattern
+
+**B. Low Service + High Resource → INVALID**
+- If Service < 0.4 AND Resource Consumption > 0.7: Waste pattern
+
+**C. Low Truthfulness + High Coordination → INVALID**
+- If Truthfulness < 0.5 AND Coordination > 0.7: Manipulation pattern
+
+**D. Low System Health + High Activity → INVALID**
+- If System Health < 0.3 AND Activity > 0.8: Self-damage pattern
+
+These constraints prevent patterns that were only described narratively in v1.0.
 
 ### Truthfulness Dampening
 
