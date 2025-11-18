@@ -171,12 +171,12 @@ class TestAttractorClassification:
         assert classification == AttractorClassification.DETRIMENTAL
 
     def test_context_aware_high_cost_complex_task(self):
-        """High cost should be OK for complex tasks."""
+        """High cost should be OK for complex tasks (spec v1.1 section 6.2)."""
         center = np.array([0.7] * 12)
         outcomes = {
             'effectiveness': 0.8,
             'resource_consumption': 0.8,  # High cost
-            'user_feedback': 0.3,
+            'user_feedback': 0.5,  # Moderate positive feedback
             'security_events': 0.0,
             'task_complexity': 0.9,  # Complex task - justifies cost
             'urgency': 0.5
@@ -184,16 +184,20 @@ class TestAttractorClassification:
 
         classification = self.discovery._classify_attractor(center, outcomes)
 
-        # Should be beneficial because cost is discounted for complex tasks
+        # Should be beneficial because:
+        # - cost_tolerance = 0.95 (from complexity 0.9)
+        # - cost_penalty = max(0, 0.8 - 0.95) = 0
+        # - positive_score = (0.8 + 0.5) / 2 = 0.65
+        # - score = 0.65 - 0 - 0 = 0.65 > 0.6 threshold
         assert classification == AttractorClassification.BENEFICIAL
 
     def test_context_aware_high_cost_urgent_task(self):
-        """High cost should be OK for urgent tasks."""
+        """High cost should be OK for urgent tasks (spec v1.1 section 6.2)."""
         center = np.array([0.7] * 12)
         outcomes = {
             'effectiveness': 0.8,
             'resource_consumption': 0.8,  # High cost
-            'user_feedback': 0.3,
+            'user_feedback': 0.5,  # Moderate positive feedback
             'security_events': 0.0,
             'task_complexity': 0.5,
             'urgency': 0.9  # Urgent - justifies cost
@@ -201,7 +205,11 @@ class TestAttractorClassification:
 
         classification = self.discovery._classify_attractor(center, outcomes)
 
-        # Should be beneficial because cost is discounted for urgent tasks
+        # Should be beneficial because:
+        # - cost_tolerance = 0.95 (from urgency 0.9)
+        # - cost_penalty = max(0, 0.8 - 0.95) = 0
+        # - positive_score = (0.8 + 0.5) / 2 = 0.65
+        # - score = 0.65 - 0 - 0 = 0.65 > 0.6 threshold
         assert classification == AttractorClassification.BENEFICIAL
 
     def test_classify_neutral_attractor(self):
