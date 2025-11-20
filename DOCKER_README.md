@@ -1,4 +1,4 @@
-# Shoghi - Single Container Deployment
+# Vessels - Single Container Deployment
 
 **100% pre-configured. Zero setup. Just run.**
 
@@ -34,7 +34,7 @@
 
 Single container includes:
 - ✅ **FalkorDB** (Redis + graph module) - Port 6379
-- ✅ **Shoghi Platform** - Projects + Graphiti architecture
+- ✅ **Vessels Platform** - Projects + Graphiti architecture
 - ✅ **All dependencies** - Pre-installed
 - ✅ **Default config** - Ready to use
 - ✅ **Demo scripts** - Working examples
@@ -46,47 +46,47 @@ Single container includes:
 ### Build
 
 ```bash
-docker build -t shoghi:latest .
+docker build -t vessels:latest .
 ```
 
 ### Run Demo (ephemeral)
 
 ```bash
-docker run --rm shoghi:latest
+docker run --rm vessels:latest
 ```
 
 ### Run Demo (persistent)
 
 ```bash
 docker run --rm \
-  -v shoghi-data:/data/falkordb \
-  -v shoghi-work:/app/work_dir \
-  shoghi:latest demo
+  -v vessels-data:/data/falkordb \
+  -v vessels-work:/app/work_dir \
+  vessels:latest demo
 ```
 
 ### Run Web Server (daemon)
 
 ```bash
 docker run -d \
-  --name shoghi-web \
+  --name vessels-web \
   -p 5000:5000 \
   -p 6379:6379 \
-  -v shoghi-data:/data/falkordb \
-  -v shoghi-work:/app/work_dir \
+  -v vessels-data:/data/falkordb \
+  -v vessels-work:/app/work_dir \
   -e DAEMON=true \
-  shoghi:latest web
+  vessels:latest web
 ```
 
 ### Interactive Shell
 
 ```bash
-docker run -it --rm shoghi:latest shell
+docker run -it --rm vessels:latest shell
 ```
 
 ### Custom Command
 
 ```bash
-docker run --rm shoghi:latest python /app/my_script.py
+docker run --rm vessels:latest python /app/my_script.py
 ```
 
 ---
@@ -95,7 +95,7 @@ docker run --rm shoghi:latest python /app/my_script.py
 
 ```
 /app/                          # Application root
-├── shoghi/                    # Shoghi packages
+├── vessels/                    # Vessels packages
 │   ├── knowledge/            # Graph & vector stores
 │   └── projects/             # Servant isolation
 ├── work_dir/                  # Persistent workspace
@@ -117,7 +117,7 @@ docker run --rm shoghi:latest python /app/my_script.py
 ## Ports
 
 - **6379** - FalkorDB (Redis protocol)
-- **5000** - Shoghi web interface (if running web mode)
+- **5000** - Vessels web interface (if running web mode)
 
 ---
 
@@ -136,7 +136,7 @@ All have sensible defaults, but you can override:
 docker run -e FALKORDB_HOST=localhost \
            -e FALKORDB_PORT=6379 \
            -e LOG_LEVEL=DEBUG \
-           shoghi:latest
+           vessels:latest
 ```
 
 ---
@@ -146,17 +146,17 @@ docker run -e FALKORDB_HOST=localhost \
 ### Run demo and see output
 
 ```bash
-docker run --rm shoghi:latest demo
+docker run --rm vessels:latest demo
 ```
 
 ### Run demo with data that persists across runs
 
 ```bash
 # First run
-docker run --rm -v shoghi-data:/data/falkordb shoghi:latest demo
+docker run --rm -v vessels-data:/data/falkordb vessels:latest demo
 
 # Second run - data still there
-docker run --rm -v shoghi-data:/data/falkordb shoghi:latest demo
+docker run --rm -v vessels-data:/data/falkordb vessels:latest demo
 ```
 
 ### Start web server in background
@@ -165,7 +165,7 @@ docker run --rm -v shoghi-data:/data/falkordb shoghi:latest demo
 ./docker-run.sh web
 
 # Check logs
-docker logs -f shoghi-web
+docker logs -f vessels-web
 
 # Stop
 ./docker-run.sh stop
@@ -228,7 +228,7 @@ Everything is pre-configured:
    - 512MB max memory (LRU eviction)
    - Graph module loaded
 
-✅ Shoghi with sensible defaults:
+✅ Vessels with sensible defaults:
    - Community: "lower_puna_elders"
    - Log level: INFO
    - FalkorDB: localhost:6379
@@ -249,14 +249,14 @@ Everything is pre-configured:
 docker info
 
 # View logs
-docker logs shoghi-web
+docker logs vessels-web
 ```
 
 ### FalkorDB not ready
 
 ```bash
 # Check if Redis is responding
-docker exec shoghi-web redis-cli ping
+docker exec vessels-web redis-cli ping
 # Should return: PONG
 ```
 
@@ -264,13 +264,13 @@ docker exec shoghi-web redis-cli ping
 
 ```bash
 # Run with verbose logging
-docker run --rm -e LOG_LEVEL=DEBUG shoghi:latest demo
+docker run --rm -e LOG_LEVEL=DEBUG vessels:latest demo
 ```
 
 ### Clean slate
 
 ```bash
-# Remove all Shoghi data
+# Remove all Vessels data
 ./docker-run.sh clean
 
 # Rebuild from scratch
@@ -286,14 +286,14 @@ For production, use persistent volumes and proper networking:
 
 ```bash
 docker run -d \
-  --name shoghi-prod \
+  --name vessels-prod \
   --restart unless-stopped \
   -p 5000:5000 \
-  -v /opt/shoghi/data:/data/falkordb \
-  -v /opt/shoghi/work:/app/work_dir \
+  -v /opt/vessels/data:/data/falkordb \
+  -v /opt/vessels/work:/app/work_dir \
   -e DAEMON=true \
   -e LOG_LEVEL=INFO \
-  shoghi:latest web
+  vessels:latest web
 ```
 
 ---
@@ -312,7 +312,7 @@ When you start the container:
 
 1. **Redis/FalkorDB** starts on port 6379
 2. **Health check** waits for FalkorDB to be ready
-3. **Shoghi app** starts (demo/web/shell depending on command)
+3. **Vessels app** starts (demo/web/shell depending on command)
 4. **Graceful shutdown** on SIGTERM/SIGINT
 
 ---

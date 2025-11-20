@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-RESTAURANT MENU BUILDER - Shoghi Architecture
+RESTAURANT MENU BUILDER - Vessels Architecture
 Dynamic agent generation for context-specific menu improvements
 Voice-first conversational interface
 """

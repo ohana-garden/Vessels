@@ -2,7 +2,7 @@
 set -e
 
 echo "=================================================="
-echo "  SHOGHI - Projects + Graphiti Architecture"
+echo "  VESSELS - Projects + Graphiti Architecture"
 echo "=================================================="
 echo ""
 
@@ -11,11 +11,11 @@ shutdown() {
     echo ""
     echo "Shutting down..."
 
-    # Kill Shoghi app if running
-    if [ ! -z "$SHOGHI_PID" ]; then
-        echo "Stopping Shoghi application..."
-        kill -TERM "$SHOGHI_PID" 2>/dev/null || true
-        wait "$SHOGHI_PID" 2>/dev/null || true
+    # Kill Vessels app if running
+    if [ ! -z "$VESSELS_PID" ]; then
+        echo "Stopping Vessels application..."
+        kill -TERM "$VESSELS_PID" 2>/dev/null || true
+        wait "$VESSELS_PID" 2>/dev/null || true
     fi
 
     # Kill Redis/FalkorDB
@@ -65,18 +65,18 @@ COMMAND=${1:-demo}
 
 case "$COMMAND" in
     demo)
-        echo "Running Shoghi Projects Demo..."
+        echo "Running Vessels Projects Demo..."
         echo ""
         python /app/examples/projects_demo.py &
-        SHOGHI_PID=$!
+        VESSELS_PID=$!
         ;;
 
     web)
-        echo "Starting Shoghi Web Server..."
+        echo "Starting Vessels Web Server..."
         echo "Web interface will be available at http://localhost:5000"
         echo ""
-        python /app/shoghi_web_server.py &
-        SHOGHI_PID=$!
+        python /app/vessels_web_server.py &
+        VESSELS_PID=$!
         ;;
 
     shell)
@@ -95,20 +95,20 @@ case "$COMMAND" in
         echo "Running custom command: $@"
         echo ""
         "$@" &
-        SHOGHI_PID=$!
+        VESSELS_PID=$!
         ;;
 esac
 
-# Wait for Shoghi app to complete
-if [ ! -z "$SHOGHI_PID" ]; then
-    wait "$SHOGHI_PID"
-    SHOGHI_EXIT=$?
+# Wait for Vessels app to complete
+if [ ! -z "$VESSELS_PID" ]; then
+    wait "$VESSELS_PID"
+    VESSELS_EXIT=$?
 
     echo ""
-    if [ $SHOGHI_EXIT -eq 0 ]; then
+    if [ $VESSELS_EXIT -eq 0 ]; then
         echo "✓ Application completed successfully"
     else
-        echo "✗ Application exited with code $SHOGHI_EXIT"
+        echo "✗ Application exited with code $VESSELS_EXIT"
     fi
 fi
 

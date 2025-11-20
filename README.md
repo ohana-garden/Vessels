@@ -1,8 +1,8 @@
-# Shoghi: A Handbook for Building Ethical Agent Communities
+# Vessels: A Handbook for Building Ethical Agent Communities
 
-**Shoghi** is a framework for creating communities of AI agents that share memories, align to common ethics, and work together in service to human communities.
+**Vessels** is a framework for creating communities of AI agents that share memories, align to common ethics, and work together in service to human communities.
 
-Instead of building isolated AI systems that forget, conflict, or optimize for narrow goals, Shoghi provides the infrastructure for agents that:
+Instead of building isolated AI systems that forget, conflict, or optimize for narrow goals, Vessels provides the infrastructure for agents that:
 - **Remember together** through shared community memory
 - **Act ethically** through geometric moral constraints
 - **Serve communities** as their organizing purpose
@@ -28,7 +28,7 @@ This is not another AI tool. It's a foundation for building agent ecosystems tha
 
 ## The Vision
 
-### What Problem Does Shoghi Solve?
+### What Problem Does Vessels Solve?
 
 Modern AI systems often:
 - Operate in isolation, unable to learn from each other's experiences
@@ -36,9 +36,9 @@ Modern AI systems often:
 - Optimize for narrow metrics rather than broader community benefit
 - Cannot be easily extended by non-technical community members
 
-### The Shoghi Approach
+### The Vessels Approach
 
-Shoghi creates **agent communities** where:
+Vessels creates **agent communities** where:
 
 1. **Any agent can proxy for any role** - A natural language description automatically generates specialized agents
 2. **Agents share a living memory** - What one learns, all can access through vector-based semantic search
@@ -53,7 +53,7 @@ The result: AI systems that can be rapidly deployed, continuously learn together
 
 ### 1. Agents as Community Proxies
 
-In Shoghi, you don't write code to create agents. You describe what you need:
+In Vessels, you don't write code to create agents. You describe what you need:
 
 ```
 "I need help finding grants for elder care in our community"
@@ -88,7 +88,7 @@ This memory is:
 
 ### 3. Moral Geometry, Not Aspirational Ethics
 
-Most AI "alignment" relies on reward shaping and prompt engineering. Shoghi uses **geometric constraints**.
+Most AI "alignment" relies on reward shaping and prompt engineering. Vessels uses **geometric constraints**.
 
 Every agent action is measured in a **12-dimensional phase space**:
 
@@ -119,7 +119,7 @@ Invalid states are either **projected** to valid ones or the action is **blocked
 
 ### 4. Service as Organizing Purpose
 
-Shoghi agents exist to serve communities. This isn't just philosophy—it's measured:
+Vessels agents exist to serve communities. This isn't just philosophy—it's measured:
 
 - The **Kala system** tracks contributions (1 kala ≈ $1 USD equivalent)
 - Agents record volunteer time, resource sharing, caregiving, knowledge sharing
@@ -211,10 +211,10 @@ Shoghi agents exist to serve communities. This isn't just philosophy—it's meas
 ### The Simple Way: Natural Language
 
 ```python
-from shoghi_interface import shoghi_interface
+from vessels_interface import vessels_interface
 
 # Just describe what you need
-result = shoghi_interface.process_message(
+result = vessels_interface.process_message(
     user_id="community_coordinator_001",
     message="We need to organize a community garden and track volunteer hours"
 )
@@ -385,10 +385,10 @@ Every agent's behavior exists in a 12-dimensional space where some regions are *
 #### Measuring the State
 
 ```python
-from shoghi.constraints.bahai import BahaiManifold
-from shoghi.measurement.operational import OperationalMetrics
-from shoghi.measurement.virtue_inference import VirtueInferenceEngine
-from shoghi.gating.gate import ActionGate
+from vessels.constraints.bahai import BahaiManifold
+from vessels.measurement.operational import OperationalMetrics
+from vessels.measurement.virtue_inference import VirtueInferenceEngine
+from vessels.gating.gate import ActionGate
 
 # Initialize the moral geometry
 manifold = BahaiManifold()
@@ -501,8 +501,8 @@ if truthfulness < 0.5:
 You can extend (but not weaken) the base constraints:
 
 ```python
-from shoghi.constraints.bahai import BahaiManifold
-from shoghi.constraints.manifold import Constraint
+from vessels.constraints.bahai import BahaiManifold
+from vessels.constraints.manifold import Constraint
 
 class MedicalCareManifold(BahaiManifold):
     """Stricter constraints for medical contexts"""
@@ -534,7 +534,7 @@ class MedicalCareManifold(BahaiManifold):
 
 ### The Organizing Principle
 
-Shoghi agents exist to serve communities. This is measured, not assumed.
+Vessels agents exist to serve communities. This is measured, not assumed.
 
 #### The Kala System
 
@@ -648,8 +648,8 @@ for type, data in report['by_type'].items():
 
 ```bash
 # Clone repository
-git clone https://github.com/ohana-garden/shoghi.git
-cd shoghi
+git clone https://github.com/ohana-garden/vessels.git
+cd vessels
 
 # Create virtual environment
 python -m venv .venv
@@ -667,7 +667,7 @@ pip install -r requirements.txt
 Simple example: Create agents to help coordinate a community event
 """
 
-from shoghi_interface import shoghi_interface
+from vessels_interface import vessels_interface
 from community_memory import community_memory
 from agent_zero_core import agent_zero
 
@@ -678,7 +678,7 @@ agent_zero.initialize(
 )
 
 # Describe what you need
-response = shoghi_interface.process_message(
+response = vessels_interface.process_message(
     user_id="community_organizer",
     message="""
     We're organizing a community potluck for 50 people.
@@ -754,10 +754,10 @@ for mem in memories:
 
 ```bash
 # Interactive demo with preset scenarios
-python demo_shoghi.py
+python demo_vessels.py
 
 # Full platform with web interface
-python shoghi_web_server.py
+python vessels_web_server.py
 
 # Then visit http://localhost:8080
 ```
@@ -769,8 +769,8 @@ python shoghi_web_server.py
 ### System Architecture
 
 ```
-shoghi/
-├── shoghi/                     # Core moral constraint system
+vessels/
+├── vessels/                     # Core moral constraint system
 │   ├── measurement/           # State measurement (12D)
 │   ├── constraints/           # Moral manifolds & validators
 │   ├── gating/                # Action gating logic
@@ -781,7 +781,7 @@ shoghi/
 ├── community_memory.py        # Shared memory system
 ├── dynamic_agent_factory.py  # Natural language → agents
 ├── kala.py                    # Value measurement
-├── shoghi_interface.py        # Natural language interface
+├── vessels_interface.py        # Natural language interface
 └── ...                        # Additional modules
 ```
 
@@ -849,7 +849,7 @@ memories = community_memory.find_similar_memories(
 #### Gate Actions
 
 ```python
-from shoghi.gating.gate import ActionGate
+from vessels.gating.gate import ActionGate
 
 result = gate.gate_action(
     agent_id="agent_001",
@@ -882,10 +882,10 @@ Create `.env` file:
 
 ```env
 # Database
-DATABASE_URL=sqlite:///./shoghi.db
+DATABASE_URL=sqlite:///./vessels.db
 
 # Server
-SHOGHI_PORT=8080
+VESSELS_PORT=8080
 HOST=0.0.0.0
 
 # Logging
@@ -903,13 +903,13 @@ GRANTS_GOV_API_KEY=your_key
 
 ```bash
 # Run core constraint system tests
-pytest shoghi/tests/ -v
+pytest vessels/tests/ -v
 
 # Run platform tests
 pytest test_*.py -v
 
 # With coverage
-pytest --cov=shoghi --cov-report=html
+pytest --cov=vessels --cov-report=html
 ```
 
 ---
@@ -923,7 +923,7 @@ Most AI alignment relies on:
 - Prompt engineering (brittle, circumventable)
 - RLHF (expensive, biased by raters)
 
-Shoghi uses **geometric constraints** because:
+Vessels uses **geometric constraints** because:
 
 1. **Explicit**: Anyone can read the constraint code and understand what's enforced
 2. **Enforceable**: Invalid states are mathematically impossible, not just discouraged
@@ -949,7 +949,7 @@ We chose this foundation because:
 
 ### Why Shared Memory?
 
-Isolated AI systems make the same mistakes repeatedly. Shoghi's shared memory means:
+Isolated AI systems make the same mistakes repeatedly. Vessels's shared memory means:
 
 - **Collective learning**: One agent's experience becomes everyone's knowledge
 - **Faster adaptation**: New agents inherit context from predecessors
@@ -966,7 +966,7 @@ Most AI systems optimize for:
 - Resource efficiency (dehumanizing)
 - Profit maximization (exploitative)
 
-Shoghi optimizes for **community benefit**, measured through:
+Vessels optimizes for **community benefit**, measured through:
 - The Service virtue dimension (benefit-to-others / benefit-to-self)
 - Kala contribution tracking (quantified value creation)
 - Community memory contributions (knowledge sharing)
@@ -975,7 +975,7 @@ The tradeoff: Service-oriented agents may be "less efficient" at narrow metrics.
 
 ### Why Dynamic Agent Creation?
 
-Traditional software requires developers to anticipate all use cases. Shoghi allows **community members** to describe needs in natural language and get specialized agents immediately.
+Traditional software requires developers to anticipate all use cases. Vessels allows **community members** to describe needs in natural language and get specialized agents immediately.
 
 This matters for:
 - **Accessibility**: Non-technical people can deploy AI
@@ -994,8 +994,8 @@ The tradeoff: Dynamically generated agents may be less optimal than hand-crafted
 The system discovers stable behavioral patterns (attractors) using DBSCAN clustering on trajectory segments:
 
 ```python
-from shoghi.phase_space.attractors import AttractorDiscovery
-from shoghi.phase_space.tracker import TrajectoryTracker
+from vessels.phase_space.attractors import AttractorDiscovery
+from vessels.phase_space.tracker import TrajectoryTracker
 
 tracker = TrajectoryTracker(db_path="trajectories.db")
 discovery = AttractorDiscovery(tracker)
@@ -1018,7 +1018,7 @@ for attractor in attractors:
 If detrimental attractors are detected, interventions are applied:
 
 ```python
-from shoghi.intervention.strategies import InterventionManager, InterventionType
+from vessels.intervention.strategies import InterventionManager, InterventionType
 
 manager = InterventionManager()
 
@@ -1040,8 +1040,8 @@ Intervention escalation:
 ### Custom Manifolds for Specific Domains
 
 ```python
-from shoghi.constraints.bahai import BahaiManifold
-from shoghi.constraints.manifold import Constraint
+from vessels.constraints.bahai import BahaiManifold
+from vessels.constraints.manifold import Constraint
 
 class ChildCareManifold(BahaiManifold):
     """Stricter constraints for child care contexts"""
@@ -1167,8 +1167,8 @@ def get_related_memories(memory_id, depth=2):
 
 ## Contact & Community
 
-**Repository**: https://github.com/ohana-garden/shoghi
-**Issues**: https://github.com/ohana-garden/shoghi/issues
+**Repository**: https://github.com/ohana-garden/vessels
+**Issues**: https://github.com/ohana-garden/vessels/issues
 **Maintainer**: Ohana Garden
 
 For questions, feature requests, or philosophical discussions about agent alignment, open an issue.
@@ -1177,14 +1177,14 @@ For questions, feature requests, or philosophical discussions about agent alignm
 
 ## Citation
 
-If you use Shoghi in research or production systems, please cite:
+If you use Vessels in research or production systems, please cite:
 
 ```bibtex
-@software{shoghi2025,
-  title={Shoghi: Moral Constraint-Based Agent Alignment},
+@software{vessels2025,
+  title={Vessels: Moral Constraint-Based Agent Alignment},
   author={Ohana Garden},
   year={2025},
-  url={https://github.com/ohana-garden/shoghi}
+  url={https://github.com/ohana-garden/vessels}
 }
 ```
 
@@ -1198,7 +1198,7 @@ See LICENSE file for details.
 
 ## Final Note
 
-Shoghi is named after Shoghi Effendi, who emphasized the unity of humanity and service to the common good. This system attempts to encode those principles into agent behavior through explicit geometric constraints.
+Vessels is named after Vessels Effendi, who emphasized the unity of humanity and service to the common good. This system attempts to encode those principles into agent behavior through explicit geometric constraints.
 
 It's an experiment in **normative AI alignment**: instead of trying to be culturally neutral (impossible), we make our values explicit, mathematically enforceable, and open to extension by others.
 

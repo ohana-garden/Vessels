@@ -1,4 +1,4 @@
-# Shoghi Platform - Comprehensive Code Review Report
+# Vessels Platform - Comprehensive Code Review Report
 **Date:** 2025-11-18
 **Reviewer:** Claude Code (Automated Review)
 **Codebase Version:** claude/clarify-task-01CFKPUstnSk4grZkr1uoiUV
@@ -7,7 +7,7 @@
 
 ## Executive Summary
 
-This comprehensive code review analyzed the Shoghi platform codebase, including all Python modules, tests, deployment scripts, and configuration files. The review covered security vulnerabilities, code quality, test coverage, error handling, documentation, and deployment practices.
+This comprehensive code review analyzed the Vessels platform codebase, including all Python modules, tests, deployment scripts, and configuration files. The review covered security vulnerabilities, code quality, test coverage, error handling, documentation, and deployment practices.
 
 ### Overall Assessment: **GOOD with MINOR ISSUES**
 
@@ -34,7 +34,7 @@ All tests successfully executed with the following results:
 | `test_adaptive_tools.py` | 33 | 33 | 0 | Tool management |
 | `test_dynamic_agent_factory.py` | 62 | 62 | 0 | Agent creation |
 | `test_menu_builder.py` | 66 | 66 | 0 | Menu orchestration |
-| `shoghi/tests/` (all) | 40 | 40 | 0 | Core shoghi package |
+| `vessels/tests/` (all) | 40 | 40 | 0 | Core vessels package |
 
 **Total: 241 tests passed, 0 failed**
 
@@ -43,7 +43,7 @@ All tests successfully executed with the following results:
 - ✅ Integration test scenarios included
 - ✅ Edge cases tested (empty inputs, invalid states, timeouts)
 - ✅ Tests use proper mocking and isolation
-- ⚠️ Some modules lack test files (e.g., `voice_interface.py`, `shoghi_web_server.py`)
+- ⚠️ Some modules lack test files (e.g., `voice_interface.py`, `vessels_web_server.py`)
 
 ---
 
@@ -53,12 +53,12 @@ All tests successfully executed with the following results:
 
 #### 🔴 **CRITICAL: Hardcoded Database Password**
 - **File:** `auto_deploy.py:390`
-- **Issue:** Postgres password hardcoded as `shoghi123` in docker-compose template
+- **Issue:** Postgres password hardcoded as `vessels123` in docker-compose template
 - **Risk:** High - Credentials exposed in source code
 - **Recommendation:** Use environment variables or secrets management
   ```python
   # Current (INSECURE):
-  POSTGRES_PASSWORD: shoghi123
+  POSTGRES_PASSWORD: vessels123
 
   # Recommended:
   POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
@@ -67,7 +67,7 @@ All tests successfully executed with the following results:
 ### Medium Priority Issues
 
 #### 🟡 **Potential XSS Risk in Web Server**
-- **File:** `shoghi_web_server.py:37`
+- **File:** `vessels_web_server.py:37`
 - **Issue:** Reading HTML file and serving directly without content validation
 - **Risk:** Medium - If HTML file is compromised, could lead to XSS
 - **Recommendation:** Use Flask's `render_template()` instead of reading raw file
@@ -111,9 +111,9 @@ All tests successfully executed with the following results:
 
 ### Code Structure
 ```
-shoghi/
+vessels/
 ├── Core modules (17 Python files)
-├── shoghi/ package
+├── vessels/ package
 │   ├── constraints/ - Moral constraint system
 │   ├── gating/ - Action gating mechanisms
 │   ├── intervention/ - Intervention strategies
@@ -140,7 +140,7 @@ shoghi/
 ### Documentation Quality
 - ✅ Most modules have docstrings
 - ✅ README.md is comprehensive and well-structured
-- ✅ Design documents present (KALA.md, SHOGHI_COMPLETE.md)
+- ✅ Design documents present (KALA.md, VESSELS_COMPLETE.md)
 - ⚠️ Many functions lack docstrings
 - ⚠️ Missing API documentation
 
@@ -210,7 +210,7 @@ cursor.execute('''
 
 ### Deployment Scripts Review
 
-#### `deploy_shoghi.sh`
+#### `deploy_vessels.sh`
 - ✅ Proper error handling with `set -e`
 - ✅ Clear colored output for status
 - ✅ Multiple deployment modes supported
@@ -269,7 +269,7 @@ safety==2.3.5  # Dependency vulnerability checking
 
 ### Core Modules Assessment
 
-#### `shoghi.py` - Main Platform Entry
+#### `vessels.py` - Main Platform Entry
 - ✅ Clean initialization flow
 - ✅ Proper component integration
 - ⚠️ Missing graceful shutdown handling
@@ -285,7 +285,7 @@ safety==2.3.5  # Dependency vulnerability checking
 - ✅ Well-structured memory management
 - ✅ Vector embedding support
 
-#### `shoghi_web_server.py`
+#### `vessels_web_server.py`
 - ✅ Clean Flask integration
 - ⚠️ Missing rate limiting
 - ⚠️ Missing authentication/authorization
@@ -296,7 +296,7 @@ safety==2.3.5  # Dependency vulnerability checking
 - ✅ Clean implementation
 - ✅ Good documentation
 
-### Shoghi Package (`shoghi/`)
+### Vessels Package (`vessels/`)
 - ✅ Excellent constraint system implementation
 - ✅ Sophisticated moral alignment logic
 - ✅ All 40 tests passing
@@ -435,7 +435,7 @@ def test_input_validation():
 
 ## 15. Conclusion
 
-The Shoghi platform demonstrates **strong foundational code quality** with excellent test coverage, clean architecture, and no critical security vulnerabilities in the core logic. However, there are important areas that need attention before production deployment:
+The Vessels platform demonstrates **strong foundational code quality** with excellent test coverage, clean architecture, and no critical security vulnerabilities in the core logic. However, there are important areas that need attention before production deployment:
 
 ### Strengths
 1. Comprehensive test suite (241 tests passing)
@@ -471,35 +471,35 @@ The Shoghi platform demonstrates **strong foundational code quality** with excel
 - bmad_loader.py
 - community_memory.py
 - content_generation.py
-- demo_shoghi.py
+- demo_vessels.py
 - dynamic_agent_factory.py
 - grant_coordination_fixed.py
 - grant_coordination_system.py
 - kala.py
 - menu_builder.py
-- shoghi.py
-- shoghi_fixed.py
-- shoghi_interface.py
-- shoghi_web_server.py
+- vessels.py
+- vessels_fixed.py
+- vessels_interface.py
+- vessels_web_server.py
 - universal_connector.py
 - voice_interface.py
 
-### Shoghi Package Modules
-- shoghi/constraints/{bahai.py, manifold.py, validator.py}
-- shoghi/gating/{gate.py, events.py}
-- shoghi/intervention/strategies.py
-- shoghi/measurement/{operational.py, state.py, virtue_inference.py}
-- shoghi/phase_space/{attractors.py, tracker.py}
+### Vessels Package Modules
+- vessels/constraints/{bahai.py, manifold.py, validator.py}
+- vessels/gating/{gate.py, events.py}
+- vessels/intervention/strategies.py
+- vessels/measurement/{operational.py, state.py, virtue_inference.py}
+- vessels/phase_space/{attractors.py, tracker.py}
 
 ### Test Files
 - test_*.py (12 test files)
-- shoghi/tests/test_*.py (4 test files)
+- vessels/tests/test_*.py (4 test files)
 
 ### Configuration & Deployment
 - requirements.txt
-- deploy_shoghi.sh
+- deploy_vessels.sh
 - deploy_fixed.sh
-- start_shoghi.sh
+- start_vessels.sh
 
 ---
 

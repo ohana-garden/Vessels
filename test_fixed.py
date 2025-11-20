@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
 """
-Test script for fixed Shoghi platform
+Test script for fixed Vessels platform
 """
 
 import sys
 import json
-from shoghi_fixed import ShoghiPlatform
+from vessels_fixed import VesselsPlatform
 
 def test_platform():
-    """Test the fixed Shoghi platform"""
-    print("🌺 TESTING FIXED SHOGHI PLATFORM")
+    """Test the fixed Vessels platform"""
+    print("🌺 TESTING FIXED VESSELS PLATFORM")
     print("=" * 50)
     
     # Initialize platform
-    platform = ShoghiPlatform()
+    platform = VesselsPlatform()
     print("✅ Platform initialized")
     
     # Test 1: Get status
@@ -65,7 +65,7 @@ if __name__ == "__main__":
     try:
         success = test_platform()
         if success:
-            print("\n🌺 Shoghi Platform is working correctly!")
+            print("\n🌺 Vessels Platform is working correctly!")
             sys.exit(0)
         else:
             print("\n❌ Some tests failed")

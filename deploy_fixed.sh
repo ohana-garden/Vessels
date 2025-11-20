@@ -1,11 +1,11 @@
 #!/bin/bash
 
-# SHOGHI PLATFORM - DEPLOYMENT SCRIPT (FIXED)
-# Simple, working deployment for the Shoghi platform
+# VESSELS PLATFORM - DEPLOYMENT SCRIPT (FIXED)
+# Simple, working deployment for the Vessels platform
 
 set -e  # Exit on error
 
-echo "🌺 SHOGHI PLATFORM DEPLOYMENT"
+echo "🌺 VESSELS PLATFORM DEPLOYMENT"
 echo "=============================="
 
 # Parse command line arguments
@@ -78,13 +78,13 @@ mkdir -p data
 mkdir -p config
 
 # Create a simple configuration file
-cat > config/shoghi.json <<EOF
+cat > config/vessels.json <<EOF
 {
-    "platform_name": "Shoghi",
+    "platform_name": "Vessels",
     "version": "1.0.0-fixed",
     "mode": "$MODE",
     "port": $PORT,
-    "database": "data/shoghi_grants.db",
+    "database": "data/vessels_grants.db",
     "log_level": "INFO"
 }
 EOF
@@ -95,7 +95,7 @@ start_platform() {
     case $MODE in
         development)
             print_info "Starting in DEVELOPMENT mode (interactive)..."
-            python3 shoghi_fixed.py
+            python3 vessels_fixed.py
             ;;
             
         production)
@@ -105,18 +105,18 @@ start_platform() {
             cat > app.py <<'EOF'
 #!/usr/bin/env python3
 from flask import Flask, request, jsonify
-from shoghi_fixed import ShoghiPlatform
+from vessels_fixed import VesselsPlatform
 import logging
 
 app = Flask(__name__)
-platform = ShoghiPlatform()
+platform = VesselsPlatform()
 
 logging.basicConfig(level=logging.INFO)
 
 @app.route('/')
 def index():
     return jsonify({
-        'service': 'Shoghi Platform',
+        'service': 'Vessels Platform',
         'version': '1.0.0-fixed',
         'status': 'operational'
     })
@@ -158,13 +158,13 @@ EOF
             print_info "Starting Flask server on port $PORT..."
             
             # Run Flask app in background
-            nohup python3 app.py > logs/shoghi.log 2>&1 &
-            echo $! > shoghi.pid
+            nohup python3 app.py > logs/vessels.log 2>&1 &
+            echo $! > vessels.pid
             
-            print_status "Shoghi platform started in production mode"
+            print_status "Vessels platform started in production mode"
             print_info "API available at http://localhost:$PORT"
-            print_info "Process ID saved to shoghi.pid"
-            print_info "Logs available at logs/shoghi.log"
+            print_info "Process ID saved to vessels.pid"
+            print_info "Logs available at logs/vessels.log"
             
             # Show example API calls
             echo ""
@@ -185,7 +185,7 @@ WORKDIR /app
 COPY requirements_minimal.txt .
 RUN pip install --no-cache-dir -r requirements_minimal.txt
 
-COPY shoghi_fixed.py .
+COPY vessels_fixed.py .
 COPY grant_coordination_fixed.py .
 COPY app.py .
 
@@ -204,11 +204,11 @@ lxml
 EOF
             
             # Build Docker image
-            docker build -t shoghi:latest .
+            docker build -t vessels:latest .
             print_status "Docker image built"
             
             # Run container
-            docker run -d -p $PORT:5000 --name shoghi-platform shoghi:latest
+            docker run -d -p $PORT:5000 --name vessels-platform vessels:latest
             print_status "Docker container started"
             print_info "Platform available at http://localhost:$PORT"
             ;;
@@ -228,16 +228,16 @@ EOF
 
 # Function to stop the platform
 stop_platform() {
-    if [ -f "shoghi.pid" ]; then
-        PID=$(cat shoghi.pid)
+    if [ -f "vessels.pid" ]; then
+        PID=$(cat vessels.pid)
         if kill -0 $PID 2>/dev/null; then
-            print_info "Stopping Shoghi platform (PID: $PID)..."
+            print_info "Stopping Vessels platform (PID: $PID)..."
             kill $PID
-            rm shoghi.pid
+            rm vessels.pid
             print_status "Platform stopped"
         else
             print_error "Process $PID not found"
-            rm shoghi.pid
+            rm vessels.pid
         fi
     else
         print_error "No PID file found"
@@ -256,7 +256,7 @@ start_platform
 if [ "$MODE" != "development" ] && [ "$MODE" != "test" ]; then
     echo ""
     echo "=============================="
-    echo "🌺 Shoghi Platform Deployed Successfully!"
+    echo "🌺 Vessels Platform Deployed Successfully!"
     echo "Mode: $MODE"
     echo "Port: $PORT"
     echo ""

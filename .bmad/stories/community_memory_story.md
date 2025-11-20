@@ -7,7 +7,7 @@ date: 2025-11-11
 tags: [community_memory, knowledge, retention]
 
 ## context
-The Shoghi platform benefits from remembering important interactions and learnings, such as summaries of past grant searches or feedback from elders. A community memory component allows the system to store and retrieve such information to improve responses over time.
+The Vessels platform benefits from remembering important interactions and learnings, such as summaries of past grant searches or feedback from elders. A community memory component allows the system to store and retrieve such information to improve responses over time.
 
 ## requirements
 1. Persist key user interactions and outputs (e.g., requests, grant search results, elder-care protocols) in a memory store.
@@ -20,7 +20,7 @@ community_memory
 
 ## acceptance_criteria
 * At least three past interactions can be stored and retrieved with relevant details.
-* Memory entries persist across sessions and restarts of the Shoghi platform.
+* Memory entries persist across sessions and restarts of the Vessels platform.
 * Memory retrieval returns entries sorted by relevance to the query or tag.
 * Privacy-sensitive data (like names, phone numbers) are redacted before storage.
 

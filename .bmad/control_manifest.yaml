@@ -1,4 +1,4 @@
-# Control Manifest for Shoghi BMAD
+# Control Manifest for Vessels BMAD
 ---
 allowed_languages:
   - Python
@@ -12,8 +12,8 @@ performance_goals:
   - Response time under 2 seconds for interactive queries
   - Memory usage under 512 MB
 code_exclusion_zones:
-  - shoghi_fixed.py  # Do not modify the main interface file
-  - shoghi_web_server.py # keep server endpoints stable
+  - vessels_fixed.py  # Do not modify the main interface file
+  - vessels_web_server.py # keep server endpoints stable
 security_constraints:
   - Do not expose API keys or secrets in logs or UI
   - Sanitize user input to prevent code injection

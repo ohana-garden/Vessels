@@ -167,12 +167,12 @@ class AutoDeploySystem:
         logger.info(f"Created deployment config: {name} ({config_id})")
         return config_id
     
-    def deploy_shoghi_platform(self, deployment_type: DeploymentType = DeploymentType.LOCAL) -> str:
-        """Deploy the complete Shoghi platform"""
+    def deploy_vessels_platform(self, deployment_type: DeploymentType = DeploymentType.LOCAL) -> str:
+        """Deploy the complete Vessels platform"""
         
         # Create deployment configuration
         config_id = self.create_deployment_config(
-            name="shoghi-platform",
+            name="vessels-platform",
             deployment_type=deployment_type,
             resources={
                 "cpu": "4",
@@ -197,7 +197,7 @@ class AutoDeploySystem:
                 "PYTHONPATH": "/app",
                 "LOG_LEVEL": "INFO",
                 "ENVIRONMENT": "production",
-                "SHOGHI_MODE": "full_platform"
+                "VESSELS_MODE": "full_platform"
             },
             dependencies=["python:3.9", "redis", "postgresql", "nginx"]
         )
@@ -205,7 +205,7 @@ class AutoDeploySystem:
         # Deploy the platform
         deployment_id = self.deploy_application(config_id)
         
-        logger.info(f"Deployed Shoghi platform: {deployment_id}")
+        logger.info(f"Deployed Vessels platform: {deployment_id}")
         return deployment_id
     
     def deploy_application(self, config_id: str) -> str:
@@ -315,7 +315,7 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \\
     CMD curl -f http://localhost:{config.monitoring['metrics_port']}{config.monitoring['health_check_path']} || exit 1
 
 # Start application
-CMD ["python", "shoghi.py", "--mode", "deployed"]
+CMD ["python", "vessels.py", "--mode", "deployed"]
 """
         
         return dockerfile
@@ -323,7 +323,7 @@ CMD ["python", "shoghi.py", "--mode", "deployed"]
     def _create_deployment_package(self, config: DeploymentConfig, dockerfile_content: str) -> str:
         """Create deployment package with all necessary files"""
         # Create temporary directory
-        temp_dir = tempfile.mkdtemp(prefix="shoghi_deploy_")
+        temp_dir = tempfile.mkdtemp(prefix="vessels_deploy_")
         
         # Write Dockerfile
         dockerfile_path = os.path.join(temp_dir, "Dockerfile")
@@ -354,7 +354,7 @@ CMD ["python", "shoghi.py", "--mode", "deployed"]
 version: '3.8'
 
 services:
-  shoghi-core:
+  vessels-core:
     build: .
     ports:
       - "{config.monitoring['metrics_port']}:{config.monitoring['metrics_port']}"
@@ -385,9 +385,9 @@ services:
   postgres:
     image: postgres:13
     environment:
-      POSTGRES_DB: shoghi
-      POSTGRES_USER: shoghi
-      POSTGRES_PASSWORD: shoghi123
+      POSTGRES_DB: vessels
+      POSTGRES_USER: vessels
+      POSTGRES_PASSWORD: vessels123
     ports:
       - "5432:5432"
     volumes:
@@ -402,7 +402,7 @@ services:
     volumes:
       - ./nginx.conf:/etc/nginx/nginx.conf
     depends_on:
-      - shoghi-core
+      - vessels-core
     restart: unless-stopped
 
 volumes:
@@ -418,13 +418,13 @@ volumes:
         
         # Copy Python files
         python_files = [
-            "shoghi.py",
+            "vessels.py",
             "agent_zero_core.py",
             "dynamic_agent_factory.py", 
             "community_memory.py",
             "grant_coordination_system.py",
             "adaptive_tools.py",
-            "shoghi_interface.py",
+            "vessels_interface.py",
             "universal_connector.py",
             "auto_deploy.py"
         ]
@@ -472,10 +472,10 @@ import os
 # Add current directory to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from shoghi import ShoghiPlatform
+from vessels import VesselsPlatform
 
 def main():
-    platform = ShoghiPlatform()
+    platform = VesselsPlatform()
     platform.start()
 
 if __name__ == "__main__":
@@ -493,8 +493,8 @@ events {{
 }}
 
 http {{
-    upstream shoghi {{
-        server shoghi-core:{config.monitoring['metrics_port']};
+    upstream vessels {{
+        server vessels-core:{config.monitoring['metrics_port']};
     }}
 
     server {{
@@ -502,14 +502,14 @@ http {{
         server_name localhost;
 
         location / {{
-            proxy_pass http://shoghi;
+            proxy_pass http://vessels;
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         }}
 
         location /health {{
-            proxy_pass http://shoghi/health;
+            proxy_pass http://vessels/health;
         }}
     }}
 }}
@@ -522,11 +522,11 @@ http {{
     def _generate_deploy_script(self, config: DeploymentConfig) -> str:
         """Generate deployment script"""
         script = f"""#!/bin/bash
-# Shoghi Platform Deployment Script
+# Vessels Platform Deployment Script
 
 set -e
 
-echo "🚀 Starting Shoghi Platform deployment..."
+echo "🚀 Starting Vessels Platform deployment..."
 
 # Check prerequisites
 echo "Checking prerequisites..."
@@ -547,7 +547,7 @@ sleep 30
 echo "Performing health check..."
 for i in {{1..30}}; do
     if curl -f http://localhost:{config.monitoring['metrics_port']}{config.monitoring['health_check_path']} >/dev/null 2>&1; then
-        echo "✅ Shoghi Platform is healthy and ready!"
+        echo "✅ Vessels Platform is healthy and ready!"
         break
     fi
     echo "Waiting for platform to be ready... ($i/30)"
@@ -560,7 +560,7 @@ echo "Health check: http://localhost:{config.monitoring['metrics_port']}{config.
 
 # Show logs
 echo "Recent logs:"
-docker-compose logs --tail=20 shoghi-core
+docker-compose logs --tail=20 vessels-core
 """
         
         return script
@@ -654,7 +654,7 @@ docker-compose logs --tail=20 shoghi-core
                 compose_file = self._find_compose_file(deployment_id)
                 if compose_file:
                     result = subprocess.run(
-                        ["docker-compose", "-f", compose_file, "up", "-d", "--scale", f"shoghi-core={replicas}"],
+                        ["docker-compose", "-f", compose_file, "up", "-d", "--scale", f"vessels-core={replicas}"],
                         capture_output=True,
                         text=True
                     )
@@ -893,7 +893,7 @@ docker-compose logs --tail=20 shoghi-core
         if len(self.deployments) == 0:
             report["recommendations"].append({
                 "type": "deployment",
-                "message": "No deployments active. Consider deploying the Shoghi platform."
+                "message": "No deployments active. Consider deploying the Vessels platform."
             })
         
         high_resource_deployments = [
@@ -929,7 +929,7 @@ docker-compose logs --tail=20 shoghi-core
 # Global instance
 auto_deploy = AutoDeploySystem()
 
-def deploy_shoghi_platform(deployment_type: str = "local") -> str:
-    """Deploy the complete Shoghi platform"""
+def deploy_vessels_platform(deployment_type: str = "local") -> str:
+    """Deploy the complete Vessels platform"""
     deployment_type_enum = DeploymentType(deployment_type)
-    return auto_deploy.deploy_shoghi_platform(deployment_type_enum)
+    return auto_deploy.deploy_vessels_platform(deployment_type_enum)

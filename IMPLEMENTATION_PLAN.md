@@ -1,4 +1,4 @@
-# Shoghi Implementation Plan: Projects + Graphiti/FalkorDB
+# Vessels Implementation Plan: Projects + Graphiti/FalkorDB
 
 **Version**: 1.0
 **Date**: 2025-11-20
@@ -8,7 +8,7 @@
 
 ## Overview
 
-This plan details the implementation of Projects-based servant isolation with Graphiti/FalkorDB knowledge graph integration for the Shoghi platform.
+This plan details the implementation of Projects-based servant isolation with Graphiti/FalkorDB knowledge graph integration for the Vessels platform.
 
 **Total Estimated Effort**: 6-8 weeks
 **Team Size**: 1-2 developers
@@ -63,12 +63,12 @@ pytest tests/             # 241 tests still passing
 
 ### 1.2 Create Core Knowledge Graph Structure
 
-**Goal**: Define Shoghi's graph schema and initialize first community graph
+**Goal**: Define Vessels's graph schema and initialize first community graph
 
 **Tasks**:
-- [ ] Create `shoghi/knowledge/` package:
+- [ ] Create `vessels/knowledge/` package:
   ```
-  shoghi/knowledge/
+  vessels/knowledge/
   ├── __init__.py
   ├── schema.py           # Graph schema definitions
   ├── graphiti_client.py  # Graphiti wrapper
@@ -79,7 +79,7 @@ pytest tests/             # 241 tests still passing
   ```python
   @dataclass
   class ShorghiGraphSchema:
-      """Shoghi knowledge graph schema"""
+      """Vessels knowledge graph schema"""
 
       # Node Types
       PERSON = "Person"           # Kupuna, caregivers, volunteers
@@ -109,14 +109,14 @@ pytest tests/             # 241 tests still passing
 - [ ] Add graph backup script in `backup.py`
 
 **Deliverables**:
-- ✅ `shoghi/knowledge/` package created
+- ✅ `vessels/knowledge/` package created
 - ✅ Graph schema documented
 - ✅ Test graph initialized
 - ✅ Backup script functional
 
 **Validation**:
 ```python
-from shoghi.knowledge.graphiti_client import ShorghiGraphitiClient
+from vessels.knowledge.graphiti_client import ShorghiGraphitiClient
 
 client = ShorghiGraphitiClient("lower_puna_elders")
 client.create_node("Person", name="Test Kupuna", community_id="lower_puna_elders")
@@ -131,7 +131,7 @@ assert len(nodes) == 1  # ✅ Graph working
 **Goal**: Replace hash-based vectors with learned embeddings
 
 **Tasks**:
-- [ ] Create `shoghi/knowledge/embeddings.py`:
+- [ ] Create `vessels/knowledge/embeddings.py`:
   ```python
   from sentence_transformers import SentenceTransformer
 
@@ -146,7 +146,7 @@ assert len(nodes) == 1  # ✅ Graph working
           return self.model.encode(texts, show_progress_bar=True)
   ```
 
-- [ ] Create `shoghi/knowledge/vector_stores.py`:
+- [ ] Create `vessels/knowledge/vector_stores.py`:
   ```python
   class ProjectVectorStore:
       """Lightweight NumPy-based vector store for project-specific knowledge"""
@@ -226,7 +226,7 @@ pytest test_community_memory.py  # All 24 tests passing
 memory = CommunityMemory(
     backend="hybrid",  # Writes to both old + new
     graphiti_client=graphiti,
-    sqlite_path="shoghi_grants.db"
+    sqlite_path="vessels_grants.db"
 )
 
 # Option 2: One-time migration script
@@ -304,8 +304,8 @@ python scripts/migrate_sqlite_to_graphiti.py
 
 **Validation**:
 ```bash
-pytest shoghi/tests/test_tracker.py
-pytest shoghi/tests/test_attractors.py
+pytest vessels/tests/test_tracker.py
+pytest vessels/tests/test_attractors.py
 ```
 
 ---
@@ -317,9 +317,9 @@ pytest shoghi/tests/test_attractors.py
 **Goal**: Implement Project isolation without external Agent Zero dependency
 
 **Tasks**:
-- [ ] Create `shoghi/projects/` package:
+- [ ] Create `vessels/projects/` package:
   ```
-  shoghi/projects/
+  vessels/projects/
   ├── __init__.py
   ├── project.py          # Project class
   ├── manager.py          # Project lifecycle management
@@ -493,7 +493,7 @@ assert agent1.project.id != agent2.project.id  # ✅ Separate IDs
 **Goal**: Fast context retrieval from project vectors + Graphiti
 
 **Tasks**:
-- [ ] Create `shoghi/knowledge/context_assembly.py`:
+- [ ] Create `vessels/knowledge/context_assembly.py`:
   ```python
   class ContextAssembler:
       """Assembles context for servant tasks within <100ms"""
@@ -598,7 +598,7 @@ assert len(context["combined_context"]) > 0  # ✅ Results returned
 **Goal**: Enable servants to discover cross-community coordination opportunities
 
 **Tasks**:
-- [ ] Create `shoghi/knowledge/privacy.py`:
+- [ ] Create `vessels/knowledge/privacy.py`:
   ```python
   class CommunityPrivacyConfig:
       def __init__(self, community_id: str):
@@ -682,7 +682,7 @@ with pytest.raises(PermissionError):
 **Goal**: Servants discover coordination opportunities via graph
 
 **Tasks**:
-- [ ] Create `shoghi/knowledge/coordination.py`:
+- [ ] Create `vessels/knowledge/coordination.py`:
   ```python
   class CoordinationDiscovery:
       """Discovers cross-servant coordination opportunities"""
@@ -776,7 +776,7 @@ assert opportunities[0].type in ["shared_service_recipient", "resource_match"]
 **Goal**: Detect unmet needs in graph that warrant new servants
 
 **Tasks**:
-- [ ] Create `shoghi/community/spawning.py`:
+- [ ] Create `vessels/community/spawning.py`:
   ```python
   class ProactiveSpawnDetector:
       """Detects patterns in graph warranting new servant spawns"""
@@ -868,7 +868,7 @@ for opp in opportunities:
 **Goal**: Human-in-the-loop approval for proactive spawning
 
 **Tasks**:
-- [ ] Create spawn proposal UI in `shoghi_web_server.py`:
+- [ ] Create spawn proposal UI in `vessels_web_server.py`:
   ```python
   @app.route("/spawn_proposals", methods=["GET"])
   def get_spawn_proposals():
@@ -941,7 +941,7 @@ curl -X POST http://localhost:5000/spawn_proposals/123/approve
   dbfilename dump.rdb
   ```
 
-- [ ] Implement JSON export in `shoghi/knowledge/backup.py`:
+- [ ] Implement JSON export in `vessels/knowledge/backup.py`:
   ```python
   class GraphBackupManager:
       def export_all_graphs(self, output_dir: Path):
@@ -971,7 +971,7 @@ curl -X POST http://localhost:5000/spawn_proposals/123/approve
 - [ ] Create backup cron job:
   ```bash
   # crontab entry
-  0 2 * * * python /home/user/shoghi/scripts/backup_graphs.py
+  0 2 * * * python /home/user/vessels/scripts/backup_graphs.py
   ```
 
 **Deliverables**:
@@ -996,7 +996,7 @@ python scripts/restore_graph.py backups/graphs/2025-11-20/lower_puna_elders_grap
 **Goal**: Track latency targets and resource usage
 
 **Tasks**:
-- [ ] Create `shoghi/monitoring/metrics.py`:
+- [ ] Create `vessels/monitoring/metrics.py`:
   ```python
   class ShorghiMetrics:
       def __init__(self):
@@ -1047,7 +1047,7 @@ assert stats["query_latency_p50"] < 10  # ✅ Meeting target
 
 ### 6.3 Update Deployment Scripts
 
-**Goal**: Deploy full stack (FalkorDB + Shoghi + monitoring)
+**Goal**: Deploy full stack (FalkorDB + Vessels + monitoring)
 
 **Tasks**:
 - [ ] Create `docker-compose.yml`:
@@ -1062,7 +1062,7 @@ assert stats["query_latency_p50"] < 10  # ✅ Meeting target
         - /data/falkordb:/data
       restart: always
 
-    shoghi:
+    vessels:
       build: .
       depends_on:
         - falkordb
@@ -1086,7 +1086,7 @@ assert stats["query_latency_p50"] < 10  # ✅ Meeting target
         - "3000:3000"
   ```
 
-- [ ] Update `deploy_shoghi.sh` for new architecture
+- [ ] Update `deploy_vessels.sh` for new architecture
 - [ ] Add health checks
 
 **Deliverables**:
@@ -1098,7 +1098,7 @@ assert stats["query_latency_p50"] < 10  # ✅ Meeting target
 ```bash
 docker-compose up -d
 docker ps  # All services running
-curl http://localhost:5000/health  # ✅ Shoghi healthy
+curl http://localhost:5000/health  # ✅ Vessels healthy
 redis-cli PING  # ✅ FalkorDB healthy
 ```
 

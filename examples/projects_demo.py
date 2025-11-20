@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Shoghi Projects + Graphiti Demo
+Vessels Projects + Graphiti Demo
 
 Demonstrates the new architecture:
 1. Create isolated servant projects
@@ -16,9 +16,9 @@ from pathlib import Path
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from shoghi.projects import ProjectManager, ProjectStatus
-from shoghi.knowledge import SharedVectorStore, ContextAssembler
-from shoghi.knowledge.schema import ServantType, NodeType, RelationType
+from vessels.projects import ProjectManager, ProjectStatus
+from vessels.knowledge import SharedVectorStore, ContextAssembler
+from vessels.knowledge.schema import ServantType, NodeType, RelationType
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -219,7 +219,7 @@ def demo_project_archival(manager, meals_project):
 def main():
     """Run all demos"""
     print("\n" + "=" * 60)
-    print("SHOGHI PROJECTS + GRAPHITI ARCHITECTURE DEMO")
+    print("VESSELS PROJECTS + GRAPHITI ARCHITECTURE DEMO")
     print("=" * 60)
 
     try:

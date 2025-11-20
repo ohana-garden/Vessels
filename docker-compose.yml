@@ -3,7 +3,7 @@ version: '3.8'
 services:
   falkordb:
     image: falkordb/falkordb:latest
-    container_name: shoghi-falkordb
+    container_name: vessels-falkordb
     ports:
       - "6379:6379"
     volumes:
@@ -19,19 +19,19 @@ services:
       --maxmemory 512mb
       --maxmemory-policy allkeys-lru
     networks:
-      - shoghi-network
+      - vessels-network
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 30s
       timeout: 10s
       retries: 3
 
-  # Shoghi application (commented out - run manually for development)
-  # shoghi:
+  # Vessels application (commented out - run manually for development)
+  # vessels:
   #   build:
   #     context: .
   #     dockerfile: Dockerfile
-  #   container_name: shoghi-app
+  #   container_name: vessels-app
   #   depends_on:
   #     falkordb:
   #       condition: service_healthy
@@ -41,10 +41,10 @@ services:
   #     - PYTHONUNBUFFERED=1
   #   volumes:
   #     - ./work_dir:/app/work_dir
-  #     - ./shoghi:/app/shoghi
+  #     - ./vessels:/app/vessels
   #     - ./.bmad:/app/.bmad
   #   networks:
-  #     - shoghi-network
+  #     - vessels-network
   #   restart: unless-stopped
 
 volumes:
@@ -52,5 +52,5 @@ volumes:
     driver: local
 
 networks:
-  shoghi-network:
+  vessels-network:
     driver: bridge

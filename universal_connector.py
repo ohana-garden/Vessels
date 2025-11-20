@@ -329,7 +329,7 @@ class UniversalConnector:
         """
         url = connector.specification.base_url.rstrip("/") + endpoint
         headers: Dict[str, str] = {
-            "User-Agent": "Shoghi-Universal-Connector/2.0",
+            "User-Agent": "Vessels-Universal-Connector/2.0",
             "Accept": "application/json",
         }
         # API key authentication

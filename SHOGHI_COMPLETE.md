@@ -1,8 +1,8 @@
-# 🌺 SHOGHI PLATFORM - COMPLETE SYSTEM
+# 🌺 VESSELS PLATFORM - COMPLETE SYSTEM
 
 ## ✅ **SYSTEM STATUS: FULLY OPERATIONAL**
 
-The complete Shoghi adaptive coordination platform has been successfully built and is working immediately. Here's what was delivered:
+The complete Vessels adaptive coordination platform has been successfully built and is working immediately. Here's what was delivered:
 
 ## 📦 **DELIVERED COMPONENTS**
 
@@ -12,13 +12,13 @@ The complete Shoghi adaptive coordination platform has been successfully built a
 3. **`community_memory.py`** - Distributed memory system (vector + graph + streaming)
 4. **`grant_coordination_system.py`** - Complete grant discovery and application system
 5. **`adaptive_tools.py`** - Self-expanding tool ecosystem
-6. **`shoghi_interface.py`** - Natural language interface
+6. **`vessels_interface.py`** - Natural language interface
 7. **`auto_deploy.py`** - Self-deploying infrastructure
 8. **`universal_connector.py`** - Connects to any external system
-9. **`shoghi.py`** - Main platform entry point
+9. **`vessels.py`** - Main platform entry point
 
 ### **Deployment & Configuration**
-10. **`deploy_shoghi.sh`** - Complete deployment script
+10. **`deploy_vessels.sh`** - Complete deployment script
 11. **`docker-compose.yml`** - Container orchestration
 12. **`Dockerfile`** - Container definition
 13. **`requirements.txt`** - Python dependencies
@@ -36,7 +36,7 @@ The complete Shoghi adaptive coordination platform has been successfully built a
 
 ### ✅ **Test Results**
 ```
-🌺 SHOGHI PLATFORM TEST
+🌺 VESSELS PLATFORM TEST
 ==================================================
 
 📊 Testing Grant Discovery...
@@ -64,7 +64,7 @@ The complete Shoghi adaptive coordination platform has been successfully built a
 
 ==================================================
 ✅ TEST COMPLETE
-🌺 Shoghi Platform is working!
+🌺 Vessels Platform is working!
 ```
 
 ## 🚀 **START IMMEDIATELY**
@@ -72,24 +72,24 @@ The complete Shoghi adaptive coordination platform has been successfully built a
 ### **Run the Platform**
 ```bash
 # Make deployment script executable
-chmod +x deploy_shoghi.sh
+chmod +x deploy_vessels.sh
 
 # Start in development mode (interactive)
-./deploy_shoghi.sh --mode development
+./deploy_vessels.sh --mode development
 
 # Or start in production mode
-./deploy_shoghi.sh --mode production
+./deploy_vessels.sh --mode production
 
 # Test with a single command
-python3 shoghi.py --command "find grants for elder care in Puna"
+python3 vessels.py --command "find grants for elder care in Puna"
 ```
 
 ### **Use Natural Language**
 ```
-"Shoghi, find grants for elder care in Puna"
-"Shoghi, coordinate volunteers for community support"  
-"Shoghi, deploy full platform"
-"Shoghi, what is your status?"
+"Vessels, find grants for elder care in Puna"
+"Vessels, coordinate volunteers for community support"  
+"Vessels, deploy full platform"
+"Vessels, what is your status?"
 ```
 
 ## 🏗️ **SYSTEM ARCHITECTURE**
@@ -237,7 +237,7 @@ The platform is **fully operational** and ready for:
 
 ## 🌺 **CONCLUSION**
 
-**Shoghi is LIVE and WORKING!**
+**Vessels is LIVE and WORKING!**
 
 The complete adaptive coordination platform has been successfully built and is operational. It demonstrates all requested capabilities:
 
@@ -253,4 +253,4 @@ The platform is ready to coordinate community needs, find grants, manage volunte
 
 ---
 
-**🌺 Mahalo! Shoghi Platform is ready to coordinate your community! 🌺**
+**🌺 Mahalo! Vessels Platform is ready to coordinate your community! 🌺**

@@ -1,4 +1,4 @@
-# Shoghi Architecture Decisions: Projects + Graphiti/FalkorDB
+# Vessels Architecture Decisions: Projects + Graphiti/FalkorDB
 
 **Date**: 2025-11-20
 **Status**: PROPOSED
@@ -6,7 +6,7 @@
 
 ## Context
 
-Refactoring Shoghi to implement servant isolation via Agent Zero Projects while adding Graphiti/FalkorDB as a shared knowledge graph. This document addresses the five key design decisions from the specification.
+Refactoring Vessels to implement servant isolation via Agent Zero Projects while adding Graphiti/FalkorDB as a shared knowledge graph. This document addresses the five key design decisions from the specification.
 
 ---
 
@@ -161,7 +161,7 @@ Reactive (on explicit request) or proactive (graph pattern detection)?
 ```python
 # Explicit user request via natural language
 user: "I need help coordinating transport for kupuna"
-→ shoghi_interface.py parses intent
+→ vessels_interface.py parses intent
 → dynamic_agent_factory.py spawns transport servant
 → Project created in work_dir/projects/lower_puna_elders/malama_transport/
 ```
@@ -173,7 +173,7 @@ graph_query: MATCH (e:Elder)-[:NEEDS]->(s:Service {type: 'transport'})
              WHERE NOT EXISTS((e)-[:SERVED_BY]->(:Servant))
              RETURN e.name, e.location
 
-→ Shoghi detects unmet need pattern
+→ Vessels detects unmet need pattern
 → Proposes: "I notice 3 kupuna in Pahoa need transport. Spawn coordinator?"
 → User approves: "yes"
 → Servant spawned with context from graph
@@ -202,7 +202,7 @@ if spawn_decision.allowed:
 
 **Rejected Alternatives:**
 1. **Immediate proactive**: ❌ Insufficient graph data initially, trust not established
-2. **Strictly reactive forever**: ❌ Misses Shoghi's core value prop (proactive service)
+2. **Strictly reactive forever**: ❌ Misses Vessels's core value prop (proactive service)
 
 ### Implementation Notes
 
@@ -434,7 +434,7 @@ Scenario: Solar battery dies, Redis crashes, RDB corrupted
 
 **JSON Export Script:**
 ```python
-# In shoghi/knowledge/backup.py
+# In vessels/knowledge/backup.py
 async def export_community_graph(community_id: str, output_dir: Path):
     graphiti = get_graphiti_client(community_id)
 
