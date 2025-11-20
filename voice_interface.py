@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 VOICE INTERFACE MODULE - Hume.ai EVI Integration
-Voice-first interface for Shoghi platform
+Voice-first interface for Vessels platform
 Handles emotional voice interactions, agent generation, and coordination
 """
 
@@ -43,7 +43,7 @@ class VoiceSession:
     active_agents: List[str] = field(default_factory=list)
     
 class HumeVoiceInterface:
-    """Hume.ai Empathic Voice Interface for Shoghi"""
+    """Hume.ai Empathic Voice Interface for Vessels"""
     
     def __init__(self, api_key: str = None):
         self.api_key = api_key or os.getenv('HUME_API_KEY')

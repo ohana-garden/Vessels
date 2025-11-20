@@ -1,4 +1,4 @@
-# Shoghi Constraint System Specification v1.1
+# Vessels Constraint System Specification v1.1
 
 **Status:** Implementation-Ready
 **Date:** 2025-11-18
@@ -8,7 +8,7 @@
 
 ## 0. Executive Summary
 
-This document specifies the **moral constraint system** for Shoghi agent alignment. It is a constraint system in phase space, not a Riemannian manifold. All qualitative coupling stories are backed by **explicit numeric thresholds** suitable for direct implementation.
+This document specifies the **moral constraint system** for Vessels agent alignment. It is a constraint system in phase space, not a Riemannian manifold. All qualitative coupling stories are backed by **explicit numeric thresholds** suitable for direct implementation.
 
 ### What Changed from v1.0
 
@@ -643,7 +643,7 @@ def classify_attractor(attractor, outcomes):
 - Create domain-specific attractor classifiers that value depth over speed
 
 **This is a value judgment:**
-- Shoghi v1 assumes efficiency is generally good
+- Vessels v1 assumes efficiency is generally good
 - Domain manifolds may override this (e.g., scientific research manifold)
 - Being explicit about this bias is better than pretending classifier is neutral
 
@@ -869,7 +869,7 @@ manifold = IntersectionManifold([
    - Measurement is the attack surface (acknowledged limitation)
 
 2. **Fork-and-Run**
-   - Agent spins up unconstrained copy outside Shoghi
+   - Agent spins up unconstrained copy outside Vessels
    - Requires deployment-level controls
 
 3. **Out-of-Band Channels**
@@ -962,9 +962,9 @@ When implementing this spec, ensure:
 ## 14. References
 
 **Related Documents:**
-- `shoghi/README.md` - Implementation guide
-- `shoghi/constraints/bahai.py` - Reference implementation
-- `shoghi/tests/test_constraints.py` - Constraint test suite
+- `vessels/README.md` - Implementation guide
+- `vessels/constraints/bahai.py` - Reference implementation
+- `vessels/tests/test_constraints.py` - Constraint test suite
 
 **External:**
 - Bahá'í writings on virtue and character development

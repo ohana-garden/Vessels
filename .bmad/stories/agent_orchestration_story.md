@@ -7,7 +7,7 @@ date: 2025-11-11
 tags: [agent_orchestration, system, dynamic]
 
 ## context
-The Shoghi platform uses specialized agents to plan, design, implement, test and deploy software and to perform tasks such as grant discovery and elder care protocols. To ensure these agents work together seamlessly, the system needs a clear orchestration workflow that spawns and coordinates agents based on user requests.
+The Vessels platform uses specialized agents to plan, design, implement, test and deploy software and to perform tasks such as grant discovery and elder care protocols. To ensure these agents work together seamlessly, the system needs a clear orchestration workflow that spawns and coordinates agents based on user requests.
 
 ## requirements
 1. Define a pipeline that spawns appropriate agents (Planner, Architect, Developer, Tester, Deployer) based on the type of user request.

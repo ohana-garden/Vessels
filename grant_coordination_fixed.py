@@ -61,7 +61,7 @@ class GrantOpportunity:
 class RealGrantCoordinator:
     """Fixed grant coordination system with real functionality"""
     
-    def __init__(self, db_path: str = "shoghi_grants.db"):
+    def __init__(self, db_path: str = "vessels_grants.db"):
         self.db_path = db_path
         self.db_conn = None
         self.discovered_grants: Dict[str, GrantOpportunity] = {}

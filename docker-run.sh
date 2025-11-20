@@ -1,73 +1,73 @@
 #!/bin/bash
-# Run Shoghi container with common configurations
+# Run Vessels container with common configurations
 
 MODE=${1:-demo}
 
 case "$MODE" in
     demo)
-        echo "Running Shoghi demo..."
+        echo "Running Vessels demo..."
         docker run --rm \
-            --name shoghi-demo \
-            shoghi:latest demo
+            --name vessels-demo \
+            vessels:latest demo
         ;;
 
     demo-persist)
-        echo "Running Shoghi demo with persistent data..."
+        echo "Running Vessels demo with persistent data..."
         docker run --rm \
-            --name shoghi-demo \
-            -v shoghi-data:/data/falkordb \
-            -v shoghi-work:/app/work_dir \
-            shoghi:latest demo
+            --name vessels-demo \
+            -v vessels-data:/data/falkordb \
+            -v vessels-work:/app/work_dir \
+            vessels:latest demo
         ;;
 
     web)
-        echo "Starting Shoghi web server (daemon mode)..."
+        echo "Starting Vessels web server (daemon mode)..."
         docker run -d \
-            --name shoghi-web \
+            --name vessels-web \
             -p 5000:5000 \
             -p 6379:6379 \
-            -v shoghi-data:/data/falkordb \
-            -v shoghi-work:/app/work_dir \
+            -v vessels-data:/data/falkordb \
+            -v vessels-work:/app/work_dir \
             -e DAEMON=true \
-            shoghi:latest web
+            vessels:latest web
 
         echo ""
-        echo "✓ Shoghi web server started"
+        echo "✓ Vessels web server started"
         echo ""
         echo "  Web UI: http://localhost:5000"
         echo "  FalkorDB: localhost:6379"
         echo ""
         echo "View logs:"
-        echo "  docker logs -f shoghi-web"
+        echo "  docker logs -f vessels-web"
         echo ""
         echo "Stop server:"
-        echo "  docker stop shoghi-web"
-        echo "  docker rm shoghi-web"
+        echo "  docker stop vessels-web"
+        echo "  docker rm vessels-web"
         echo ""
         ;;
 
     shell)
         echo "Starting interactive shell..."
         docker run -it --rm \
-            --name shoghi-shell \
-            -v shoghi-data:/data/falkordb \
-            -v shoghi-work:/app/work_dir \
-            shoghi:latest shell
+            --name vessels-shell \
+            -v vessels-data:/data/falkordb \
+            -v vessels-work:/app/work_dir \
+            vessels:latest shell
         ;;
 
     stop)
-        echo "Stopping all Shoghi containers..."
-        docker stop shoghi-web 2>/dev/null || true
-        docker rm shoghi-web 2>/dev/null || true
+        echo "Stopping all Vessels containers..."
+        docker stop vessels-web 2>/dev/null || true
+        docker rm vessels-web 2>/dev/null || true
         echo "✓ Stopped"
         ;;
 
     clean)
-        echo "Cleaning up Shoghi containers and volumes..."
-        docker stop shoghi-web 2>/dev/null || true
-        docker rm shoghi-web 2>/dev/null || true
-        docker volume rm shoghi-data 2>/dev/null || true
-        docker volume rm shoghi-work 2>/dev/null || true
+        echo "Cleaning up Vessels containers and volumes..."
+        docker stop vessels-web 2>/dev/null || true
+        docker rm vessels-web 2>/dev/null || true
+        docker volume rm vessels-data 2>/dev/null || true
+        docker volume rm vessels-work 2>/dev/null || true
         echo "✓ Cleaned up"
         ;;
 

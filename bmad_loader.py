@@ -6,7 +6,7 @@ defines each agent as a Markdown file containing a YAML block with its
 configuration. Story files are also Markdown documents with structured fields.
 
 The loader reads these files and constructs Python objects that can be used by
-the rest of the Shoghi system. It relies on the `pyyaml` package to parse
+the rest of the Vessels system. It relies on the `pyyaml` package to parse
 YAML blocks when available.
 """
 

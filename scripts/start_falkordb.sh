@@ -1,5 +1,5 @@
 #!/bin/bash
-# Start FalkorDB for Shoghi development
+# Start FalkorDB for Vessels development
 
 echo "Starting FalkorDB..."
 
@@ -20,7 +20,7 @@ max_attempts=30
 attempt=0
 
 while [ $attempt -lt $max_attempts ]; do
-    if docker exec shoghi-falkordb redis-cli ping > /dev/null 2>&1; then
+    if docker exec vessels-falkordb redis-cli ping > /dev/null 2>&1; then
         echo "✓ FalkorDB is ready!"
         echo ""
         echo "FalkorDB running at: localhost:6379"

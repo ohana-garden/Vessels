@@ -2,7 +2,7 @@
 """
 Adaptive Tools – production‑ready implementation.
 
-This module provides a safe and extensible tool management system for the Shoghi
+This module provides a safe and extensible tool management system for the Vessels
 platform.  The previous version dynamically generated code using ``exec``, which
 posed significant security risks and made debugging difficult.  The rewritten
 version defines explicit tool implementations for each ``ToolType`` and

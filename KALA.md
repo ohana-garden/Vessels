@@ -162,9 +162,9 @@ Money measures some of this. But not all of it.
 
 Kala measures what matters to communities, using the dollar as a familiar reference point.
 
-## Implementation in Shoghi
+## Implementation in Vessels
 
-Shoghi tracks kala through the `kala.py` module, which:
+Vessels tracks kala through the `kala.py` module, which:
 
 1. **Records contributions** with type, value, and metadata
 2. **Manages accounts** for community members and organizations

@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-This document specifies Shoghi's multi-class agent architecture, where different agent types have **different constraint surfaces while maintaining universal truthfulness**.
+This document specifies Vessels's multi-class agent architecture, where different agent types have **different constraint surfaces while maintaining universal truthfulness**.
 
 **Key Insight:** You can have agents with different service/extraction ratios as long as:
 1. **Truthfulness remains non-negotiable** for ALL classes (>= 0.95)
@@ -531,20 +531,20 @@ Transaction: $50 booking fee
 
 ### Completed Components
 
-✅ Agent class taxonomy (`shoghi/agents/taxonomy.py`)
-✅ Class-specific constraints (`shoghi/agents/constraints.py`)
-✅ Disclosure protocol (`shoghi/agents/disclosure.py`)
-✅ Commercial gateway (`shoghi/agents/gateway.py`)
-✅ Graph tracking (`shoghi/agents/graph_tracking.py`)
-✅ Policy controls (`shoghi/agents/policy.py`)
-✅ Multi-class vector stores (`shoghi/agents/vector_stores.py`)
-✅ Revenue model (`shoghi/agents/revenue.py`)
-✅ Comprehensive tests (`shoghi/tests/test_multi_class_agents.py`)
+✅ Agent class taxonomy (`vessels/agents/taxonomy.py`)
+✅ Class-specific constraints (`vessels/agents/constraints.py`)
+✅ Disclosure protocol (`vessels/agents/disclosure.py`)
+✅ Commercial gateway (`vessels/agents/gateway.py`)
+✅ Graph tracking (`vessels/agents/graph_tracking.py`)
+✅ Policy controls (`vessels/agents/policy.py`)
+✅ Multi-class vector stores (`vessels/agents/vector_stores.py`)
+✅ Revenue model (`vessels/agents/revenue.py`)
+✅ Comprehensive tests (`vessels/tests/test_multi_class_agents.py`)
 
 ### Usage Example
 
 ```python
-from shoghi.agents import (
+from vessels.agents import (
     AgentClass,
     CommercialAgentGateway,
     CommunityCommercialPolicy,

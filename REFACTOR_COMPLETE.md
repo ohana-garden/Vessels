@@ -1,4 +1,4 @@
-# Shoghi Refactor Complete: Projects + Graphiti Architecture
+# Vessels Refactor Complete: Projects + Graphiti Architecture
 
 **Status**: ✅ IMPLEMENTATION COMPLETE
 **Date**: 2025-11-20
@@ -7,7 +7,7 @@
 
 ## What We Built
 
-Complete refactor of Shoghi to use Projects-based servant isolation with Graphiti/FalkorDB knowledge graph integration. The system now supports proactive, morally-constrained AI servants operating in isolated workspaces with shared temporal knowledge.
+Complete refactor of Vessels to use Projects-based servant isolation with Graphiti/FalkorDB knowledge graph integration. The system now supports proactive, morally-constrained AI servants operating in isolated workspaces with shared temporal knowledge.
 
 ---
 
@@ -15,7 +15,7 @@ Complete refactor of Shoghi to use Projects-based servant isolation with Graphit
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                     SHOGHI PLATFORM                         │
+│                     VESSELS PLATFORM                         │
 ├─────────────────────────────────────────────────────────────┤
 │                                                              │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐     │
@@ -56,7 +56,7 @@ Complete refactor of Shoghi to use Projects-based servant isolation with Graphit
 
 ## Core Components
 
-### 1. Knowledge Package (`shoghi/knowledge/`)
+### 1. Knowledge Package (`vessels/knowledge/`)
 
 **New infrastructure for graph and vector knowledge:**
 
@@ -113,7 +113,7 @@ Complete refactor of Shoghi to use Projects-based servant isolation with Graphit
 
 ---
 
-### 2. Projects Package (`shoghi/projects/`)
+### 2. Projects Package (`vessels/projects/`)
 
 **Servant isolation infrastructure:**
 
@@ -173,7 +173,7 @@ All targets met:
 
 ---
 
-## What Changed from Original Shoghi
+## What Changed from Original Vessels
 
 ### Before (Original)
 - ✗ Agents ran in shared context (contamination risk)
@@ -197,8 +197,8 @@ All targets met:
 ## File Structure
 
 ```
-shoghi/
-├── shoghi/                    # Core moral constraint system (UNCHANGED)
+vessels/
+├── vessels/                    # Core moral constraint system (UNCHANGED)
 │   ├── constraints/          # 12D phase space moral geometry
 │   ├── gating/               # Action gating
 │   ├── measurement/          # Virtue inference
@@ -267,8 +267,8 @@ python examples/projects_demo.py
 ### 3. Create a Servant Project
 
 ```python
-from shoghi.projects import ProjectManager
-from shoghi.knowledge.schema import ServantType
+from vessels.projects import ProjectManager
+from vessels.knowledge.schema import ServantType
 
 manager = ProjectManager()
 
@@ -296,7 +296,7 @@ project.graphiti.create_node(
 )
 
 # Assemble context for a task
-from shoghi.knowledge import ContextAssembler, SharedVectorStore
+from vessels.knowledge import ContextAssembler, SharedVectorStore
 
 assembler = ContextAssembler(
     project_vector_store=project.vector_store,
@@ -386,7 +386,7 @@ All 5 key decisions made in `ARCHITECTURE_DECISIONS.md`:
 ## Compatibility
 
 **Preserved (No Breaking Changes)**:
-- ✅ Core moral constraint system (`shoghi/` package)
+- ✅ Core moral constraint system (`vessels/` package)
 - ✅ 12D phase space measurement
 - ✅ Constraint validation and gating
 - ✅ Attractor discovery
@@ -507,7 +507,7 @@ All 5 key decisions made in `ARCHITECTURE_DECISIONS.md`:
 
 **What's next**: Integration with existing agent factory, real FalkorDB validation, cross-servant coordination, proactive spawning.
 
-**Impact**: Shoghi now has the foundation for isolated, morally-constrained servants with shared temporal knowledge and coordination discovery. The architecture is ready for production deployment after final integration and testing.
+**Impact**: Vessels now has the foundation for isolated, morally-constrained servants with shared temporal knowledge and coordination discovery. The architecture is ready for production deployment after final integration and testing.
 
 ---
 
