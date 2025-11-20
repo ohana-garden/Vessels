@@ -1,0 +1,56 @@
+version: '3.8'
+
+services:
+  falkordb:
+    image: falkordb/falkordb:latest
+    container_name: shoghi-falkordb
+    ports:
+      - "6379:6379"
+    volumes:
+      - falkordb-data:/data
+    restart: unless-stopped
+    command: >
+      --save 900 1
+      --save 300 10
+      --save 60 10000
+      --dbfilename dump.rdb
+      --dir /data
+      --appendonly no
+      --maxmemory 512mb
+      --maxmemory-policy allkeys-lru
+    networks:
+      - shoghi-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Shoghi application (commented out - run manually for development)
+  # shoghi:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile
+  #   container_name: shoghi-app
+  #   depends_on:
+  #     falkordb:
+  #       condition: service_healthy
+  #   environment:
+  #     - FALKORDB_HOST=falkordb
+  #     - FALKORDB_PORT=6379
+  #     - PYTHONUNBUFFERED=1
+  #   volumes:
+  #     - ./work_dir:/app/work_dir
+  #     - ./shoghi:/app/shoghi
+  #     - ./.bmad:/app/.bmad
+  #   networks:
+  #     - shoghi-network
+  #   restart: unless-stopped
+
+volumes:
+  falkordb-data:
+    driver: local
+
+networks:
+  shoghi-network:
+    driver: bridge
