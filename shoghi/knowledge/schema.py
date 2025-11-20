@@ -23,6 +23,9 @@ class NodeType(str, Enum):
     PATTERN = "Pattern"            # Memory: recurring situations
     CONTRIBUTION = "Contribution"  # Kala-valued contributions
     AGENT_STATE = "AgentState"     # 12D phase space state
+    COMMERCIAL_AGENT = "CommercialAgent"  # Commercial agents with fee structures
+    COMMERCIAL_TRANSACTION = "CommercialTransaction"  # Referral fee transactions
+    FUND_ALLOCATION = "FundAllocation"  # Community fund allocations
 
 
 class RelationType(str, Enum):
@@ -39,6 +42,10 @@ class RelationType(str, Enum):
     RELATES_TO = "RELATES_TO"           # Memory -[RELATES_TO]-> Memory
     CONTRIBUTED_BY = "CONTRIBUTED_BY"   # Contribution -[CONTRIBUTED_BY]-> Person
     SPAWNED_BY = "SPAWNED_BY"           # Servant -[SPAWNED_BY]-> Servant
+    REPRESENTS = "REPRESENTS"           # CommercialAgent -[REPRESENTS]-> Organization
+    PAID_BY = "PAID_BY"                 # Transaction -[PAID_BY]-> Organization
+    PAID_TO = "PAID_TO"                 # Transaction -[PAID_TO]-> FundAllocation
+    ALLOCATED_FOR = "ALLOCATED_FOR"     # FundAllocation -[ALLOCATED_FOR]-> Category
 
 
 class PropertyName(str, Enum):
@@ -159,6 +166,7 @@ class ServantType(str, Enum):
     VOLUNTEER_COORDINATOR = "volunteer_coordinator"
     VOICE_INTERFACE = "voice_interface"
     COMMUNITY_COORDINATOR = "community_coordinator"
+    COMMERCIAL = "commercial"  # Commercial agents with fee structures
 
 
 # Privacy levels for cross-community access
