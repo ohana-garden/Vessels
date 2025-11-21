@@ -9,6 +9,7 @@ import json
 import logging
 from typing import Dict, List, Any, Optional
 from datetime import datetime
+from pathlib import Path
 import re
 from agent_zero_core import AgentZeroCore, AgentSpecification, agent_zero
 import os
@@ -37,49 +38,68 @@ class DynamicAgentFactory:
         
     def _load_intent_patterns(self) -> Dict[str, List[str]]:
         """Load patterns for recognizing user intents"""
+        config_path = Path(os.getenv("VESSELS_INTENT_CONFIG", "config/intent_config.json"))
+        if config_path.exists():
+            try:
+                with config_path.open("r") as f:
+                    config = json.load(f)
+                logger.info(f"Loaded intent configuration from {config_path}")
+                return {intent: data.get("patterns", []) for intent, data in config.items()}
+            except Exception as e:
+                logger.error(f"Failed to load intent config {config_path}: {e}")
+
+        logger.warning("Using built-in intent patterns; provide config/intent_config.json to extend them")
         return {
             "grant_discovery": [
                 r"find.*grant",
                 r"search.*funding",
                 r"discover.*opportunit",
                 r"grant.*available",
-                r"funding.*source"
+                r"funding.*source",
+                r"grant.*catalog",
+                r"grant.*database",
             ],
             "grant_writing": [
                 r"write.*grant",
                 r"appl.*grant",
                 r"submit.*proposal",
                 r"grant.*applic",
-                r"proposal.*writing"
+                r"proposal.*writing",
+                r"draft.*proposal",
+                r"grant.*narrative",
             ],
             "volunteer_coordination": [
                 r"coordinate.*volunteer",
                 r"manage.*volunteer",
                 r"volunteer.*organiz",
                 r"help.*volunteer",
-                r"volunteer.*recruit"
+                r"volunteer.*recruit",
+                r"volunteer.*schedule",
             ],
             "elder_care": [
                 r"elder.*care",
                 r"senior.*service",
                 r"aging.*support",
                 r"elderly.*help",
-                r"senior.*care"
+                r"senior.*care",
+                r"home.*care",
             ],
             "community_coordination": [
                 r"coordinate.*community",
                 r"organiz.*community",
                 r"community.*help",
                 r"local.*support",
-                r"community.*resource"
+                r"community.*resource",
+                r"community.*event",
             ],
             "resource_management": [
                 r"manage.*resource",
                 r"allocat.*resource",
                 r"distribut.*resource",
                 r"resource.*coordinat",
-                r"asset.*management"
-            ]
+                r"asset.*management",
+                r"inventory",
+            ],
         }
     
     def _build_capability_matrix(self) -> Dict[str, List[str]]:

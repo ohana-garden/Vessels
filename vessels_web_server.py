@@ -4,7 +4,7 @@ VESSELS WEB SERVER - Voice-First UI with Backend Integration
 Connects the clean voice UI to all Vessels functionality
 """
 
-from flask import Flask, render_template_string, jsonify, request, send_file
+from flask import Flask, abort, jsonify, render_template, request
 from flask_cors import CORS
 import json
 import asyncio
@@ -17,7 +17,8 @@ import sys
 from vessels_fixed import VesselsPlatform
 from content_generation import ContentContext, ContentType
 
-app = Flask(__name__)
+app = Flask(__name__, template_folder=".")
+app.config["MAX_CONTENT_LENGTH"] = 1024 * 1024  # 1MB cap to protect the endpoint
 CORS(app)
 
 # Initialize Vessels
@@ -30,19 +31,45 @@ logger = logging.getLogger(__name__)
 # Store active sessions
 sessions = {}
 
+@app.errorhandler(Exception)
+def handle_errors(err):
+    """Return JSON errors instead of HTML while preserving status codes."""
+    status = getattr(err, "code", 500)
+    message = getattr(err, "description", "Internal server error")
+    logger.error("Request failed", exc_info=err)
+    return jsonify({"error": message}), status
+
+
 @app.route('/')
 def index():
     """Serve the voice-first UI"""
-    with open('vessels_voice_ui_connected.html', 'r') as f:
-        return f.read()
+    return render_template('vessels_voice_ui_connected.html')
 
 @app.route('/api/voice/process', methods=['POST'])
 def process_voice():
     """Process voice input and return response with UI instructions"""
-    data = request.json
-    text = data.get('text', '').lower()
+    if request.content_type != 'application/json':
+        abort(415, description="Content-Type must be application/json")
+
+    data = request.get_json(silent=True)
+    if not data:
+        abort(400, description="Invalid or missing JSON body")
+
+    text = data.get('text', '')
+    if not isinstance(text, str):
+        abort(400, description="Text must be a string")
+
+    text = text.strip().lower()
+    if not text or len(text) > 10000:
+        abort(400, description="Text input is required and must be under 10k characters")
+
     session_id = data.get('session_id', 'default')
+    if not isinstance(session_id, str) or not session_id:
+        abort(400, description="session_id must be a non-empty string")
+
     emotion = data.get('emotion', 'neutral')
+    if not isinstance(emotion, str):
+        abort(400, description="emotion must be a string")
     
     # Store session context
     if session_id not in sessions:

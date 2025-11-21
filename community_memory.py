@@ -53,23 +53,34 @@ class VectorEmbedding:
 class CommunityMemory:
     """Distributed memory system for agent coordination"""
 
-    def __init__(self):
+    def __init__(self, db_path: Optional[str] = None):
         self.memories: Dict[str, MemoryEntry] = {}
         self.agent_memories: Dict[str, List[str]] = defaultdict(list)
         self.vector_embeddings: Dict[str, VectorEmbedding] = {}
         self.relationship_graph: Dict[str, List[str]] = defaultdict(list)
         self.event_stream = deque(maxlen=10000)
         self.memory_db = None
+        self.db_path = db_path or self._resolve_db_path()
         self.running = False
         self.memory_thread = None
         self.vector_dimension = 384  # Standard embedding size
+        self.embedding_model = None
 
         # Kala system integration
         self.kala_system = None
         self._init_kala_system()
 
+        # Optional embedding model
+        self._load_embedding_model()
+
         # Initialize in-memory vector storage
         self.initialize_memory_system()
+
+    def _resolve_db_path(self) -> str:
+        """Choose a durable on-disk database by default."""
+        import os
+
+        return os.environ.get("COMMUNITY_MEMORY_DB_PATH", "community_memory.db")
 
     def _init_kala_system(self):
         """Initialize kala value tracking system"""
@@ -79,6 +90,19 @@ class CommunityMemory:
             logger.info("Kala system integrated with Community Memory")
         except ImportError:
             logger.warning("Kala system not available - contribution tracking disabled")
+
+    def _load_embedding_model(self) -> None:
+        """Attempt to load a proper embedding model with graceful fallback."""
+        try:
+            from sentence_transformers import SentenceTransformer
+
+            self.embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
+            self.vector_dimension = self.embedding_model.get_sentence_embedding_dimension()
+            logger.info("SentenceTransformer embedding model loaded")
+        except Exception as exc:  # noqa: BLE001
+            # Keep the lightweight hash-based embedding if model is unavailable
+            self.embedding_model = None
+            logger.warning("Falling back to hash embeddings: %s", exc)
         
     def initialize_memory_system(self):
         """Initialize the memory system"""
@@ -87,11 +111,19 @@ class CommunityMemory:
         self.memory_thread.daemon = True
         self.memory_thread.start()
         
-        # Initialize SQLite for persistent storage
-        self.memory_db = sqlite3.connect(':memory:', check_same_thread=False)
-        self._create_memory_tables()
-        
+        # Initialize SQLite for persistent storage (defaults to on-disk)
+        self.memory_db = sqlite3.connect(self.db_path, check_same_thread=False)
+        self._configure_database(self.memory_db)
+
         logger.info("Community Memory System initialized")
+
+    def _configure_database(self, connection: sqlite3.Connection) -> None:
+        """Configure SQLite for safer durability and concurrency."""
+        cursor = connection.cursor()
+        cursor.execute("PRAGMA journal_mode=WAL;")
+        cursor.execute("PRAGMA synchronous=NORMAL;")
+        self._create_memory_tables()
+        connection.commit()
     
     def _create_memory_tables(self):
         """Create database tables for memory storage"""
@@ -608,21 +640,26 @@ class CommunityMemory:
         return insights
     
     def _generate_embedding(self, content: Dict[str, Any]) -> np.ndarray:
-        """Generate vector embedding for content (simplified)"""
-        # In a real implementation, this would use a proper embedding model
-        # For now, create a simple hash-based embedding
+        """Generate vector embedding for content with model-first fallback."""
         content_str = json.dumps(content, sort_keys=True)
-        
-        # Create a deterministic vector based on content hash
+
+        if self.embedding_model:
+            try:
+                embedding = self.embedding_model.encode(content_str)
+                return np.asarray(embedding, dtype=float)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Embedding model failed, using hash fallback: %s", exc)
+
+        # Deterministic hash-based embedding as a lightweight fallback
         import hashlib
+
         hash_obj = hashlib.md5(content_str.encode())
         hash_hex = hash_obj.hexdigest()
-        
-        # Convert hash to vector
+
         vector = np.zeros(self.vector_dimension)
-        for i in range(min(len(hash_hex)//2, self.vector_dimension)):
-            vector[i] = int(hash_hex[i*2:(i+1)*2], 16) / 255.0
-        
+        for i in range(min(len(hash_hex) // 2, self.vector_dimension)):
+            vector[i] = int(hash_hex[i * 2 : (i + 1) * 2], 16) / 255.0
+
         return vector
     
     def _cosine_similarity(self, vec1: np.ndarray, vec2: np.ndarray) -> float:
@@ -671,7 +708,7 @@ class CommunityMemory:
                 self.relationship_graph[memory_id].append(related_id)
                 self.relationship_graph[related_id].append(memory_id)
     
-    def _store_event(self, event_data: Dict[str, Any]):
+    def _store_event(self, event_data: Dict[str, Any]) -> Dict[str, Any]:
         """Store system event"""
         event = {
             "id": str(uuid.uuid4()),
@@ -695,6 +732,35 @@ class CommunityMemory:
             json.dumps(event_data.get("target_agents", []))
         ))
         self.memory_db.commit()
+
+        return event
+
+    def record_event(
+        self,
+        event_type: str,
+        data: Dict[str, Any],
+        *,
+        source_agent: str | None = None,
+        target_agents: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
+        """Public helper for recording events into the shared stream."""
+
+        payload = {
+            "type": event_type,
+            "data": data,
+            "source_agent": source_agent or "",
+            "target_agents": target_agents or [],
+        }
+
+        return self._store_event(payload)
+
+    def get_recent_events(self, limit: int = 50) -> List[Dict[str, Any]]:
+        """Return the most recent events from the in-memory stream."""
+
+        if limit <= 0:
+            return []
+
+        return list(self.event_stream)[-limit:]
     
     def _persist_memory(self, memory: MemoryEntry):
         """Persist memory to database"""

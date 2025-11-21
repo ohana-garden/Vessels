@@ -387,7 +387,7 @@ services:
     environment:
       POSTGRES_DB: vessels
       POSTGRES_USER: vessels
-      POSTGRES_PASSWORD: vessels123
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
     ports:
       - "5432:5432"
     volumes:

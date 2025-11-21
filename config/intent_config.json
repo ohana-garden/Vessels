@@ -1,0 +1,70 @@
+{
+  "grant_discovery": {
+    "description": "Identify and rank grant opportunities based on eligibility, deadlines, and community fit.",
+    "patterns": [
+      "find.*grant",
+      "search.*funding",
+      "discover.*opportunit",
+      "grant.*available",
+      "funding.*source",
+      "grant.*catalog",
+      "grant.*database"
+    ]
+  },
+  "grant_writing": {
+    "description": "Draft, validate, and submit grant proposals with budget and compliance checks.",
+    "patterns": [
+      "write.*grant",
+      "appl.*grant",
+      "submit.*proposal",
+      "grant.*applic",
+      "proposal.*writing",
+      "draft.*proposal",
+      "grant.*narrative"
+    ]
+  },
+  "volunteer_coordination": {
+    "description": "Recruit, schedule, and communicate with volunteers across shifts and skills.",
+    "patterns": [
+      "coordinate.*volunteer",
+      "manage.*volunteer",
+      "volunteer.*organiz",
+      "help.*volunteer",
+      "volunteer.*recruit",
+      "volunteer.*schedule"
+    ]
+  },
+  "elder_care": {
+    "description": "Design and run elder care programs with navigation of benefits and services.",
+    "patterns": [
+      "elder.*care",
+      "senior.*service",
+      "aging.*support",
+      "elderly.*help",
+      "senior.*care",
+      "home.*care"
+    ]
+  },
+  "community_coordination": {
+    "description": "Coordinate community events, stakeholders, and shared resources.",
+    "patterns": [
+      "coordinate.*community",
+      "organiz.*community",
+      "community.*help",
+      "local.*support",
+      "community.*resource",
+      "community.*event"
+    ]
+  },
+  "resource_management": {
+    "description": "Track, allocate, and report on shared resources and inventories.",
+    "patterns": [
+      "manage.*resource",
+      "allocat.*resource",
+      "distribut.*resource",
+      "resource.*coordinat",
+      "asset.*management",
+      "inventory"
+    ]
+  }
+}
