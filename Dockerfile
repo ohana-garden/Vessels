@@ -25,7 +25,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
-COPY shoghi/ ./shoghi/
+COPY vessels/ ./vessels/
 COPY .bmad/ ./.bmad/
 COPY *.py ./
 COPY examples/ ./examples/
@@ -36,7 +36,7 @@ RUN mkdir -p \
     /app/work_dir/projects \
     /app/work_dir/shared/vectors \
     /data/falkordb \
-    /var/log/shoghi
+    /var/log/vessels
 
 # Configure Redis for FalkorDB
 RUN echo "loadmodule /usr/lib/redis/modules/falkordb.so" > /etc/redis/redis-falkordb.conf && \
@@ -66,7 +66,7 @@ RUN echo '{\
 
 # Expose ports
 # 6379 - FalkorDB
-# 5000 - Shoghi web interface (if running)
+# 5000 - Vessels web interface (if running)
 EXPOSE 6379 5000
 
 # Health check

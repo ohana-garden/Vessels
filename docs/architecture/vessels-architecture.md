@@ -352,7 +352,7 @@ class NostrAdapter:
         self.client = NostrClient()
 
     def publish_event(self, kind: int, content: dict, tags: List[Tuple]):
-        """Publish Shoghi event to Nostr relays"""
+        """Publish Vessels event to Nostr relays"""
         event = {
             "kind": kind,
             "content": json.dumps(content),
