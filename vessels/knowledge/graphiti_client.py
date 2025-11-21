@@ -38,7 +38,8 @@ class VesselsGraphitiClient:
         servant_id: Optional[str] = None,
         host: str = "localhost",
         port: int = 6379,
-        read_only_communities: Optional[List[str]] = None
+        read_only_communities: Optional[List[str]] = None,
+        allow_mock: bool = False,
     ):
         """
         Initialize Graphiti client for a community
@@ -55,6 +56,7 @@ class VesselsGraphitiClient:
         self.host = host
         self.port = port
         self.read_only_communities = read_only_communities or []
+        self.allow_mock = allow_mock
 
         # Graph name for this community
         self.graph_name = VesselsGraphSchema.create_community_graph_name(community_id)
@@ -65,43 +67,69 @@ class VesselsGraphitiClient:
 
     @property
     def graphiti(self):
-        """Lazy-load Graphiti client"""
+        """Lazy-load Graphiti client."""
         if self._graphiti is None:
             try:
                 from graphiti_core import Graphiti
-                from graphiti_core.edges import EntityEdge
-                from graphiti_core.nodes import EntityNode, EpisodicNode
+            except ImportError as exc:  # pragma: no cover - dependency check
+                message = (
+                    "graphiti-core not installed. Install graphiti-core to use the "
+                    "Graphiti/FalkorDB backend or set VESSELS_GRAPHITI_ALLOW_MOCK=1 "
+                    "to continue with the mock client."
+                )
+                logger.error(message)
+                if not self.allow_mock:
+                    raise RuntimeError(message) from exc
+                self._graphiti = MockGraphitiClient(self.graph_name)
+                return self._graphiti
 
-                # Import FalkorDB driver
-                try:
-                    from falkordb import FalkorDB
-                    self._driver = FalkorDB(host=self.host, port=self.port)
-                    logger.info(f"Connected to FalkorDB at {self.host}:{self.port}")
+            try:
+                from falkordb import FalkorDB
+            except ImportError as exc:  # pragma: no cover - dependency check
+                message = (
+                    "falkordb not installed. Install falkordb to connect to the "
+                    "graph backend or set VESSELS_GRAPHITI_ALLOW_MOCK=1 to proceed "
+                    "with the mock client."
+                )
+                logger.error(message)
+                if not self.allow_mock:
+                    raise RuntimeError(message) from exc
+                self._graphiti = MockGraphitiClient(self.graph_name)
+                return self._graphiti
 
-                    # Create Graphiti instance
-                    # Note: graphiti_core may require specific driver interface
-                    # We'll need to adapt this based on actual Graphiti API
-                    self._graphiti = Graphiti(
-                        graph_name=self.graph_name,
-                        driver=self._driver
-                    )
+            try:
+                self._driver = FalkorDB(host=self.host, port=self.port)
+                logger.info(f"Connected to FalkorDB at {self.host}:{self.port}")
 
-                    logger.info(f"Initialized Graphiti for community: {self.community_id}")
-
-                except ImportError:
-                    logger.error("falkordb not installed. Run: pip install falkordb")
-                    raise
-                except Exception as e:
-                    logger.error(f"Failed to initialize Graphiti: {e}")
-                    # For now, use a mock implementation
-                    self._graphiti = MockGraphitiClient(self.graph_name)
-                    logger.warning("Using mock Graphiti client for testing")
-
-            except ImportError:
-                logger.error("graphiti-core not installed. Run: pip install graphiti-core")
-                raise
+                self._graphiti = Graphiti(
+                    graph_name=self.graph_name,
+                    driver=self._driver,
+                )
+                logger.info(f"Initialized Graphiti for community: {self.community_id}")
+            except Exception as exc:  # pragma: no cover - runtime connectivity issues
+                message = (
+                    f"Failed to initialize Graphiti for {self.community_id}: {exc}. "
+                    "Set VESSELS_GRAPHITI_ALLOW_MOCK=1 to continue with the mock "
+                    "client while you provision FalkorDB/Graphiti."
+                )
+                logger.error(message)
+                if not self.allow_mock:
+                    raise RuntimeError(message) from exc
+                self._graphiti = MockGraphitiClient(self.graph_name)
 
         return self._graphiti
+
+    def health_check(self) -> bool:
+        """Return True if the Graphiti backend is available."""
+        client = self.graphiti
+        if isinstance(client, MockGraphitiClient):
+            return False
+        try:
+            client.execute_query("RETURN 1", {})
+            return True
+        except Exception as exc:  # pragma: no cover - real backend path
+            logger.error(f"Graphiti health check failed: {exc}")
+            return False
 
     def create_node(
         self,
