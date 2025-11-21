@@ -10,6 +10,7 @@ A Project represents an isolated workspace for a single servant with:
 """
 
 from dataclasses import dataclass, field
+import os
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 from datetime import datetime
@@ -18,6 +19,7 @@ import logging
 
 from vessels.knowledge import VesselsGraphitiClient, ProjectVectorStore
 from vessels.knowledge.schema import ServantType, CommunityPrivacy
+from vessels.hive_mind import hive_mind
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +65,7 @@ class ServantProject:
     # Lazy-loaded components
     _graphiti_client: Optional[VesselsGraphitiClient] = field(default=None, repr=False)
     _vector_store: Optional[ProjectVectorStore] = field(default=None, repr=False)
+    _hive_mind = field(default=hive_mind, init=False, repr=False)
 
     def __post_init__(self):
         """Ensure work directory exists"""
@@ -77,7 +80,8 @@ class ServantProject:
             self._graphiti_client = VesselsGraphitiClient(
                 community_id=self.community_id,
                 servant_id=self.id,
-                read_only_communities=self.read_only_communities
+                read_only_communities=self.read_only_communities,
+                allow_mock=os.getenv("VESSELS_GRAPHITI_ALLOW_MOCK", "0") == "1",
             )
             logger.debug(f"Created Graphiti client for project {self.id}")
 
@@ -107,6 +111,11 @@ class ServantProject:
     def get_config_file(self) -> Path:
         """Get path to project config file"""
         return self.work_dir / "project.json"
+
+    @property
+    def hive(self):
+        """Expose the shared hive mind interface for the servant."""
+        return self._hive_mind
 
     def save_config(self):
         """Save project configuration to disk"""

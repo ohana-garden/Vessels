@@ -14,12 +14,12 @@ from typing import Dict, List, Any, Optional
 # Import all core modules
 from agent_zero_core import agent_zero, AgentZeroCore
 from dynamic_agent_factory import agent_factory, process_community_request
-from community_memory import community_memory, CommunityMemory
 from grant_coordination_system import grant_system, GrantCoordinationSystem
 from adaptive_tools import adaptive_tools, AdaptiveTools
 from vessels_interface import vessels_interface, VesselsInterface
 from auto_deploy import auto_deploy, deploy_vessels_platform
 from universal_connector import universal_connector, UniversalConnector
+from vessels.hive_mind import hive_mind, HiveMind
 
 # Configure logging
 logging.basicConfig(
@@ -44,6 +44,7 @@ class VesselsPlatform:
         # Core system components
         self.agent_core = None
         self.memory_system = None
+        self.hive_mind: Optional[HiveMind] = None
         self.tool_system = None
         self.grant_system = None
         self.connector_system = None
@@ -84,9 +85,10 @@ class VesselsPlatform:
         
         logger.info("🔧 Initializing core systems...")
         
-        # Initialize Community Memory (must be first)
-        self.memory_system = community_memory
-        logger.info("✅ Community Memory System initialized")
+        # Initialize shared Hive Mind (wraps Community Memory)
+        self.hive_mind = hive_mind
+        self.memory_system = self.hive_mind
+        logger.info("✅ Hive Mind (Community Memory) initialized")
         
         # Initialize Adaptive Tools
         self.tool_system = adaptive_tools

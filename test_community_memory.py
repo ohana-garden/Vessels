@@ -87,7 +87,7 @@ class TestCommunityMemory:
 
     def setup_method(self):
         """Create fresh CommunityMemory instance for each test"""
-        self.memory = CommunityMemory()
+        self.memory = CommunityMemory(db_path=":memory:")
         # Give the background thread a moment to start
         time.sleep(0.1)
 
