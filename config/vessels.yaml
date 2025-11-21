@@ -1,0 +1,303 @@
+# Vessels Configuration
+# Complete configuration for FalkorDB, Graphiti, Nostr, on-device AI, and Petals integration
+
+# ============================================================================
+# CORE SETTINGS
+# ============================================================================
+community_id: "example_community"
+deployment_mode: "edge"  # device, edge, cloud (cloud=air-gapped server)
+environment: "development"  # development, production
+
+# ============================================================================
+# COMPUTE TIERS
+# ============================================================================
+compute:
+  # Tier 0: On-Device (phone, tablet, laptop)
+  tier0:
+    enabled: true
+    model: "Llama-3.2-1B"  # Small model for device
+    quantization: "q4"  # q4, q8, fp16
+    device: "cpu"  # cpu, cuda, mps, xnnpack
+    max_context: 2048
+    latency_target_ms: 100
+
+  # Tier 1: Local Edge Node (home server)
+  tier1:
+    enabled: true
+    host: "localhost"
+    port: 8080
+    model: "Llama-3.1-70B"  # Larger model for edge
+    max_context: 32768
+    latency_target_ms: 1000
+    tls_enabled: true
+    tls_cert_path: null  # Auto-generate if null
+
+  # Tier 2: Petals Network (optional distributed compute)
+  tier2:
+    enabled: false  # DISABLED by default (privacy-first)
+    allowed_models:
+      - "meta-llama/Llama-3.1-70b-hf"
+      - "mistralai/Mixtral-8x7B-v0.1"
+    max_tokens: 4096
+    timeout_seconds: 30
+    sanitize_data: true  # ALWAYS sanitize before Petals
+
+# ============================================================================
+# KNOWLEDGE LAYER (FalkorDB + Graphiti)
+# ============================================================================
+knowledge:
+  # FalkorDB (Redis-based graph database)
+  falkordb:
+    host: "localhost"
+    port: 6379
+    password: null
+    db: 0
+    namespace: "example_community"  # Graph name prefix
+    max_memory_mb: 512
+    eviction_policy: "allkeys-lru"
+    snapshot_interval_hours: 6
+    aof_enabled: false  # Disable for off-grid efficiency
+
+  # Graphiti (temporal knowledge graph)
+  graphiti:
+    enabled: true
+    namespace: "example_community"
+    auto_extract_entities: true
+    entity_types:
+      - "Person"
+      - "Place"
+      - "Organization"
+      - "Event"
+      - "Resource"
+      - "Experience"
+      - "Servant"
+      - "CommercialAgent"
+    relationship_inference: true
+    temporal_validity_tracking: true
+
+  # Vector stores
+  vector_stores:
+    type: "hybrid"  # project, shared, hybrid
+    embedding_model: "sentence-transformers/all-MiniLM-L6-v2"
+    embedding_dim: 384
+    project_store:
+      enabled: true
+      format: "npz"  # NumPy compressed
+      cache_size_mb: 100
+    shared_store:
+      enabled: true
+      format: "npz"
+      cache_size_mb: 500
+
+  # Retrieval settings
+  retrieval:
+    latency_budget_ms: 100
+    strategy: "hybrid"  # vector, graph, hybrid
+    k_results: 10
+    rerank: true
+
+# ============================================================================
+# COMMUNICATION LAYER
+# ============================================================================
+communication:
+  # Local RPC (Tier 0 ↔ Tier 1)
+  local_rpc:
+    enabled: true
+    protocol: "websocket"  # websocket, http, grpc
+    port: 8080
+    tls_enabled: true
+    compression: true
+
+  # Nostr (decentralized messaging)
+  nostr:
+    enabled: false  # DISABLED by default (opt-in only)
+    relays:
+      - "wss://relay.damus.io"
+      - "wss://relay.nostr.band"
+    publish_types: []  # Empty = publish nothing
+    # Allowed types: status, offer, need, announcement, metric
+    keypair:
+      generate_new: true  # Generate new keypair on first run
+      public_key: null
+      private_key: null  # Store securely!
+    subscribe_filters:
+      kinds: [30101, 30102, 30104]  # offers, needs, announcements
+      trusted_pubkeys: []  # Only subscribe from these (empty = all)
+
+# ============================================================================
+# ON-DEVICE UX LAYER (Tier 0)
+# ============================================================================
+device:
+  # Speech-to-Text (whisper.cpp)
+  stt:
+    enabled: true
+    model: "small.en"  # tiny.en, base.en, small.en, medium.en
+    language: "en"
+    device: "cpu"
+    streaming: true
+    vad_enabled: true  # Voice activity detection
+
+  # Text-to-Speech (Piper/Kokoro)
+  tts:
+    enabled: true
+    engine: "kokoro"  # kokoro, piper, espeak
+    voice: "default"
+    sample_rate: 22050
+    device: "cpu"
+    emotional_adaptation: true  # Adapt to user emotion
+
+  # On-device LLM
+  local_llm:
+    enabled: true
+    model: "Llama-3.2-1B"
+    quantization: "q4"
+    device: "cpu"
+    use_cases:
+      - "intent_classification"
+      - "emotion_inference"
+      - "simple_qa"
+
+  # Emotional Intelligence
+  emotion:
+    enabled: true  # Can be disabled for privacy
+    history_length: 10  # Number of states to track
+    model: "rule-based"  # rule-based, ml, llm
+    prosody_analysis: false  # Requires audio features
+    long_term_profiling: false  # DISABLED by default
+
+# ============================================================================
+# PRIVACY & SECURITY
+# ============================================================================
+privacy:
+  # Default privacy level for community data
+  default_privacy_level: "PRIVATE"  # PRIVATE, SHARED, PUBLIC, FEDERATED
+
+  # Cross-community access
+  allow_cross_community_reads: false
+  trusted_communities: []
+
+  # External communication
+  sanitize_external_data: true
+  log_sensitive_data: false
+  emotional_data_retention_hours: 24  # Auto-delete after 24h
+
+  # Commercial agent controls
+  commercial_agents:
+    allow: false  # Must be explicitly enabled
+    require_individual_consent: true
+    max_interactions_per_day: 3
+    min_relevance_score: 0.85
+    max_manipulation_score: 0.10
+    forbidden_categories:
+      - "predatory_lending"
+      - "gambling"
+      - "mlm"
+
+# ============================================================================
+# MORAL CONSTRAINTS (12D Phase Space)
+# ============================================================================
+constraints:
+  # Action gating
+  action_gating_enabled: true
+  block_on_violation: true
+  log_security_events: true
+
+  # Minimum thresholds for servant agents
+  servant_minimums:
+    truthfulness: 0.95  # Non-negotiable
+    service_ratio: 0.90
+    max_extraction: 0.05
+
+  # Commercial agent thresholds
+  commercial_minimums:
+    truthfulness: 0.95  # SAME as servants
+    disclosure: 0.98    # HIGHER than servants
+    service_ratio: 0.60
+    max_extraction: 0.40
+
+  # Constraint coupling
+  coupling_rules:
+    - "if any_virtue > 0.6 then truthfulness >= 0.6"
+    - "if any_virtue > 0.8 then truthfulness >= 0.7"
+    - "if justice > 0.7 then truthfulness >= 0.7 and understanding >= 0.6"
+    - "if service > 0.7 then detachment >= 0.6"
+
+# ============================================================================
+# AGENT RUNTIME
+# ============================================================================
+agents:
+  # Agent Zero (meta-orchestrator)
+  agent_zero:
+    enabled: true
+    max_concurrent_agents: 50
+    thread_pool_size: 10
+    message_queue_size: 1000
+
+  # Project-based isolation
+  project_isolation:
+    enabled: true
+    per_servant_workspace: true
+    dedicated_vector_stores: true
+    isolated_logging: true
+
+  # Dynamic agent factory
+  dynamic_creation:
+    enabled: true
+    require_approval: false  # Auto-create from natural language
+
+# ============================================================================
+# MONITORING & LOGGING
+# ============================================================================
+monitoring:
+  log_level: "INFO"  # DEBUG, INFO, WARNING, ERROR
+  log_file: "logs/vessels.log"
+  log_rotation: "daily"
+  log_retention_days: 30
+
+  # Metrics
+  metrics_enabled: true
+  metrics_port: 9090
+  track_latency: true
+  track_token_usage: true
+  track_tier_distribution: true
+
+  # Alerts
+  alerts_enabled: false
+  alert_webhook: null
+
+# ============================================================================
+# KALA VALUE SYSTEM
+# ============================================================================
+kala:
+  enabled: true
+  reference_peg_usd: 1.0  # 1 kala ≈ $1 USD
+  track_contributions: true
+  contribution_types:
+    - "time"
+    - "skills"
+    - "resources"
+    - "care"
+    - "food"
+    - "transport"
+  generate_impact_reports: true
+
+# ============================================================================
+# DEPLOYMENT
+# ============================================================================
+deployment:
+  # Server
+  host: "0.0.0.0"
+  port: 8080
+  workers: 4
+
+  # Database
+  database_url: "sqlite:///./vessels.db"
+
+  # Docker
+  docker_compose_path: "docker-compose.yml"
+  falkordb_container: "falkordb"
+
+  # Off-grid settings
+  offgrid_mode: false
+  battery_optimization: false
+  reduce_snapshot_frequency: false

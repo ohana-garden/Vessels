@@ -25,6 +25,60 @@ lxml>=4.9.0
 # YAML parser used for BMAD loader
 pyyaml>=5.4.0
 
+# ============================================================================
+# NEW INTEGRATIONS (FalkorDB + Graphiti + Nostr + On-Device AI + Petals)
+# ============================================================================
+
+# Communication: Nostr protocol
+cryptography>=41.0.0  # For Nostr keypair generation and signing
+
+# On-Device AI: Speech-to-Text (Whisper)
+# Option 1: faster-whisper (recommended, most efficient)
+faster-whisper>=0.10.0
+
+# Option 2: whisper.cpp Python bindings
+# whispercpp>=0.1.0  # Uncomment if using whisper.cpp directly
+
+# Option 3: OpenAI Whisper (fallback)
+# openai-whisper>=20230314  # Uncomment if needed
+
+# On-Device AI: Text-to-Speech
+# Kokoro-82M (Apache 2.0)
+# kokoro-tts>=0.1.0  # Install when available
+
+# Piper TTS (MIT)
+# piper-tts>=1.2.0  # Install when available
+
+# StyleTTS2 (alternative)
+# styletts2>=0.1.0  # Install when available
+
+# On-Device AI: Local LLM
+# Option 1: ExecuTorch (PyTorch on-device runtime)
+# executorch>=0.1.0  # Install when available from PyTorch
+
+# Option 2: llama.cpp Python bindings (recommended)
+llama-cpp-python>=0.2.0
+
+# Option 3: MLC-LLM (mobile deployment)
+# mlc-llm>=0.1.0  # Install when available
+
+# Option 4: Transformers (fallback, slower but always works)
+transformers>=4.35.0
+torch>=2.1.0
+
+# Distributed Compute: Petals
+# OPTIONAL: Only install if using Tier 2 (Petals network)
+# petals>=2.0.0  # Uncomment to enable distributed large model inference
+
+# Emotional Intelligence: ML models
+# bhadresh-savani/distilbert-base-uncased-emotion via transformers
+
+# Audio processing (for STT/TTS/Emotion)
+# pyaudio>=0.2.13  # Uncomment if using microphone input
+soundfile>=0.12.0  # For audio file I/O
+
+# ============================================================================
+
 # Optional dependencies for enhanced functionality
 matplotlib>=3.4.0
 seaborn>=0.11.0
