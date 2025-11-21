@@ -15,7 +15,7 @@ import logging
 from typing import Dict, Any, List, Optional
 from dataclasses import dataclass
 
-from .graphiti_client import ShorghiGraphitiClient
+from .graphiti_client import VesselsGraphitiClient
 from .vector_stores import ProjectVectorStore, SharedVectorStore
 
 logger = logging.getLogger(__name__)
@@ -44,7 +44,7 @@ class ContextAssembler:
     def __init__(
         self,
         project_vector_store: ProjectVectorStore,
-        graphiti_client: ShorghiGraphitiClient,
+        graphiti_client: VesselsGraphitiClient,
         shared_vector_store: Optional[SharedVectorStore] = None
     ):
         """
