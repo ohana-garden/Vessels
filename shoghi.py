@@ -130,7 +130,7 @@ class ShoghiPlatform:
     
     def start(self, mode: str = "development", run_loop: bool = True):
         """Start the complete Shoghi platform"""
-        
+
         self.mode = mode
         self.start_time = datetime.now()
         self.running = True
@@ -140,9 +140,9 @@ class ShoghiPlatform:
         try:
             # Initialize all core systems
             self._initialize_core_systems()
-            
+
             # Start platform services
-            self._start_platform_services()
+            self._start_platform_services(run_loop=run_loop)
             
             # Log startup completion
             self._log_startup_completion()
@@ -199,7 +199,7 @@ class ShoghiPlatform:
         self.deploy_system = auto_deploy
         logger.info("✅ Auto Deploy System initialized")
     
-    def _start_platform_services(self):
+    def _start_platform_services(self, run_loop: bool = True):
         """Start all platform services"""
         
         logger.info("🎯 Starting platform services...")
@@ -215,11 +215,14 @@ class ShoghiPlatform:
         
         # Deploy platform if requested
         if self.mode == "deployed":
-            logger.info("🚀 Deploying Shoghi platform...")
-            # TODO: Deployment currently blocks the main thread; offload to an
-            # executor or async worker so startup logging continues promptly.
-            deployment_id = self.deploy_system.deploy_shoghi_platform()
-            logger.info(f"✅ Platform deployed: {deployment_id}")
+            if run_loop:
+                logger.info("🚀 Deploying Shoghi platform...")
+                # TODO: Deployment currently blocks the main thread; offload to an
+                # executor or async worker so startup logging continues promptly.
+                deployment_id = self.deploy_system.deploy_shoghi_platform()
+                logger.info(f"✅ Platform deployed: {deployment_id}")
+            else:
+                logger.info("⏩ Skipping deployment for status-only startup")
         
         logger.info("✅ All platform services started")
     
