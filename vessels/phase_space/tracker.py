@@ -20,25 +20,25 @@ from ..gating.events import SecurityEvent, StateTransition
 
 class TrajectoryTracker:
     """
-    SQLite-based storage for trajectories and events.
+    FalkorDB/Graphiti-based storage for trajectories and events (default).
 
     Schema matches spec section 1.5.
-    Supports hybrid mode with Graphiti backend.
+    Supports legacy SQLite mode and hybrid mode for migration.
     """
 
     def __init__(
         self,
         db_path: str = "vessels_trajectories.db",
-        backend: str = "sqlite",
+        backend: str = "graphiti",
         graphiti_client=None,
         community_id: Optional[str] = None
     ):
         """
-        Initialize tracker with SQLite database and optional Graphiti backend.
+        Initialize tracker with Graphiti/FalkorDB backend (default) or legacy SQLite.
 
         Args:
-            db_path: Path to SQLite database file
-            backend: Backend type: "sqlite", "graphiti", or "hybrid"
+            db_path: Path to SQLite database file (legacy only)
+            backend: Backend type: "graphiti" (default), "sqlite" (legacy), or "hybrid"
             graphiti_client: VesselsGraphitiClient instance (for graphiti/hybrid backends)
             community_id: Community ID (for graphiti backend)
         """

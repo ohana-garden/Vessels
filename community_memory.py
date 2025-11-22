@@ -56,7 +56,7 @@ class CommunityMemory:
     def __init__(
         self,
         db_path: Optional[str] = None,
-        backend: str = "sqlite",
+        backend: str = "graphiti",
         graphiti_client=None,
         community_id: Optional[str] = None
     ):
@@ -64,8 +64,8 @@ class CommunityMemory:
         Initialize Community Memory system.
 
         Args:
-            db_path: Path to SQLite database (for sqlite backend)
-            backend: Backend type: "sqlite", "graphiti", or "hybrid"
+            db_path: Path to SQLite database (for sqlite backend, legacy only)
+            backend: Backend type: "graphiti" (default), "sqlite" (legacy), or "hybrid"
             graphiti_client: VesselsGraphitiClient instance (for graphiti/hybrid backends)
             community_id: Community ID (for graphiti backend)
         """
@@ -75,6 +75,12 @@ class CommunityMemory:
 
         # Initialize Graphiti backend if requested
         if backend in ["graphiti", "hybrid"]:
+            # Use default community if not specified
+            if community_id is None:
+                community_id = "default_community"
+                self.community_id = community_id
+                logger.info("Using default_community as community_id")
+
             if graphiti_client is None and community_id:
                 # Lazy-load graphiti client
                 try:
@@ -986,4 +992,13 @@ class CommunityMemory:
         logger.info("Community Memory System shutdown complete")
 
 # Global memory instance
-community_memory = CommunityMemory()
+# Note: For production, initialize with community_id:
+#   community_memory = CommunityMemory(
+#       backend="graphiti",
+#       community_id="your_community_id"
+#   )
+# Falls back to SQLite if Graphiti unavailable
+community_memory = CommunityMemory(
+    backend="graphiti",
+    community_id="default_community"
+)
