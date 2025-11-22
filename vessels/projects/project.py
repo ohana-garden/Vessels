@@ -1,228 +1,257 @@
 """
-Servant Project Definition
+Servant Project Management
 
-A Project represents an isolated workspace for a single servant with:
-- Dedicated work directory
-- Project-specific vector store
-- Graphiti client with namespaced access
-- Custom system prompts
-- Project-specific secrets
+Provides isolated project environments for servant agents with:
+- Dedicated working directories
+- Project-specific vector stores
+- Graphiti namespace isolation
+- Custom configuration and prompts
 """
 
 from dataclasses import dataclass, field
-import os
-from pathlib import Path
-from typing import Dict, Any, List, Optional
 from datetime import datetime
+from pathlib import Path
+from typing import Dict, List, Optional, Any
 from enum import Enum
+import json
 import logging
-
-from vessels.knowledge import VesselsGraphitiClient, ProjectVectorStore
-from vessels.knowledge.schema import ServantType, CommunityPrivacy
-from vessels.hive_mind import hive_mind
 
 logger = logging.getLogger(__name__)
 
 
-class ProjectStatus(str, Enum):
-    """Status of a servant project"""
+class ProjectStatus(Enum):
+    """Project lifecycle status"""
     INITIALIZING = "initializing"
     ACTIVE = "active"
-    IDLE = "idle"
     PAUSED = "paused"
     COMPLETED = "completed"
     ARCHIVED = "archived"
-    ERROR = "error"
+    FAILED = "failed"
 
 
 @dataclass
 class ServantProject:
     """
-    Isolated project for a single servant
-
-    Each project has:
-    - Dedicated workspace (no cross-contamination)
-    - Project-specific vector store
-    - Graphiti client with community graph access
-    - Custom system prompt defining role and constraints
+    Isolated project environment for a servant agent.
+    
+    Each project provides:
+    - Dedicated working directory for files and artifacts
+    - Project-specific vector store for RAG
+    - Graphiti namespace for knowledge graph operations
+    - Custom system prompts and configuration
+    - Resource tracking and lifecycle management
     """
-
+    
     id: str
     community_id: str
-    servant_type: ServantType
+    servant_type: str  # "transport", "meals", "medical", etc.
     work_dir: Path
-    graphiti_namespace: str  # Community graph name
+    graphiti_namespace: str
     system_prompt: str
-    status: ProjectStatus = ProjectStatus.INITIALIZING
-    created_at: datetime = field(default_factory=datetime.utcnow)
-    last_active: datetime = field(default_factory=datetime.utcnow)
-
+    status: ProjectStatus
+    created_at: datetime
+    last_active: datetime
+    
     # Optional fields
+    vector_store_path: Optional[Path] = None
     secrets: Dict[str, str] = field(default_factory=dict)
-    config: Dict[str, Any] = field(default_factory=dict)
-    read_only_communities: List[str] = field(default_factory=list)
-
-    # Lazy-loaded components
-    _graphiti_client: Optional[VesselsGraphitiClient] = field(default=None, repr=False)
-    _vector_store: Optional[ProjectVectorStore] = field(default=None, repr=False)
-    _hive_mind = field(default=hive_mind, init=False, repr=False)
-
+    metadata: Dict[str, Any] = field(default_factory=dict)
+    allowed_tools: List[str] = field(default_factory=list)
+    resource_limits: Dict[str, Any] = field(default_factory=dict)
+    
     def __post_init__(self):
-        """Ensure work directory exists"""
-        self.work_dir = Path(self.work_dir)
+        """Initialize project paths and resources"""
+        # Ensure work_dir is a Path object
+        if isinstance(self.work_dir, str):
+            self.work_dir = Path(self.work_dir)
+        
+        # Set vector store path if not provided
+        if self.vector_store_path is None:
+            self.vector_store_path = self.work_dir / "vectors"
+        
+        # Create project directories
         self.work_dir.mkdir(parents=True, exist_ok=True)
-        logger.info(f"Initialized project {self.id} at {self.work_dir}")
-
-    @property
-    def graphiti(self) -> VesselsGraphitiClient:
-        """Lazy-load Graphiti client"""
-        if self._graphiti_client is None:
-            self._graphiti_client = VesselsGraphitiClient(
-                community_id=self.community_id,
-                servant_id=self.id,
-                read_only_communities=self.read_only_communities,
-                allow_mock=os.getenv("VESSELS_GRAPHITI_ALLOW_MOCK", "0") == "1",
-            )
-            logger.debug(f"Created Graphiti client for project {self.id}")
-
-        return self._graphiti_client
-
-    @property
-    def vector_store(self) -> ProjectVectorStore:
-        """Lazy-load project vector store"""
-        if self._vector_store is None:
-            self._vector_store = ProjectVectorStore(self.work_dir)
-            logger.debug(f"Loaded vector store for project {self.id} ({self._vector_store.count()} docs)")
-
-        return self._vector_store
-
-    def get_files_dir(self) -> Path:
-        """Get directory for project-specific files"""
-        files_dir = self.work_dir / "files"
-        files_dir.mkdir(exist_ok=True)
-        return files_dir
-
-    def get_logs_dir(self) -> Path:
-        """Get directory for project logs"""
-        logs_dir = self.work_dir / "logs"
-        logs_dir.mkdir(exist_ok=True)
-        return logs_dir
-
-    def get_config_file(self) -> Path:
-        """Get path to project config file"""
-        return self.work_dir / "project.json"
-
-    @property
-    def hive(self):
-        """Expose the shared hive mind interface for the servant."""
-        return self._hive_mind
-
+        self.vector_store_path.mkdir(parents=True, exist_ok=True)
+        
+        # Create additional project directories
+        (self.work_dir / "logs").mkdir(exist_ok=True)
+        (self.work_dir / "artifacts").mkdir(exist_ok=True)
+        (self.work_dir / "config").mkdir(exist_ok=True)
+    
+    def get_graphiti_client(self):
+        """
+        Get Graphiti client for this project's namespace.
+        
+        Returns:
+            VesselsGraphitiClient configured for this project
+        """
+        from vessels.knowledge.graphiti_client import VesselsGraphitiClient
+        
+        return VesselsGraphitiClient(
+            community_id=self.community_id,
+            allow_mock=False  # Projects should use real Graphiti
+        )
+    
+    def load_vector_store(self):
+        """
+        Load or create project-specific vector store.
+        
+        Returns:
+            ProjectVectorStore instance
+        """
+        from vessels.knowledge.vector_store import ProjectVectorStore
+        
+        return ProjectVectorStore(self.vector_store_path)
+    
     def save_config(self):
         """Save project configuration to disk"""
-        import json
-
-        config_data = {
+        config_path = self.work_dir / "config" / "project.json"
+        
+        config = {
             "id": self.id,
             "community_id": self.community_id,
-            "servant_type": self.servant_type.value,
+            "servant_type": self.servant_type,
+            "work_dir": str(self.work_dir),
             "graphiti_namespace": self.graphiti_namespace,
             "system_prompt": self.system_prompt,
             "status": self.status.value,
             "created_at": self.created_at.isoformat(),
             "last_active": self.last_active.isoformat(),
-            "config": self.config,
-            "read_only_communities": self.read_only_communities
+            "metadata": self.metadata,
+            "allowed_tools": self.allowed_tools,
+            "resource_limits": self.resource_limits,
         }
-
-        with open(self.get_config_file(), "w") as f:
-            json.dump(config_data, f, indent=2)
-
-        logger.debug(f"Saved project config for {self.id}")
-
+        
+        with open(config_path, 'w') as f:
+            json.dump(config, f, indent=2)
+        
+        logger.info(f"Saved project config: {config_path}")
+    
     @classmethod
-    def load_from_dir(cls, project_dir: Path) -> "ServantProject":
-        """Load project from directory"""
-        import json
-
-        config_file = project_dir / "project.json"
-        if not config_file.exists():
-            raise FileNotFoundError(f"Project config not found: {config_file}")
-
-        with open(config_file, "r") as f:
-            config_data = json.load(f)
-
+    def load_from_config(cls, config_path: Path) -> 'ServantProject':
+        """Load project from saved configuration"""
+        with open(config_path, 'r') as f:
+            config = json.load(f)
+        
         return cls(
-            id=config_data["id"],
-            community_id=config_data["community_id"],
-            servant_type=ServantType(config_data["servant_type"]),
-            work_dir=project_dir,
-            graphiti_namespace=config_data["graphiti_namespace"],
-            system_prompt=config_data["system_prompt"],
-            status=ProjectStatus(config_data["status"]),
-            created_at=datetime.fromisoformat(config_data["created_at"]),
-            last_active=datetime.fromisoformat(config_data["last_active"]),
-            config=config_data.get("config", {}),
-            read_only_communities=config_data.get("read_only_communities", [])
+            id=config["id"],
+            community_id=config["community_id"],
+            servant_type=config["servant_type"],
+            work_dir=Path(config["work_dir"]),
+            graphiti_namespace=config["graphiti_namespace"],
+            system_prompt=config["system_prompt"],
+            status=ProjectStatus(config["status"]),
+            created_at=datetime.fromisoformat(config["created_at"]),
+            last_active=datetime.fromisoformat(config["last_active"]),
+            metadata=config.get("metadata", {}),
+            allowed_tools=config.get("allowed_tools", []),
+            resource_limits=config.get("resource_limits", {}),
         )
-
-    def update_status(self, new_status: ProjectStatus):
-        """Update project status"""
-        old_status = self.status
-        self.status = new_status
+    
+    def update_activity(self):
+        """Update last_active timestamp"""
         self.last_active = datetime.utcnow()
         self.save_config()
-
-        logger.info(f"Project {self.id} status: {old_status.value} → {new_status.value}")
-
-    def archive(self):
-        """Archive this project"""
-        self.update_status(ProjectStatus.ARCHIVED)
-
-        # Record in graph
-        try:
-            self.graphiti.create_node(
-                node_type="Event",
-                properties={
-                    "type": "project_archived",
-                    "project_id": self.id,
-                    "servant_type": self.servant_type.value,
-                    "archived_at": datetime.utcnow().isoformat()
-                }
-            )
-        except Exception as e:
-            logger.error(f"Error recording archive event in graph: {e}")
-
-    def get_allowed_tools(self) -> List[str]:
-        """Get list of tools this servant is allowed to use"""
-        # Default tools for all servants
-        base_tools = [
-            "read_file",
-            "write_file",
-            "search_web",
-            "query_memory",
-            "store_memory"
-        ]
-
-        # Servant-type-specific tools
-        type_tools = {
-            ServantType.TRANSPORT: ["map_api", "schedule_api"],
-            ServantType.MEALS: ["nutrition_api", "recipe_search"],
-            ServantType.MEDICAL: ["medical_facility_api"],
-            ServantType.GRANT_WRITER: ["grant_database_api", "document_generator"],
+    
+    def get_allowed_read_graphs(self) -> List[str]:
+        """
+        Get list of graph namespaces this project can read from.
+        
+        By default, projects can read from:
+        - Their own community graph
+        - Shared community knowledge (if permitted)
+        
+        Returns:
+            List of graph namespace IDs
+        """
+        allowed = [self.graphiti_namespace]
+        
+        # Add shared graph if configured
+        if self.metadata.get("allow_shared_read", False):
+            allowed.append(f"shared_knowledge_graph")
+        
+        return allowed
+    
+    def log_execution(self, task: str, result: Any, duration_ms: float):
+        """Log task execution for tracking and analysis"""
+        log_entry = {
+            "timestamp": datetime.utcnow().isoformat(),
+            "task": task,
+            "result_summary": str(result)[:200],  # Truncate for logs
+            "duration_ms": duration_ms,
+            "status": "success" if result else "failure"
         }
-
-        return base_tools + type_tools.get(self.servant_type, [])
-
+        
+        log_path = self.work_dir / "logs" / "executions.jsonl"
+        with open(log_path, 'a') as f:
+            f.write(json.dumps(log_entry) + '\n')
+    
+    def get_resource_usage(self) -> Dict[str, Any]:
+        """Get current resource usage statistics"""
+        return {
+            "work_dir_size_mb": self._get_dir_size(self.work_dir) / (1024 * 1024),
+            "vector_store_size_mb": self._get_dir_size(self.vector_store_path) / (1024 * 1024),
+            "log_count": len(list((self.work_dir / "logs").glob("*.jsonl"))),
+            "artifact_count": len(list((self.work_dir / "artifacts").glob("*"))),
+        }
+    
+    def _get_dir_size(self, path: Path) -> int:
+        """Get total size of directory in bytes"""
+        if not path.exists():
+            return 0
+        
+        total = 0
+        for entry in path.rglob('*'):
+            if entry.is_file():
+                total += entry.stat().st_size
+        return total
+    
+    def archive(self):
+        """Archive project (mark as archived, preserve data)"""
+        self.status = ProjectStatus.ARCHIVED
+        self.save_config()
+        logger.info(f"Archived project: {self.id}")
+    
+    def cleanup(self, preserve_logs: bool = True):
+        """
+        Clean up project resources.
+        
+        Args:
+            preserve_logs: If True, keep log files
+        """
+        import shutil
+        
+        # Remove artifacts
+        artifacts_dir = self.work_dir / "artifacts"
+        if artifacts_dir.exists():
+            shutil.rmtree(artifacts_dir)
+            artifacts_dir.mkdir()
+        
+        # Remove vector store
+        if self.vector_store_path.exists():
+            shutil.rmtree(self.vector_store_path)
+            self.vector_store_path.mkdir()
+        
+        # Optionally preserve logs
+        if not preserve_logs:
+            logs_dir = self.work_dir / "logs"
+            if logs_dir.exists():
+                shutil.rmtree(logs_dir)
+                logs_dir.mkdir()
+        
+        logger.info(f"Cleaned up project: {self.id} (preserve_logs={preserve_logs})")
+    
     def to_dict(self) -> Dict[str, Any]:
-        """Convert project to dictionary"""
+        """Convert project to dictionary for serialization"""
         return {
             "id": self.id,
             "community_id": self.community_id,
-            "servant_type": self.servant_type.value,
+            "servant_type": self.servant_type,
             "work_dir": str(self.work_dir),
+            "graphiti_namespace": self.graphiti_namespace,
             "status": self.status.value,
             "created_at": self.created_at.isoformat(),
             "last_active": self.last_active.isoformat(),
-            "vector_store_docs": self.vector_store.count() if self._vector_store else 0,
-            "config": self.config
+            "metadata": self.metadata,
+            "resource_usage": self.get_resource_usage(),
         }

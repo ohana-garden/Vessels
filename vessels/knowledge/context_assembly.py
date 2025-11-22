@@ -1,390 +1,358 @@
 """
 Context Assembly Pipeline
 
-Fast multi-source context retrieval for servant tasks:
-1. Project vector store (task-specific, ~10ms)
-2. Graph traversal (relational context, ~20ms)
-3. Shared vector store (general knowledge, ~30ms if needed)
-4. Ranking and combination (~10ms)
+Fast multi-source context retrieval for servant agents.
 
-Target: <100ms total
+Target latency: <100ms total
+- Project vectors: ~10ms
+- Graph traversal: ~20ms
+- Shared vectors: ~30ms (if needed)
+- Ranking: ~10ms
+
+Architecture:
+1. Query project-specific vector store (FAST)
+2. Extract entities and query graph (MEDIUM)
+3. Fallback to shared store if insufficient (SLOW)
+4. Rank and combine by relevance + recency + centrality
 """
 
+from typing import Dict, List, Any, Optional
 import time
 import logging
-from typing import Dict, Any, List, Optional
-from dataclasses import dataclass
-
-from .graphiti_client import ShorghiGraphitiClient
-from .vector_stores import ProjectVectorStore, SharedVectorStore
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class ContextSource:
-    """A single piece of context from a source"""
-    text: str
-    source: str  # "project_vectors", "graph", "shared_vectors"
-    similarity: float
-    metadata: Dict[str, Any]
-    score: float = 0.0  # Combined score after ranking
-
-
 class ContextAssembler:
     """
-    Assembles context for servant tasks within <100ms budget
-
-    Multi-source retrieval with intelligent ranking:
-    - Project vectors: High relevance, task-specific
-    - Graph context: Relationship awareness, entity connections
-    - Shared vectors: General knowledge fallback
+    Assembles context for servant tasks within <100ms latency budget.
+    
+    Multi-source context assembly:
+    - Project-specific knowledge (vector store)
+    - Graph-based relationships (Graphiti)
+    - Shared community knowledge (shared vector store)
+    
+    Context is ranked by:
+    - Semantic relevance (50%)
+    - Recency (30%)
+    - Graph centrality (20%)
     """
-
+    
     def __init__(
         self,
-        project_vector_store: ProjectVectorStore,
-        graphiti_client: ShorghiGraphitiClient,
-        shared_vector_store: Optional[SharedVectorStore] = None
+        project: 'ServantProject',
+        shared_store: Optional['SharedVectorStore'] = None
     ):
         """
-        Initialize context assembler
-
+        Initialize context assembler.
+        
         Args:
-            project_vector_store: Project-specific vector store
-            graphiti_client: Graphiti client for graph queries
-            shared_vector_store: Optional shared knowledge store
+            project: ServantProject instance
+            shared_store: Optional shared community knowledge store
         """
-        self.project_store = project_vector_store
-        self.graphiti = graphiti_client
-        self.shared_store = shared_vector_store
-
-        self.stats = {
-            "total_assemblies": 0,
-            "avg_time_ms": 0.0,
-            "source_usage": {
-                "project_vectors": 0,
-                "graph": 0,
-                "shared_vectors": 0
-            }
-        }
-
-    async def assemble_context(self, task: str, max_results: int = 10) -> Dict[str, Any]:
+        self.project = project
+        self.shared_store = shared_store
+        
+        # Initialize subsystems
+        self.project_store = project.load_vector_store()
+        self.graphiti = project.get_graphiti_client()
+        
+        # Performance tracking
+        self.assembly_times: List[float] = []
+    
+    async def assemble_context(
+        self,
+        task: str,
+        max_results: int = 10,
+        include_shared: bool = True
+    ) -> Dict[str, Any]:
         """
-        Assemble context for a task (async for parallel queries)
-
+        Assemble context from multiple sources.
+        
         Args:
-            task: Task description / query
-            max_results: Maximum number of context pieces
-
+            task: Task description
+            max_results: Maximum number of context items
+            include_shared: Whether to query shared store
+        
         Returns:
-            Dict with assembled context and timing info
+            Assembled context with timing information
         """
         start_time = time.time()
-
-        # Step 1: Query project vector store (FAST - ~10ms)
+        
+        # Step 1: Query project vector store (~10ms)
+        step1_start = time.time()
         project_docs = await self._query_project_vectors(task)
-
-        # Step 2: Get related entities from graph (MEDIUM - ~20ms)
-        graph_context = await self._get_graph_context(task, project_docs)
-
-        # Step 3: Query shared store if insufficient results (SLOW - ~30ms)
+        step1_duration = (time.time() - step1_start) * 1000
+        
+        # Step 2: Get graph context (~20ms)
+        step2_start = time.time()
+        graph_context = await self._get_graph_context(project_docs, task)
+        step2_duration = (time.time() - step2_start) * 1000
+        
+        # Step 3: Query shared store if needed (~30ms)
+        step3_start = time.time()
         shared_docs = []
-        if len(project_docs) < 3 and self.shared_store:
+        if include_shared and len(project_docs) < 3 and self.shared_store:
             shared_docs = await self._query_shared_vectors(task)
-
-        # Step 4: Rank and combine (FAST - ~10ms)
+        step3_duration = (time.time() - step3_start) * 1000
+        
+        # Step 4: Rank and combine (~10ms)
+        step4_start = time.time()
         combined = self._rank_by_relevance(project_docs, graph_context, shared_docs)
         combined = combined[:max_results]
-
-        elapsed_ms = (time.time() - start_time) * 1000
-
-        # Update stats
-        self._update_stats(elapsed_ms, len(project_docs), len(graph_context), len(shared_docs))
-
+        step4_duration = (time.time() - step4_start) * 1000
+        
+        # Total elapsed time
+        total_duration = (time.time() - start_time) * 1000
+        
+        # Track performance
+        self.assembly_times.append(total_duration)
+        
+        # Log performance
+        if total_duration > 100:
+            logger.warning(f"Context assembly exceeded target: {total_duration:.1f}ms")
+        else:
+            logger.info(f"Context assembled in {total_duration:.1f}ms")
+        
         return {
             "task": task,
-            "context": [c.text for c in combined],
-            "sources": [
-                {
-                    "text": c.text,
-                    "source": c.source,
-                    "similarity": c.similarity,
-                    "score": c.score,
-                    "metadata": c.metadata
-                }
-                for c in combined
-            ],
-            "assembly_time_ms": elapsed_ms,
-            "source_counts": {
-                "project": len(project_docs),
-                "graph": len(graph_context),
-                "shared": len(shared_docs)
-            }
+            "project_knowledge": project_docs,
+            "graph_context": graph_context,
+            "shared_knowledge": shared_docs,
+            "combined_context": combined,
+            "assembly_time_ms": total_duration,
+            "timing_breakdown": {
+                "project_vectors_ms": step1_duration,
+                "graph_traversal_ms": step2_duration,
+                "shared_vectors_ms": step3_duration,
+                "ranking_ms": step4_duration,
+            },
+            "performance_target_met": total_duration < 100
         }
-
-    def assemble_context_sync(self, task: str, max_results: int = 10) -> Dict[str, Any]:
-        """Synchronous version of assemble_context (for non-async code)"""
-        start_time = time.time()
-
-        # Step 1: Query project vector store
-        project_docs = self._query_project_vectors_sync(task)
-
-        # Step 2: Get graph context
-        graph_context = self._get_graph_context_sync(task, project_docs)
-
-        # Step 3: Query shared store if needed
-        shared_docs = []
-        if len(project_docs) < 3 and self.shared_store:
-            shared_docs = self._query_shared_vectors_sync(task)
-
-        # Step 4: Rank and combine
-        combined = self._rank_by_relevance(project_docs, graph_context, shared_docs)
-        combined = combined[:max_results]
-
-        elapsed_ms = (time.time() - start_time) * 1000
-
-        self._update_stats(elapsed_ms, len(project_docs), len(graph_context), len(shared_docs))
-
-        return {
-            "task": task,
-            "context": [c.text for c in combined],
-            "sources": [
-                {
-                    "text": c.text,
-                    "source": c.source,
-                    "similarity": c.similarity,
-                    "score": c.score,
-                    "metadata": c.metadata
-                }
-                for c in combined
-            ],
-            "assembly_time_ms": elapsed_ms,
-            "source_counts": {
-                "project": len(project_docs),
-                "graph": len(graph_context),
-                "shared": len(shared_docs)
-            }
-        }
-
-    async def _query_project_vectors(self, query: str) -> List[ContextSource]:
-        """Query project vector store"""
-        results = self.project_store.query(query, top_k=5)
-        return [
-            ContextSource(
-                text=r["text"],
-                source="project_vectors",
-                similarity=r["similarity"],
-                metadata=r.get("metadata", {})
+    
+    async def _query_project_vectors(self, task: str) -> List[Dict]:
+        """
+        Query project vector store.
+        
+        Target: <10ms
+        """
+        try:
+            results = self.project_store.query(task, top_k=5)
+            logger.debug(f"Found {len(results)} docs in project store")
+            return results
+        except Exception as e:
+            logger.error(f"Error querying project vectors: {e}")
+            return []
+    
+    async def _get_graph_context(
+        self,
+        docs: List[Dict],
+        task: str
+    ) -> Dict[str, Any]:
+        """
+        Query graph for related entities and relationships.
+        
+        Target: <20ms
+        """
+        try:
+            # Extract entities mentioned in task or retrieved docs
+            entities = self._extract_entities(task, docs)
+            
+            if not entities:
+                return {}
+            
+            # Query graph for relationships
+            context = {}
+            for entity in entities[:5]:  # Limit to 5 entities for performance
+                try:
+                    # Get neighbors from graph
+                    neighbors = await self._get_neighbors(entity, max_depth=2)
+                    if neighbors:
+                        context[entity] = neighbors
+                except Exception as e:
+                    logger.debug(f"Could not get neighbors for {entity}: {e}")
+            
+            logger.debug(f"Found graph context for {len(context)} entities")
+            return context
+        
+        except Exception as e:
+            logger.error(f"Error getting graph context: {e}")
+            return {}
+    
+    async def _get_neighbors(self, entity: str, max_depth: int = 2) -> List[Dict]:
+        """Get neighbors from graph (async wrapper)"""
+        try:
+            # Note: This would use async Graphiti API in production
+            # For now, wrapping synchronous call
+            neighbors = self.graphiti.get_neighbors(
+                node_id=entity,
+                max_depth=max_depth
             )
-            for r in results
-        ]
-
-    def _query_project_vectors_sync(self, query: str) -> List[ContextSource]:
-        """Sync version of project vector query"""
-        results = self.project_store.query(query, top_k=5)
-        return [
-            ContextSource(
-                text=r["text"],
-                source="project_vectors",
-                similarity=r["similarity"],
-                metadata=r.get("metadata", {})
-            )
-            for r in results
-        ]
-
-    async def _get_graph_context(self, query: str, docs: List[ContextSource]) -> List[ContextSource]:
-        """Get related entities from graph"""
-        # Extract entities mentioned in retrieved docs
-        entities = self._extract_entities(docs)
-
-        context_items = []
-
-        for entity in entities[:5]:  # Limit to 5 entities
-            try:
-                # Query graph for neighbors
-                neighbors = self.graphiti.get_neighbors(entity, max_depth=1)
-
-                # Convert to context sources
-                for rel_type, neighbor_list in neighbors.items():
-                    for neighbor in neighbor_list[:2]:  # Max 2 per relationship type
-                        text = self._format_graph_context(entity, rel_type, neighbor)
-                        context_items.append(
-                            ContextSource(
-                                text=text,
-                                source="graph",
-                                similarity=0.8,  # High relevance for graph connections
-                                metadata={
-                                    "entity": entity,
-                                    "relation": rel_type,
-                                    "neighbor": neighbor
-                                }
-                            )
-                        )
-
-            except Exception as e:
-                logger.error(f"Error querying graph for entity {entity}: {e}")
-
-        return context_items
-
-    def _get_graph_context_sync(self, query: str, docs: List[ContextSource]) -> List[ContextSource]:
-        """Sync version of graph context retrieval"""
-        entities = self._extract_entities(docs)
-        context_items = []
-
-        for entity in entities[:5]:
-            try:
-                neighbors = self.graphiti.get_neighbors(entity, max_depth=1)
-
-                for rel_type, neighbor_list in neighbors.items():
-                    for neighbor in neighbor_list[:2]:
-                        text = self._format_graph_context(entity, rel_type, neighbor)
-                        context_items.append(
-                            ContextSource(
-                                text=text,
-                                source="graph",
-                                similarity=0.8,
-                                metadata={
-                                    "entity": entity,
-                                    "relation": rel_type,
-                                    "neighbor": neighbor
-                                }
-                            )
-                        )
-
-            except Exception as e:
-                logger.error(f"Error querying graph: {e}")
-
-        return context_items
-
-    async def _query_shared_vectors(self, query: str) -> List[ContextSource]:
-        """Query shared vector store"""
+            return neighbors if neighbors else []
+        except:
+            return []
+    
+    async def _query_shared_vectors(self, task: str) -> List[Dict]:
+        """
+        Query shared community knowledge.
+        
+        Target: <30ms
+        """
         if not self.shared_store:
             return []
-
-        results = self.shared_store.query(query, top_k=3)
-        return [
-            ContextSource(
-                text=r["text"],
-                source="shared_vectors",
-                similarity=r["similarity"],
-                metadata=r.get("metadata", {})
-            )
-            for r in results
-        ]
-
-    def _query_shared_vectors_sync(self, query: str) -> List[ContextSource]:
-        """Sync version of shared vector query"""
-        if not self.shared_store:
+        
+        try:
+            results = self.shared_store.query(task, top_k=3)
+            logger.debug(f"Found {len(results)} docs in shared store")
+            return results
+        except Exception as e:
+            logger.error(f"Error querying shared vectors: {e}")
             return []
-
-        results = self.shared_store.query(query, top_k=3)
-        return [
-            ContextSource(
-                text=r["text"],
-                source="shared_vectors",
-                similarity=r["similarity"],
-                metadata=r.get("metadata", {})
-            )
-            for r in results
-        ]
-
-    def _rank_by_relevance(self, *source_lists) -> List[ContextSource]:
+    
+    def _extract_entities(self, task: str, docs: List[Dict]) -> List[str]:
         """
-        Rank and combine context from multiple sources
-
-        Scoring:
-        - 0.5 * semantic_similarity
-        - 0.3 * source_priority (project > graph > shared)
-        - 0.2 * recency
+        Extract entity mentions from task and documents.
+        
+        Note: This is a simple keyword-based extraction.
+        In production, use NER (Named Entity Recognition).
         """
-        all_sources = []
-        for source_list in source_lists:
-            all_sources.extend(source_list)
-
-        # Source priority weights
-        source_weights = {
-            "project_vectors": 1.0,
-            "graph": 0.9,
-            "shared_vectors": 0.7
-        }
-
-        # Score each source
-        for source in all_sources:
-            source_weight = source_weights.get(source.source, 0.5)
-            recency_weight = 1.0  # Could incorporate timestamp from metadata
-
-            source.score = (
-                0.5 * source.similarity +
-                0.3 * source_weight +
-                0.2 * recency_weight
-            )
-
-        # Sort by score
-        all_sources.sort(key=lambda x: x.score, reverse=True)
-
-        # Deduplicate (remove very similar texts)
-        deduped = []
-        seen_texts = set()
-
-        for source in all_sources:
-            # Simple deduplication by first 100 chars
-            text_key = source.text[:100].lower()
-            if text_key not in seen_texts:
-                deduped.append(source)
-                seen_texts.add(text_key)
-
-        return deduped
-
-    def _extract_entities(self, docs: List[ContextSource]) -> List[str]:
-        """Extract entity mentions from documents"""
         entities = []
-
+        
+        # Extract from task
+        words = task.lower().split()
+        
+        # Look for common entity patterns
+        # In production, this would use NER models
+        entity_keywords = [
+            "kupuna", "elder", "transport", "meal", "appointment",
+            "driver", "cook", "volunteer", "community"
+        ]
+        
+        for word in words:
+            if word in entity_keywords:
+                entities.append(word)
+        
+        # Extract from doc metadata
         for doc in docs:
-            # Simple entity extraction from metadata
-            if "entities" in doc.metadata:
-                entities.extend(doc.metadata["entities"])
-
-            # Could add NER here for more sophisticated extraction
-
-        return list(set(entities))  # Deduplicate
-
-    def _format_graph_context(self, entity: str, relation: str, neighbor: Any) -> str:
-        """Format graph relationship as text"""
-        # Simplified formatting - could be more sophisticated
-        if isinstance(neighbor, dict):
-            neighbor_str = neighbor.get("name", str(neighbor))
-        else:
-            neighbor_str = str(neighbor)
-
-        return f"{entity} {relation} {neighbor_str}"
-
-    def _update_stats(self, elapsed_ms: float, project_count: int, graph_count: int, shared_count: int):
-        """Update performance statistics"""
-        self.stats["total_assemblies"] += 1
-
-        # Update average time (running average)
-        n = self.stats["total_assemblies"]
-        old_avg = self.stats["avg_time_ms"]
-        self.stats["avg_time_ms"] = (old_avg * (n - 1) + elapsed_ms) / n
-
-        # Update source usage
-        if project_count > 0:
-            self.stats["source_usage"]["project_vectors"] += 1
-        if graph_count > 0:
-            self.stats["source_usage"]["graph"] += 1
-        if shared_count > 0:
-            self.stats["source_usage"]["shared_vectors"] += 1
-
-        # Log warning if too slow
-        if elapsed_ms > 100:
-            logger.warning(
-                f"Slow context assembly: {elapsed_ms:.1f}ms "
-                f"(project={project_count}, graph={graph_count}, shared={shared_count})"
+            metadata = doc.get("metadata", {})
+            if "entity" in metadata:
+                entities.append(metadata["entity"])
+        
+        # Return unique entities
+        return list(set(entities))
+    
+    def _rank_by_relevance(
+        self,
+        project_docs: List[Dict],
+        graph_context: Dict[str, Any],
+        shared_docs: List[Dict]
+    ) -> List[Dict]:
+        """
+        Rank and combine context from all sources.
+        
+        Scoring formula:
+        - 0.5 * semantic_similarity (from vector search)
+        - 0.3 * recency (newer is better)
+        - 0.2 * graph_centrality (more connected is better)
+        
+        Target: <10ms
+        """
+        all_items = []
+        
+        # Add project docs
+        for doc in project_docs:
+            all_items.append({
+                "text": doc.get("text", ""),
+                "source": "project",
+                "metadata": doc.get("metadata", {}),
+                "semantic_score": doc.get("score", 0.5),
+                "recency_score": self._compute_recency_score(doc),
+                "centrality_score": self._compute_centrality_score(doc, graph_context),
+            })
+        
+        # Add graph context items
+        for entity, neighbors in graph_context.items():
+            for neighbor in neighbors[:3]:  # Limit neighbors
+                all_items.append({
+                    "text": f"Related to {entity}: {neighbor.get('type', 'unknown')}",
+                    "source": "graph",
+                    "metadata": neighbor,
+                    "semantic_score": 0.5,  # Default score
+                    "recency_score": self._compute_recency_score(neighbor),
+                    "centrality_score": 0.8,  # High centrality for graph items
+                })
+        
+        # Add shared docs
+        for doc in shared_docs:
+            all_items.append({
+                "text": doc.get("text", ""),
+                "source": "shared",
+                "metadata": doc.get("metadata", {}),
+                "semantic_score": doc.get("score", 0.3),
+                "recency_score": self._compute_recency_score(doc),
+                "centrality_score": 0.3,  # Lower centrality for shared
+            })
+        
+        # Compute final scores
+        for item in all_items:
+            item["final_score"] = (
+                0.5 * item["semantic_score"] +
+                0.3 * item["recency_score"] +
+                0.2 * item["centrality_score"]
             )
-        else:
-            logger.debug(f"Context assembled in {elapsed_ms:.1f}ms")
-
-    def get_stats(self) -> Dict[str, Any]:
-        """Get performance statistics"""
-        return self.stats.copy()
+        
+        # Sort by final score
+        all_items.sort(key=lambda x: x["final_score"], reverse=True)
+        
+        return all_items
+    
+    def _compute_recency_score(self, item: Dict) -> float:
+        """Compute recency score (0-1, newer is higher)"""
+        # Simple placeholder - in production, use actual timestamps
+        metadata = item.get("metadata", {})
+        
+        if "timestamp" in metadata:
+            # Would compute age-based score here
+            return 0.7
+        
+        return 0.5  # Default recency
+    
+    def _compute_centrality_score(
+        self,
+        item: Dict,
+        graph_context: Dict[str, Any]
+    ) -> float:
+        """Compute graph centrality score (0-1, more central is higher)"""
+        # Simple placeholder - in production, use PageRank or degree centrality
+        metadata = item.get("metadata", {})
+        
+        if "entity" in metadata:
+            entity = metadata["entity"]
+            if entity in graph_context:
+                neighbor_count = len(graph_context[entity])
+                # Normalize by max expected neighbors
+                return min(neighbor_count / 10.0, 1.0)
+        
+        return 0.3  # Default centrality
+    
+    def get_performance_stats(self) -> Dict[str, Any]:
+        """Get context assembly performance statistics"""
+        if not self.assembly_times:
+            return {
+                "total_assemblies": 0,
+                "avg_time_ms": 0,
+                "min_time_ms": 0,
+                "max_time_ms": 0,
+                "target_met_pct": 0
+            }
+        
+        target_met = sum(1 for t in self.assembly_times if t < 100)
+        
+        return {
+            "total_assemblies": len(self.assembly_times),
+            "avg_time_ms": sum(self.assembly_times) / len(self.assembly_times),
+            "min_time_ms": min(self.assembly_times),
+            "max_time_ms": max(self.assembly_times),
+            "target_met_pct": (target_met / len(self.assembly_times)) * 100
+        }

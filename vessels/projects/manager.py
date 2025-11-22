@@ -1,377 +1,318 @@
 """
-Project Manager - Servant Project Lifecycle
+Project Manager
 
-Manages creation, tracking, and archival of servant projects:
-- Creates isolated project workspaces
-- Tracks active projects
-- Seeds projects with initial knowledge
-- Archives completed projects
+Manages lifecycle of servant projects:
+- Create new projects from templates
+- Load existing projects
+- Archive completed projects
+- Track project resources and status
 """
 
-import logging
+from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
-from datetime import datetime
 import uuid
+import logging
+import yaml
 
 from .project import ServantProject, ProjectStatus
-from vessels.knowledge import VesselsGraphitiClient, SharedVectorStore
-from vessels.knowledge.schema import ServantType, NodeType, RelationType
 
 logger = logging.getLogger(__name__)
 
 
 class ProjectManager:
     """
-    Manages servant project lifecycle
-
+    Manages lifecycle of servant projects.
+    
     Responsibilities:
-    - Create isolated projects
+    - Create new projects from templates
+    - Load existing projects from disk
     - Track active projects
-    - Seed project knowledge
-    - Archive completed projects
-    - Query project status
+    - Archive/cleanup completed projects
+    - Resource monitoring
     """
-
-    def __init__(self, projects_dir: Path = Path("work_dir/projects")):
+    
+    def __init__(
+        self,
+        base_dir: Path = Path("work_dir/projects"),
+        templates_dir: Optional[Path] = None
+    ):
         """
-        Initialize project manager
-
+        Initialize ProjectManager.
+        
         Args:
-            projects_dir: Root directory for all projects
+            base_dir: Base directory for all projects
+            templates_dir: Directory containing project templates
         """
-        self.projects_dir = Path(projects_dir)
-        self.projects_dir.mkdir(parents=True, exist_ok=True)
-
-        # In-memory project registry
+        self.base_dir = Path(base_dir)
+        self.base_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Templates directory
+        if templates_dir is None:
+            # Default to templates/ in this package
+            templates_dir = Path(__file__).parent / "templates"
+        self.templates_dir = Path(templates_dir)
+        
+        # Track active projects
         self.active_projects: Dict[str, ServantProject] = {}
-
-        # Shared knowledge store for seeding
-        self.shared_store = SharedVectorStore()
-
-        logger.info(f"Project Manager initialized with root: {self.projects_dir}")
-
+        
+        # Load existing projects
+        self._discover_existing_projects()
+    
+    def _discover_existing_projects(self):
+        """Discover and load existing projects from disk"""
+        for community_dir in self.base_dir.iterdir():
+            if not community_dir.is_dir():
+                continue
+            
+            for project_dir in community_dir.iterdir():
+                if not project_dir.is_dir():
+                    continue
+                
+                config_path = project_dir / "config" / "project.json"
+                if config_path.exists():
+                    try:
+                        project = ServantProject.load_from_config(config_path)
+                        
+                        # Only load active/paused projects
+                        if project.status in [ProjectStatus.ACTIVE, ProjectStatus.PAUSED]:
+                            self.active_projects[project.id] = project
+                            logger.info(f"Loaded existing project: {project.id} ({project.servant_type})")
+                    
+                    except Exception as e:
+                        logger.error(f"Failed to load project from {config_path}: {e}")
+    
     def create_project(
         self,
         community_id: str,
-        servant_type: ServantType,
-        intent: Optional[str] = None,
-        read_only_communities: Optional[List[str]] = None
+        servant_type: str,
+        system_prompt: Optional[str] = None,
+        metadata: Optional[Dict] = None
     ) -> ServantProject:
         """
-        Create a new servant project
-
+        Create a new servant project.
+        
         Args:
-            community_id: Community this servant serves
-            servant_type: Type of servant (transport, meals, etc.)
-            intent: Optional intent/task description for knowledge seeding
-            read_only_communities: Optional list of communities servant can read
-
+            community_id: Community this project serves
+            servant_type: Type of servant (transport, meals, medical, etc.)
+            system_prompt: Custom system prompt (uses template if not provided)
+            metadata: Additional project metadata
+        
         Returns:
-            Initialized ServantProject
+            ServantProject instance
         """
-        # Generate project ID
-        project_id = self._generate_project_id(community_id, servant_type)
-
-        # Create project directory
-        project_dir = self.projects_dir / community_id / f"{servant_type.value}_{project_id[:8]}"
-        project_dir.mkdir(parents=True, exist_ok=True)
-
-        # Load system prompt template
-        system_prompt = self._load_system_prompt(servant_type, community_id)
-
+        # Generate unique project ID
+        project_id = self._generate_project_id()
+        
+        # Create work directory
+        work_dir = self.base_dir / community_id / f"{servant_type}_{project_id[:8]}"
+        work_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Load template
+        template = self._load_template(servant_type)
+        
+        # Use template system prompt if not provided
+        if system_prompt is None:
+            system_prompt = template.get("system_prompt", self._get_default_prompt(servant_type))
+        
         # Create project
         project = ServantProject(
             id=project_id,
             community_id=community_id,
             servant_type=servant_type,
-            work_dir=project_dir,
+            work_dir=work_dir,
             graphiti_namespace=f"{community_id}_graph",
             system_prompt=system_prompt,
             status=ProjectStatus.INITIALIZING,
-            read_only_communities=read_only_communities or []
+            created_at=datetime.utcnow(),
+            last_active=datetime.utcnow(),
+            metadata=metadata or {},
+            allowed_tools=template.get("allowed_tools", []),
+            resource_limits=template.get("resource_limits", {}),
         )
-
-        # Save project config
-        project.save_config()
-
-        # Create servant node in graph
+        
+        # Initialize Graphiti node for this servant
         try:
-            project.graphiti.create_node(
-                node_type=NodeType.SERVANT,
+            graphiti = project.get_graphiti_client()
+            
+            # Create Servant node in knowledge graph
+            servant_node_id = graphiti.create_node(
+                node_type="Servant",
                 properties={
-                    "name": f"{servant_type.value}_{project_id[:8]}",
-                    "type": servant_type.value,
-                    "status": ProjectStatus.INITIALIZING.value,
+                    "id": project_id,
+                    "type": servant_type,
                     "community_id": community_id,
-                    "created_at": datetime.utcnow().isoformat()
+                    "created_at": project.created_at.isoformat(),
+                    "status": "active"
                 },
                 node_id=project_id
             )
-            logger.info(f"Created servant node {project_id} in {community_id}_graph")
-
+            
+            logger.info(f"Created Servant node in graph: {servant_node_id}")
+        
         except Exception as e:
-            logger.error(f"Error creating servant node in graph: {e}")
-
-        # Seed project knowledge
-        if intent:
-            self._seed_project_knowledge(project, intent)
-
-        # Update status to active
-        project.update_status(ProjectStatus.ACTIVE)
-
-        # Register project
+            logger.warning(f"Could not create Servant node in Graphiti: {e}")
+        
+        # Mark as active
+        project.status = ProjectStatus.ACTIVE
+        
+        # Save configuration
+        project.save_config()
+        
+        # Track in active projects
         self.active_projects[project_id] = project
-
-        logger.info(
-            f"Created project {project_id} for {servant_type.value} in {community_id} at {project_dir}"
-        )
-
+        
+        logger.info(f"Created project: {project_id} ({servant_type}) for {community_id}")
+        
         return project
-
+    
     def get_project(self, project_id: str) -> Optional[ServantProject]:
         """Get project by ID"""
         return self.active_projects.get(project_id)
-
+    
     def list_projects(
         self,
         community_id: Optional[str] = None,
-        servant_type: Optional[ServantType] = None,
+        servant_type: Optional[str] = None,
         status: Optional[ProjectStatus] = None
     ) -> List[ServantProject]:
         """
-        List projects with optional filters
-
+        List projects with optional filtering.
+        
         Args:
             community_id: Filter by community
             servant_type: Filter by servant type
             status: Filter by status
-
+        
         Returns:
             List of matching projects
         """
         projects = list(self.active_projects.values())
-
+        
         if community_id:
             projects = [p for p in projects if p.community_id == community_id]
-
+        
         if servant_type:
             projects = [p for p in projects if p.servant_type == servant_type]
-
+        
         if status:
             projects = [p for p in projects if p.status == status]
-
+        
         return projects
-
-    def archive_project(self, project_id: str) -> bool:
+    
+    def archive_project(self, project_id: str, preserve_logs: bool = True):
         """
-        Archive a project
-
+        Archive a project.
+        
         Args:
-            project_id: ID of project to archive
-
-        Returns:
-            True if successful
+            project_id: Project to archive
+            preserve_logs: Whether to keep log files
         """
         project = self.active_projects.get(project_id)
         if not project:
-            logger.error(f"Project {project_id} not found")
-            return False
-
-        try:
-            # Archive project
-            project.archive()
-
-            # Remove from active registry
-            del self.active_projects[project_id]
-
-            logger.info(f"Archived project {project_id}")
-            return True
-
-        except Exception as e:
-            logger.error(f"Error archiving project {project_id}: {e}")
-            return False
-
-    def load_all_projects(self):
-        """Load all projects from disk"""
-        logger.info("Loading projects from disk...")
-
-        count = 0
-        for community_dir in self.projects_dir.iterdir():
-            if not community_dir.is_dir():
-                continue
-
-            for project_dir in community_dir.iterdir():
-                if not project_dir.is_dir():
-                    continue
-
-                config_file = project_dir / "project.json"
-                if not config_file.exists():
-                    continue
-
-                try:
-                    project = ServantProject.load_from_dir(project_dir)
-
-                    # Only load non-archived projects
-                    if project.status != ProjectStatus.ARCHIVED:
-                        self.active_projects[project.id] = project
-                        count += 1
-
-                except Exception as e:
-                    logger.error(f"Error loading project from {project_dir}: {e}")
-
-        logger.info(f"Loaded {count} active projects")
-
-    def _generate_project_id(self, community_id: str, servant_type: ServantType) -> str:
-        """Generate unique project ID"""
-        return f"{community_id}_{servant_type.value}_{uuid.uuid4().hex[:16]}"
-
-    def _load_system_prompt(self, servant_type: ServantType, community_id: str) -> str:
+            logger.warning(f"Project not found: {project_id}")
+            return
+        
+        # Archive project
+        project.archive()
+        
+        # Optionally cleanup
+        if not preserve_logs:
+            project.cleanup(preserve_logs=False)
+        
+        # Remove from active tracking
+        del self.active_projects[project_id]
+        
+        logger.info(f"Archived project: {project_id}")
+    
+    def cleanup_all(self, older_than_days: int = 30):
         """
-        Load system prompt template for servant type
-
+        Clean up old archived projects.
+        
         Args:
-            servant_type: Type of servant
-            community_id: Community context
-
-        Returns:
-            System prompt string
+            older_than_days: Archive projects older than this many days
         """
-        # Default prompts by type
-        prompts = {
-            ServantType.TRANSPORT: f"""You are a transport coordination servant for {community_id}.
-
-Your role:
-- Coordinate transportation for kupuna (elders) and community members
-- Schedule rides, track driver availability
-- Optimize routes for efficiency and accessibility
-- Respect Hawaiian cultural protocols and values
-- Always prioritize safety and dignity
-
-Moral constraints (12D phase space):
-- Truthfulness: Always provide accurate information about availability and timing
-- Justice: Ensure fair access to transport resources
-- Service: Prioritize community needs over efficiency metrics
-- Understanding: Consider mobility limitations, cultural practices
-
-You operate with isolation - no access to other servants' context.
-Use the knowledge graph to discover coordination opportunities with other servants.
-""",
-
-            ServantType.MEALS: f"""You are a meal coordination servant for {community_id}.
-
-Your role:
-- Coordinate meal delivery for kupuna and families in need
-- Track dietary restrictions, allergies, preferences
-- Connect with food sources (gardens, food hubs, kitchens)
-- Respect cultural food practices and preferences
-- Ensure nutrition and dignity in all meal coordination
-
-Moral constraints:
-- Truthfulness: Accurate information about dietary restrictions
-- Justice: Equitable access to nutritious food
-- Service: Prioritize nourishment and cultural appropriateness
-- Unity: Coordinate across food providers
-
-You operate with isolation. Use the graph to find coordination opportunities.
-""",
-
-            ServantType.MEDICAL: f"""You are a medical appointment coordination servant for {community_id}.
-
-Your role:
-- Schedule and coordinate medical appointments
-- Track medical facility locations, hours, specialties
-- Coordinate with transport servants when needed
-- Respect privacy and medical confidentiality
-- Always maintain dignity and cultural sensitivity
-
-Moral constraints:
-- Truthfulness: Critical for medical information accuracy
-- Justice: Fair access to healthcare resources
-- Trustworthiness: Maintain confidentiality
-- Understanding: Be sensitive to medical anxiety and cultural beliefs
-
-You operate with isolation. Use the graph for coordination.
-""",
-
-            ServantType.GRANT_WRITER: f"""You are a grant writing servant for {community_id}.
-
-Your role:
-- Identify relevant grant opportunities
-- Draft grant proposals highlighting community needs
-- Track grant application deadlines and requirements
-- Coordinate with community members for input
-- Celebrate Hawaiian culture and community strengths in proposals
-
-Moral constraints:
-- Truthfulness: Accurate representation of community needs
-- Justice: Ensure benefits flow to those in need
-- Service: Proposals serve community, not just funding
-- Unity: Collaborative approach with community input
-
-You operate with isolation. Use the graph to gather community context.
-""",
-        }
-
-        return prompts.get(
-            servant_type,
-            f"You are a {servant_type.value} servant for {community_id}. "
-            f"Serve with aloha, maintain isolation, use the graph for coordination."
-        )
-
-    def _seed_project_knowledge(self, project: ServantProject, intent: str):
-        """
-        Seed project vector store with relevant knowledge from shared store
-
-        Args:
-            project: Project to seed
-            intent: Intent/task description to guide seeding
-        """
-        try:
-            # Query shared knowledge store for relevant documents
-            relevant_docs = self.shared_store.query(intent, top_k=10, min_similarity=0.5)
-
-            if relevant_docs:
-                texts = [doc["text"] for doc in relevant_docs]
-                metadata = [doc["metadata"] for doc in relevant_docs]
-
-                # Add to project vector store
-                project.vector_store.add(texts=texts, metadata=metadata)
-
-                logger.info(
-                    f"Seeded project {project.id} with {len(relevant_docs)} documents from shared store"
-                )
-            else:
-                logger.info(f"No relevant shared knowledge found for seeding project {project.id}")
-
-        except Exception as e:
-            logger.error(f"Error seeding project knowledge: {e}")
-
-    def get_project_stats(self) -> Dict:
-        """Get statistics about projects"""
-        stats = {
-            "total_active": len(self.active_projects),
-            "by_community": {},
-            "by_type": {},
-            "by_status": {}
-        }
-
+        from datetime import timedelta
+        
+        cutoff = datetime.utcnow() - timedelta(days=older_than_days)
+        
+        cleaned = 0
+        for project in list(self.active_projects.values()):
+            if project.status == ProjectStatus.ARCHIVED and project.last_active < cutoff:
+                project.cleanup(preserve_logs=True)
+                cleaned += 1
+        
+        logger.info(f"Cleaned up {cleaned} archived projects older than {older_than_days} days")
+    
+    def get_resource_summary(self) -> Dict:
+        """Get resource usage summary for all projects"""
+        total_disk = 0
+        project_count = len(self.active_projects)
+        
+        by_type = {}
+        by_community = {}
+        
         for project in self.active_projects.values():
-            # By community
-            if project.community_id not in stats["by_community"]:
-                stats["by_community"][project.community_id] = 0
-            stats["by_community"][project.community_id] += 1
-
-            # By type
-            type_key = project.servant_type.value
-            if type_key not in stats["by_type"]:
-                stats["by_type"][type_key] = 0
-            stats["by_type"][type_key] += 1
-
-            # By status
-            status_key = project.status.value
-            if status_key not in stats["by_status"]:
-                stats["by_status"][status_key] = 0
-            stats["by_status"][status_key] += 1
-
-        return stats
+            usage = project.get_resource_usage()
+            total_disk += usage["work_dir_size_mb"]
+            
+            # Track by type
+            if project.servant_type not in by_type:
+                by_type[project.servant_type] = 0
+            by_type[project.servant_type] += 1
+            
+            # Track by community
+            if project.community_id not in by_community:
+                by_community[project.community_id] = 0
+            by_community[project.community_id] += 1
+        
+        return {
+            "total_projects": project_count,
+            "total_disk_mb": total_disk,
+            "by_type": by_type,
+            "by_community": by_community,
+        }
+    
+    def _generate_project_id(self) -> str:
+        """Generate unique project ID"""
+        return str(uuid.uuid4())
+    
+    def _load_template(self, servant_type: str) -> Dict:
+        """Load project template for servant type"""
+        template_path = self.templates_dir / f"{servant_type}.yaml"
+        
+        if not template_path.exists():
+            logger.warning(f"Template not found: {template_path}, using defaults")
+            return {}
+        
+        try:
+            with open(template_path, 'r') as f:
+                template = yaml.safe_load(f)
+            
+            logger.info(f"Loaded template: {servant_type}")
+            return template
+        
+        except Exception as e:
+            logger.error(f"Failed to load template {template_path}: {e}")
+            return {}
+    
+    def _get_default_prompt(self, servant_type: str) -> str:
+        """Get default system prompt for servant type"""
+        default_prompts = {
+            "transport": """You are a transport coordination servant for this community.
+Your role is to help coordinate transportation needs for kupuna (elders) and community members.
+You work with other servants to ensure everyone can get where they need to go safely and efficiently.""",
+            
+            "meals": """You are a meals coordination servant for this community.
+Your role is to help coordinate meal preparation and delivery for kupuna (elders) and community members.
+You work with other servants to ensure everyone has access to nutritious meals.""",
+            
+            "medical": """You are a medical coordination servant for this community.
+Your role is to help coordinate medical appointments and health services for kupuna (elders) and community members.
+You work with other servants to ensure everyone can access needed healthcare.""",
+        }
+        
+        return default_prompts.get(
+            servant_type,
+            f"You are a {servant_type} servant for this community. Your role is to serve the community's needs."
+        )

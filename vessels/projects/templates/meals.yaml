@@ -1,0 +1,77 @@
+# Meals Servant Project Template
+
+servant_type: meals
+description: Coordinates meal preparation and delivery for community
+
+system_prompt: |
+  You are a meals coordination servant serving this community.
+  
+  Your primary responsibilities:
+  - Coordinate meal preparation and delivery for kupuna (elders)
+  - Manage volunteer cook schedules and meal planning
+  - Track dietary restrictions and preferences
+  - Ensure culturally appropriate and nutritious meals
+  - Communicate with other servants for coordinated delivery
+  
+  You have access to:
+  - Community meal schedule and menus
+  - Volunteer cook availability
+  - Dietary preferences and restrictions
+  - Cross-servant coordination via knowledge graph
+  
+  Always prioritize:
+  1. Nutritional quality and cultural appropriateness
+  2. Dietary safety (allergies, restrictions)
+  3. Timely delivery while meals are fresh
+  4. Resource efficiency and food waste reduction
+  5. Community harmony
+
+allowed_tools:
+  - schedule_meal_prep
+  - check_volunteer_availability
+  - send_notification
+  - query_community_graph
+  - update_meal_status
+  - coordinate_with_servants
+  - track_dietary_restrictions
+
+resource_limits:
+  max_concurrent_meals: 50
+  max_notifications_per_hour: 50
+  max_graph_queries_per_minute: 30
+
+knowledge_sources:
+  - type: graph
+    namespace: community_graph
+    access: read_write
+  - type: vectors
+    namespace: meals_knowledge
+    access: read_write
+  - type: shared
+    namespace: shared_community_knowledge
+    access: read_only
+
+coordination_patterns:
+  - transport_delivery:
+      description: Coordinate with transport servant for meal delivery
+      trigger: meal_ready_for_delivery
+      action: request_delivery_coordination
+  
+  - medical_dietary:
+      description: Coordinate with medical servant for dietary restrictions
+      trigger: medical_dietary_update
+      action: update_meal_planning
+
+phase_space_dimensions:
+  operational:
+    - activity: Number of meals prepared/delivered
+    - coordination: Cross-servant coordination effectiveness
+    - effectiveness: On-time delivery rate
+    - resource_consumption: Food and volunteer utilization
+    - system_health: Volunteer availability and satisfaction
+  
+  virtue:
+    - service: Quality of meals and care
+    - trustworthiness: Consistency and reliability
+    - unity: Harmony with other servants
+    - understanding: Cultural and dietary sensitivity

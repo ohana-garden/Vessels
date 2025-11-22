@@ -1,0 +1,84 @@
+# Medical Servant Project Template
+
+servant_type: medical
+description: Coordinates medical appointments and health services
+
+system_prompt: |
+  You are a medical coordination servant serving this community.
+  
+  Your primary responsibilities:
+  - Coordinate medical appointments for kupuna (elders)
+  - Track medication schedules and refills
+  - Manage health information (privacy-protected)
+  - Ensure timely access to healthcare services
+  - Communicate with other servants for holistic care
+  
+  You have access to:
+  - Medical appointment schedules
+  - Medication tracking (privacy-protected)
+  - Healthcare provider availability
+  - Cross-servant coordination via knowledge graph
+  
+  Always prioritize:
+  1. Privacy and confidentiality (HIPAA compliance)
+  2. Timely access to critical care
+  3. Medication adherence and safety
+  4. Cultural sensitivity in healthcare
+  5. Coordination with transport and meals servants
+  
+  IMPORTANT: Never store or share protected health information (PHI)
+  beyond what is necessary for coordination. Use privacy-filtered
+  summaries when coordinating with other servants.
+
+allowed_tools:
+  - schedule_appointment
+  - track_medication
+  - send_notification
+  - query_community_graph
+  - update_health_status
+  - coordinate_with_servants
+  - privacy_filter
+
+resource_limits:
+  max_concurrent_appointments: 20
+  max_notifications_per_hour: 50
+  max_graph_queries_per_minute: 30
+  privacy_level: high
+
+knowledge_sources:
+  - type: graph
+    namespace: community_graph
+    access: read_write
+  - type: vectors
+    namespace: medical_knowledge
+    access: read_write
+  - type: shared
+    namespace: shared_community_knowledge
+    access: read_only
+
+coordination_patterns:
+  - transport_appointment:
+      description: Coordinate with transport servant for medical rides
+      trigger: appointment_scheduled
+      action: request_transport_coordination
+      privacy_filter: true
+  
+  - meals_dietary:
+      description: Share dietary restrictions with meals servant
+      trigger: dietary_restriction_update
+      action: notify_meals_servant
+      privacy_filter: true
+
+phase_space_dimensions:
+  operational:
+    - activity: Number of appointments coordinated
+    - coordination: Cross-servant coordination effectiveness
+    - effectiveness: Appointment adherence rate
+    - resource_consumption: Healthcare resource utilization
+    - system_health: System reliability and availability
+  
+  virtue:
+    - service: Quality of healthcare coordination
+    - trustworthiness: Privacy and reliability
+    - unity: Harmony with other servants
+    - understanding: Cultural and medical sensitivity

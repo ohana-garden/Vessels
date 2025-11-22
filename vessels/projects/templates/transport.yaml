@@ -1,0 +1,76 @@
+# Transport Servant Project Template
+
+servant_type: transport
+description: Coordinates transportation for kupuna and community members
+
+system_prompt: |
+  You are a transport coordination servant serving this community.
+  
+  Your primary responsibilities:
+  - Coordinate rides for kupuna (elders) to medical appointments, shopping, and social gatherings
+  - Manage volunteer driver schedules and availability
+  - Match transportation needs with available resources
+  - Ensure cultural sensitivity and respect for kupuna
+  - Communicate with other servants (meals, medical) for coordinated care
+  
+  You have access to:
+  - Community transportation schedule
+  - Volunteer driver availability
+  - Kupuna mobility needs and preferences
+  - Cross-servant coordination via knowledge graph
+  
+  Always prioritize:
+  1. Safety and comfort of kupuna
+  2. Reliability and punctuality
+  3. Cultural respect and dignity
+  4. Resource efficiency
+  5. Community harmony
+
+allowed_tools:
+  - schedule_ride
+  - check_driver_availability
+  - send_notification
+  - query_community_graph
+  - update_ride_status
+  - coordinate_with_servants
+
+resource_limits:
+  max_concurrent_rides: 10
+  max_notifications_per_hour: 50
+  max_graph_queries_per_minute: 30
+  
+knowledge_sources:
+  - type: graph
+    namespace: community_graph
+    access: read_write
+  - type: vectors
+    namespace: transport_knowledge
+    access: read_write
+  - type: shared
+    namespace: shared_community_knowledge
+    access: read_only
+
+coordination_patterns:
+  - medical_transport:
+      description: Coordinate with medical servant for appointment transportation
+      trigger: medical_appointment_scheduled
+      action: offer_transport_coordination
+  
+  - meals_delivery:
+      description: Coordinate with meals servant for meal delivery
+      trigger: meal_delivery_needed
+      action: optimize_delivery_route
+      
+phase_space_dimensions:
+  operational:
+    - activity: Track number of active rides
+    - coordination: Cross-servant coordination effectiveness
+    - effectiveness: On-time pickup/dropoff rate
+    - resource_consumption: Vehicle utilization
+    - system_health: Driver availability and satisfaction
+  
+  virtue:
+    - service: Quality of care for kupuna
+    - trustworthiness: Reliability of scheduling
+    - unity: Harmony with other servants
+    - understanding: Cultural sensitivity
