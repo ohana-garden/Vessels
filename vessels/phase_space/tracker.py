@@ -23,18 +23,61 @@ class TrajectoryTracker:
     SQLite-based storage for trajectories and events.
 
     Schema matches spec section 1.5.
+    Supports hybrid mode with Graphiti backend.
     """
 
-    def __init__(self, db_path: str = "vessels_trajectories.db"):
+    def __init__(
+        self,
+        db_path: str = "vessels_trajectories.db",
+        backend: str = "sqlite",
+        graphiti_client=None,
+        community_id: Optional[str] = None
+    ):
         """
-        Initialize tracker with SQLite database.
+        Initialize tracker with SQLite database and optional Graphiti backend.
 
         Args:
             db_path: Path to SQLite database file
+            backend: Backend type: "sqlite", "graphiti", or "hybrid"
+            graphiti_client: VesselsGraphitiClient instance (for graphiti/hybrid backends)
+            community_id: Community ID (for graphiti backend)
         """
         self.db_path = db_path
-        self.conn = sqlite3.connect(db_path, check_same_thread=False)
-        self._create_schema()
+        self.backend_type = backend
+        self.graphiti_tracker = None
+
+        # Initialize Graphiti backend if requested
+        if backend in ["graphiti", "hybrid"]:
+            if graphiti_client is None and community_id:
+                try:
+                    from ..knowledge.graphiti_client import VesselsGraphitiClient
+                    graphiti_client = VesselsGraphitiClient(
+                        community_id=community_id,
+                        allow_mock=True
+                    )
+                except Exception as e:
+                    logger.warning(f"Could not initialize Graphiti client: {e}")
+                    if backend == "graphiti":
+                        raise
+                    self.backend_type = "sqlite"
+
+            if graphiti_client:
+                try:
+                    from .graphiti_tracker import GraphitiPhaseSpaceTracker
+                    self.graphiti_tracker = GraphitiPhaseSpaceTracker(graphiti_client)
+                    logger.info(f"Initialized Graphiti trajectory backend (mode: {backend})")
+                except Exception as e:
+                    logger.warning(f"Could not initialize Graphiti tracker: {e}")
+                    if backend == "graphiti":
+                        raise
+                    self.backend_type = "sqlite"
+
+        # Initialize SQLite for sqlite or hybrid mode
+        if self.backend_type in ["sqlite", "hybrid"]:
+            self.conn = sqlite3.connect(db_path, check_same_thread=False)
+            self._create_schema()
+        else:
+            self.conn = None
 
     def _create_schema(self):
         """Create database schema if not exists."""
@@ -118,67 +161,100 @@ class TrajectoryTracker:
 
     def store_state(self, state: PhaseSpaceState):
         """Store a phase space state."""
-        cursor = self.conn.cursor()
+        # Store in Graphiti backend if enabled
+        if self.backend_type in ["graphiti", "hybrid"] and self.graphiti_tracker:
+            try:
+                self.graphiti_tracker.store_state(state)
+            except Exception as e:
+                logger.error(f"Failed to store state in Graphiti: {e}")
+                if self.backend_type == "graphiti":
+                    raise
 
-        cursor.execute("""
-            INSERT OR REPLACE INTO states
-            (agent_id, timestamp, operational_dims, virtue_dims, confidence)
-            VALUES (?, ?, ?, ?, ?)
-        """, (
-            state.agent_id,
-            state.timestamp.isoformat(),
-            json.dumps(state.operational.to_dict()),
-            json.dumps(state.virtue.to_dict()),
-            json.dumps(state.confidence)
-        ))
+        # Store in SQLite backend
+        if self.backend_type in ["sqlite", "hybrid"] and self.conn:
+            cursor = self.conn.cursor()
 
-        self.conn.commit()
+            cursor.execute("""
+                INSERT OR REPLACE INTO states
+                (agent_id, timestamp, operational_dims, virtue_dims, confidence)
+                VALUES (?, ?, ?, ?, ?)
+            """, (
+                state.agent_id,
+                state.timestamp.isoformat(),
+                json.dumps(state.operational.to_dict()),
+                json.dumps(state.virtue.to_dict()),
+                json.dumps(state.confidence) if hasattr(state, 'confidence') else json.dumps({})
+            ))
+
+            self.conn.commit()
 
     def store_transition(self, transition: StateTransition):
         """Store a state transition."""
-        cursor = self.conn.cursor()
+        # Store in Graphiti backend if enabled
+        if self.backend_type in ["graphiti", "hybrid"] and self.graphiti_tracker:
+            try:
+                self.graphiti_tracker.store_transition(transition)
+            except Exception as e:
+                logger.error(f"Failed to store transition in Graphiti: {e}")
+                if self.backend_type == "graphiti":
+                    raise
 
-        cursor.execute("""
-            INSERT INTO transitions
-            (agent_id, timestamp, from_state, to_state, action_hash, gating_result, action_metadata)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, (
-            transition.agent_id,
-            transition.timestamp.isoformat(),
-            json.dumps(transition.from_state) if transition.from_state else None,
-            json.dumps(transition.to_state),
-            transition.action_hash,
-            transition.gating_result,
-            json.dumps(transition.action_metadata)
-        ))
+        # Store in SQLite backend
+        if self.backend_type in ["sqlite", "hybrid"] and self.conn:
+            cursor = self.conn.cursor()
 
-        self.conn.commit()
+            cursor.execute("""
+                INSERT INTO transitions
+                (agent_id, timestamp, from_state, to_state, action_hash, gating_result, action_metadata)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (
+                transition.agent_id,
+                transition.timestamp.isoformat(),
+                json.dumps(transition.from_state) if transition.from_state else None,
+                json.dumps(transition.to_state),
+                transition.action_hash,
+                transition.gating_result,
+                json.dumps(transition.action_metadata)
+            ))
+
+            self.conn.commit()
 
     def store_security_event(self, event: SecurityEvent):
         """Store a security event."""
-        cursor = self.conn.cursor()
+        # Store in Graphiti backend if enabled
+        if self.backend_type in ["graphiti", "hybrid"] and self.graphiti_tracker:
+            try:
+                self.graphiti_tracker.store_security_event(event)
+            except Exception as e:
+                logger.error(f"Failed to store security event in Graphiti: {e}")
+                if self.backend_type == "graphiti":
+                    raise
 
-        cursor.execute("""
-            INSERT INTO security_events
-            (agent_id, timestamp, violations, original_virtue_state,
-             corrected_virtue_state, residual_violations, blocked,
-             action_hash, operational_state_snapshot, event_type, metadata)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            event.agent_id,
-            event.timestamp.isoformat(),
-            json.dumps(event.violations),
-            json.dumps(event.original_virtue_state),
-            json.dumps(event.corrected_virtue_state) if event.corrected_virtue_state else None,
-            json.dumps(event.residual_violations),
-            1 if event.blocked else 0,
-            event.action_hash,
-            json.dumps(event.operational_state_snapshot) if event.operational_state_snapshot else None,
-            event.event_type,
-            json.dumps(event.metadata)
-        ))
+        # Store in SQLite backend
+        if self.backend_type in ["sqlite", "hybrid"] and self.conn:
+            cursor = self.conn.cursor()
 
-        self.conn.commit()
+            cursor.execute("""
+                INSERT INTO security_events
+                (agent_id, timestamp, violations, original_virtue_state,
+                 corrected_virtue_state, residual_violations, blocked,
+                 action_hash, operational_state_snapshot, event_type, metadata)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                event.agent_id,
+                event.timestamp.isoformat(),
+                json.dumps(event.violations),
+                json.dumps(event.original_virtue_state),
+                json.dumps(event.corrected_virtue_state) if event.corrected_virtue_state else None,
+                json.dumps(event.residual_violations),
+                1 if event.blocked else 0,
+                event.action_hash,
+                json.dumps(event.operational_state_snapshot) if event.operational_state_snapshot else None,
+                event.event_type,
+                json.dumps(event.metadata)
+            ))
+
+            self.conn.commit()
 
     def store_attractor(
         self,
@@ -193,26 +269,46 @@ class TrajectoryTracker:
         Store a discovered attractor.
 
         Returns:
-            Attractor ID
+            Attractor ID (or 0 if only stored in Graphiti)
         """
-        cursor = self.conn.cursor()
+        attractor_id = 0
 
-        cursor.execute("""
-            INSERT INTO attractors
-            (center, radius, classification, agent_count, discovered_at, outcomes, metadata)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, (
-            json.dumps(center),
-            radius,
-            classification,
-            agent_count,
-            datetime.utcnow().isoformat(),
-            json.dumps(outcomes) if outcomes else None,
-            json.dumps(metadata) if metadata else None
-        ))
+        # Store in Graphiti backend if enabled
+        if self.backend_type in ["graphiti", "hybrid"] and self.graphiti_tracker:
+            try:
+                node_id = self.graphiti_tracker.store_attractor(
+                    center, radius, classification, agent_count, outcomes, metadata
+                )
+                if node_id:
+                    # Use hash of node_id as numeric ID for compatibility
+                    attractor_id = hash(node_id) % (2**31)
+            except Exception as e:
+                logger.error(f"Failed to store attractor in Graphiti: {e}")
+                if self.backend_type == "graphiti":
+                    raise
 
-        self.conn.commit()
-        return cursor.lastrowid
+        # Store in SQLite backend
+        if self.backend_type in ["sqlite", "hybrid"] and self.conn:
+            cursor = self.conn.cursor()
+
+            cursor.execute("""
+                INSERT INTO attractors
+                (center, radius, classification, agent_count, discovered_at, outcomes, metadata)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (
+                json.dumps(center),
+                radius,
+                classification,
+                agent_count,
+                datetime.utcnow().isoformat(),
+                json.dumps(outcomes) if outcomes else None,
+                json.dumps(metadata) if metadata else None
+            ))
+
+            self.conn.commit()
+            attractor_id = cursor.lastrowid
+
+        return attractor_id
 
     def get_trajectory(
         self,
@@ -417,4 +513,5 @@ class TrajectoryTracker:
 
     def close(self):
         """Close database connection."""
-        self.conn.close()
+        if self.conn:
+            self.conn.close()

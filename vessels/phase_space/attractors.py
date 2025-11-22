@@ -3,15 +3,23 @@ Attractor discovery and classification.
 
 Uses DBSCAN clustering on trajectory segments to discover
 stable behavioral patterns (attractors) in the 12D phase space.
+
+Phase 2: Now supports querying trajectories from Graphiti knowledge graph.
 """
 
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional, Tuple, TYPE_CHECKING
 from dataclasses import dataclass
 from enum import Enum
 import numpy as np
 from sklearn.cluster import DBSCAN
+import logging
 
 from ..measurement.state import PhaseSpaceState
+
+if TYPE_CHECKING:
+    from .graphiti_tracker import GraphitiPhaseSpaceTracker
+
+logger = logging.getLogger(__name__)
 
 
 class AttractorClassification(Enum):
@@ -71,6 +79,62 @@ class AttractorDiscovery:
         self.window_size = window_size
         self.eps = eps
         self.min_samples = min_samples
+
+    def discover_attractors_from_graphiti(
+        self,
+        graphiti_tracker: 'GraphitiPhaseSpaceTracker',
+        community_id: str,
+        lookback_days: int = 7,
+        outcomes: Optional[Dict[str, Dict[str, float]]] = None
+    ) -> List[Attractor]:
+        """
+        Discover attractors from trajectories stored in Graphiti.
+
+        Args:
+            graphiti_tracker: GraphitiPhaseSpaceTracker instance
+            community_id: Community to analyze
+            lookback_days: Days of history to analyze
+            outcomes: Optional dict mapping agent_id to outcome metrics
+
+        Returns:
+            List of discovered attractors
+        """
+        try:
+            # Query all trajectories from the graph
+            cypher = """
+            MATCH (s:Servant)-[:HAS_STATE]->(state:AgentState)
+            WHERE state.community_id = $community_id
+            RETURN DISTINCT s.id as agent_id
+            """
+
+            results = graphiti_tracker.graphiti.query(
+                cypher,
+                community_id=community_id
+            )
+
+            # Get trajectories for each agent
+            trajectories = {}
+            for record in results:
+                agent_id = record.get("agent_id")
+                if agent_id:
+                    trajectory = graphiti_tracker.get_trajectory(
+                        agent_id,
+                        lookback_days=lookback_days
+                    )
+                    if trajectory:
+                        trajectories[agent_id] = trajectory
+
+            logger.info(
+                f"Discovered {len(trajectories)} agent trajectories from Graphiti "
+                f"(lookback: {lookback_days} days)"
+            )
+
+            # Use standard attractor discovery
+            return self.discover_attractors(trajectories, outcomes)
+
+        except Exception as e:
+            logger.error(f"Error discovering attractors from Graphiti: {e}")
+            return []
 
     def discover_attractors(
         self,
