@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 class DynamicAgentFactory:
     """Factory that creates agents from natural language requests"""
-    
+
     def __init__(self):
         self.intent_patterns = self._load_intent_patterns()
         self.capability_matrix = self._build_capability_matrix()
@@ -35,6 +35,25 @@ class DynamicAgentFactory:
             # If loading fails, log and continue with an empty list
             logger.warning(f"Failed to load BMAD agents: {e}")
             self.bmad_agents = []
+
+    def _map_spec_to_servant_type(self, spec: AgentSpecification):
+        """Map AgentSpecification to ServantType"""
+        from vessels.knowledge.schema import ServantType
+
+        # Map specialization to ServantType
+        mapping = {
+            "grant_discovery": ServantType.GRANT_WRITER,
+            "grant_writing": ServantType.GRANT_WRITER,
+            "grant_tracking": ServantType.GRANT_WRITER,
+            "community_coordination": ServantType.GRANT_WRITER,  # Generic for now
+            "volunteer_coordination": ServantType.GRANT_WRITER,
+            "elder_care": ServantType.MEDICAL,
+            "resource_navigation": ServantType.TRANSPORT,  # Closest match
+            "system_orchestration": ServantType.GRANT_WRITER,  # Generic
+            "memory_management": ServantType.GRANT_WRITER,
+        }
+
+        return mapping.get(spec.specialization, ServantType.GRANT_WRITER)
         
     def _load_intent_patterns(self) -> Dict[str, List[str]]:
         """Load patterns for recognizing user intents"""
@@ -389,32 +408,74 @@ class DynamicAgentFactory:
         ]
     
     def _deploy_agents(self, specifications: List[AgentSpecification]) -> List[Dict[str, Any]]:
-        """Deploy agents using Agent Zero Core"""
+        """Deploy agents as durable ServantProjects (Graph-First Architecture)"""
+        from vessels.projects.manager import ProjectManager
+
         deployed = []
-        
-        # Use the global agent_zero instance
-        agent_ids = agent_zero.spawn_agents(specifications)
-        
-        for i, agent_id in enumerate(agent_ids):
-            if i < len(specifications):
-                spec = specifications[i]
+        project_manager = ProjectManager()
+
+        for spec in specifications:
+            try:
+                # Map specification to ServantType
+                servant_type = self._map_spec_to_servant_type(spec)
+
+                # Create durable project (persisted to disk + graph)
+                project = project_manager.create_project(
+                    community_id="puna",  # TODO: Extract from context
+                    servant_type=servant_type,
+                    intent=spec.description,
+                    read_only_communities=[]
+                )
+
+                # Store tools config in project
+                project.config["tools_allowed"] = spec.tools_needed
+                project.config["capabilities"] = spec.capabilities
+                project.config["specialization"] = spec.specialization
+                project.config["communication_style"] = spec.communication_style
+                project.config["autonomy_level"] = spec.autonomy_level
+                project.save_config()
+
+                # Register project with AgentZero for execution
+                agent_zero.register_servant(project.id)
+
                 deployed.append({
-                    "agent_id": agent_id,
+                    "project_id": project.id,
                     "name": spec.name,
                     "specialization": spec.specialization,
                     "status": "deployed",
                     "capabilities": spec.capabilities,
-                    "tools": spec.tools_needed
+                    "tools": spec.tools_needed,
+                    "work_dir": str(project.work_dir)
                 })
-        
+
+                logger.info(f"Deployed {spec.name} as project {project.id} at {project.work_dir}")
+
+            except Exception as e:
+                logger.error(f"Failed to deploy {spec.name}: {e}")
+                deployed.append({
+                    "name": spec.name,
+                    "status": "failed",
+                    "error": str(e)
+                })
+
         return deployed
     
     def get_deployment_status(self, deployment_id: str = None) -> Dict[str, Any]:
-        """Get status of deployed agents"""
-        return {
+        """Get status of deployed servants"""
+        # New: Return servant project status
+        servant_status = agent_zero.list_all_servants()
+
+        # Legacy: Also return old agent status if any exist
+        legacy_agents = {
             "total_agents": len(agent_zero.agents),
             "active_agents": len([a for a in agent_zero.agents.values() if a.status.value == "active"]),
-            "agent_details": agent_zero.get_all_agents_status()
+            "agent_details": agent_zero.get_all_agents_status() if agent_zero.agents else []
+        }
+
+        return {
+            "servants": servant_status,
+            "total_servants": len(servant_status),
+            "legacy_agents": legacy_agents
         }
 
 # Global factory instance

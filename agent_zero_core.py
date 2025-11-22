@@ -57,10 +57,15 @@ class AgentInstance:
     
 class AgentZeroCore:
     """Meta-coordination engine that spawns and manages agents"""
-    
+
     def __init__(self):
+        # Legacy: In-memory agents (being phased out)
         self.agents: Dict[str, AgentInstance] = {}
         self.agent_specifications: Dict[str, AgentSpecification] = {}
+
+        # Graph-First: Registered servant projects
+        self.registered_servants: Dict[str, str] = {}  # project_id -> status
+
         self.message_bus = queue.Queue()
         self.system_memory = {}
         self.executor = ThreadPoolExecutor(max_workers=50)
@@ -535,6 +540,143 @@ class AgentZeroCore:
             self.coordination_thread.join(timeout=10)
         self.executor.shutdown(wait=True)
         logger.info("Agent Zero Core shutdown complete")
+
+    # ============================================================================
+    # GRAPH-FIRST ARCHITECTURE (New Methods)
+    # ============================================================================
+
+    def register_servant(self, project_id: str):
+        """
+        Register a servant project for graph-driven execution
+
+        This replaces spawn_agents() - instead of creating RAM-based agents,
+        we register persistent ServantProjects that survive restarts.
+
+        Args:
+            project_id: ID of the ServantProject to register
+        """
+        from vessels.projects.manager import ProjectManager
+
+        project_manager = ProjectManager()
+        project_manager.load_all_projects()  # Ensure projects are loaded
+
+        project = project_manager.get_project(project_id)
+        if not project:
+            logger.error(f"Project {project_id} not found")
+            return
+
+        self.registered_servants[project_id] = "registered"
+
+        # Start processing loop for this project
+        servant_thread = threading.Thread(
+            target=self._servant_processing_loop,
+            args=(project_id,)
+        )
+        servant_thread.daemon = True
+        servant_thread.start()
+
+        logger.info(f"Registered servant {project_id} (type: {project.servant_type.value})")
+
+    def _servant_processing_loop(self, project_id: str):
+        """
+        Graph-driven processing loop for a servant project
+
+        Instead of processing in-memory tasks, this loop:
+        1. Reads intents from the graph
+        2. Creates Run nodes for each execution
+        3. Logs results back to the graph
+        """
+        from vessels.projects.manager import ProjectManager
+
+        project_manager = ProjectManager()
+        project_manager.load_all_projects()
+        project = project_manager.get_project(project_id)
+
+        if not project:
+            logger.error(f"Project {project_id} not found in processing loop")
+            return
+
+        logger.info(f"Starting processing loop for servant {project_id}")
+
+        while self.running and project_id in self.registered_servants:
+            try:
+                # TODO: Read intents from graph
+                # intents = self._fetch_intents_from_graph(project)
+
+                # For now, simulate periodic health check
+                self._create_run_node(
+                    project=project,
+                    action="health_check",
+                    inputs={},
+                    outputs={"status": "running", "timestamp": datetime.now().isoformat()}
+                )
+
+            except Exception as e:
+                logger.error(f"Servant {project_id} processing error: {e}")
+
+            threading.Event().wait(30)  # Check every 30 seconds
+
+    def _create_run_node(self, project, action: str, inputs: Dict[str, Any], outputs: Dict[str, Any]):
+        """
+        Create a Run node in Graphiti for observability
+
+        This implements the "Run" concept from agent_zero_schema.md:
+        - Every action creates a Run node
+        - Linked to Servant and Project
+        - Contains inputs/outputs for audit trail
+        """
+        try:
+            run_id = str(uuid.uuid4())
+            project.graphiti.create_node(
+                node_type="Run",
+                properties={
+                    "action": action,
+                    "inputs": json.dumps(inputs),
+                    "outputs": json.dumps(outputs),
+                    "timestamp": datetime.now().isoformat(),
+                    "servant_id": project.id,
+                    "project_id": project.id,
+                    "community_id": project.community_id
+                },
+                node_id=run_id
+            )
+            logger.debug(f"Created Run node {run_id} for action '{action}'")
+            return run_id
+        except Exception as e:
+            logger.error(f"Failed to create Run node: {e}")
+            return None
+
+    def get_servant_status(self, project_id: str) -> Optional[Dict[str, Any]]:
+        """Get status of a registered servant project"""
+        from vessels.projects.manager import ProjectManager
+
+        if project_id not in self.registered_servants:
+            return None
+
+        project_manager = ProjectManager()
+        project_manager.load_all_projects()
+        project = project_manager.get_project(project_id)
+
+        if not project:
+            return None
+
+        return {
+            "project_id": project.id,
+            "servant_type": project.servant_type.value,
+            "status": project.status.value,
+            "community_id": project.community_id,
+            "work_dir": str(project.work_dir),
+            "last_active": project.last_active.isoformat(),
+            "registration_status": self.registered_servants[project_id]
+        }
+
+    def list_all_servants(self) -> List[Dict[str, Any]]:
+        """List all registered servants"""
+        return [
+            self.get_servant_status(project_id)
+            for project_id in self.registered_servants
+            if self.get_servant_status(project_id) is not None
+        ]
 
 # Global instance for easy access
 agent_zero = AgentZeroCore()
