@@ -19,6 +19,7 @@ Vessels is a Python-based adaptive coordination platform that boots a full stack
 
 ### Graph/knowledge layer
 - **`vessels/knowledge/graphiti_client.py`** – Vessels-specific Graphiti/FalkorDB wrapper that enforces community namespaces, optional mock fallback, health checks, and simplified node/relationship creation with audit properties (created_by, timestamps) plus temporal/privacy scaffolding.【F:vessels/knowledge/graphiti_client.py†L2-L135】【F:vessels/knowledge/graphiti_client.py†L134-L200】
+- **`vessels/knowledge/schema.py`** – Enumerates node/relationship/property enums and validation rules for the FalkorDB-backed knowledge graph, covering servants, community resources, experiences/facts, commercial entities, and temporal/privacy attributes used across graph clients.【F:vessels/knowledge/schema.py†L1-L120】【F:vessels/knowledge/schema.py†L64-L120】
 
 ### Tools, connectors, and content utilities
 - **`adaptive_tools.py`** – Secure tool registry defining typed tool specs and handlers (web scraping, document generation placeholder, API integration, etc.), safe execution with validation, usage tracking, and insight reporting, replacing earlier dynamic code generation.【F:adaptive_tools.py†L3-L156】
@@ -37,4 +38,11 @@ Vessels is a Python-based adaptive coordination platform that boots a full stack
 - **`voice_interface.py`** & **`vessels_web_server.py`** – Voice and web endpoints: Flask server secures the voice-processing route with payload validation and renders the UI, while the voice interface handles audio/upload parsing and forwards text to the Vessels interface.【F:voice_interface.py†L1-L140】【F:vessels_web_server.py†L1-L120】
 - **`auto_deploy.py`** – Deployment helper exposing functions to assemble Docker Compose snippets with environment-driven secrets and to launch/track deployments for the platform.【F:auto_deploy.py†L1-L160】
 - **`demo_vessels.py` / `vessels_fixed.py` / `vessels_interface.py`** – Alternate entry/demo runners showcasing specific platform configurations or fixed behaviors alongside the primary `vessels.py` entrypoint.【F:demo_vessels.py†L1-L120】【F:vessels_fixed.py†L1-L120】
+
+### Agent governance, communication, and compute packages (vessels/)
+- **`vessels/agents/*`** – Governance utilities for commercial and community agents: taxonomy/enums for identities and relationships, disclosure packages, commercial gateway logic, policy definitions, vector-store helpers, and constraint scaffolding used when spawning or supervising servants.【F:vessels/agents/gateway.py†L1-L160】【F:vessels/agents/policy.py†L1-L120】
+- **`vessels/communication/*`** – Nostr adapter, protocol registry, and sanitizer functions that publish/consume decentralized coordination events with optional keypair management and content cleaning for relays.【F:vessels/communication/nostr_adapter.py†L1-L120】
+- **`vessels/compute/*`** – LLM routing and Petals gateway for scaling model inference: routes workloads to local/remote models and optionally taps Petals’ distributed GPU mesh for large models with safety guardrails.【F:vessels/compute/petals_gateway.py†L1-L80】
+- **`vessels/constraints/*`, `vessels/gating/*`, `vessels/phase_space/*`, `vessels/intervention/*`, `vessels/measurement/*`** – Moral/operational constraint validators, event gates, phase-space state trackers, intervention strategies, and virtue/state measurement utilities that enforce policies around servant behavior and safety.【F:vessels/constraints/validator.py†L1-L120】【F:vessels/gating/gate.py†L1-L120】【F:vessels/phase_space/tracker.py†L1-L80】
+- **`vessels/device/*`** – On-device emotion/voice components plus local LLM runner (ExecuTorch/llama.cpp/MLC) to keep classification, STT/TTS, and quick intent inference on trusted hardware before escalating to larger models.【F:vessels/device/local_llm.py†L1-L105】
 
