@@ -12,6 +12,7 @@ from typing import Dict, List, Optional, Any
 from enum import Enum
 
 from .fee_structure import FeeConfig, FUND_DISTRIBUTION, distribute_fee
+from .payment_client import PaymentGatewayClient
 
 logger = logging.getLogger(__name__)
 
@@ -128,22 +129,38 @@ class CommercialFeeProcessor:
     - Full transaction transparency
     """
 
-    def __init__(self, graph_client=None, payment_gateway=None):
+    def __init__(
+        self,
+        graph_client=None,
+        payment_gateway: Optional[PaymentGatewayClient] = None,
+        payment_service_url: str = "http://localhost:3000",
+        payment_api_token: Optional[str] = None
+    ):
         """
         Initialize fee processor
 
         Args:
             graph_client: Optional Graphiti client for storing transactions
-            payment_gateway: Optional payment gateway integration
+            payment_gateway: Optional PaymentGatewayClient instance
+            payment_service_url: URL of payment service (if payment_gateway not provided)
+            payment_api_token: API token for payment service
         """
         self.graph_client = graph_client
-        self.payment_gateway = payment_gateway
+
+        # Initialize payment gateway if not provided
+        if payment_gateway:
+            self.payment_gateway = payment_gateway
+        else:
+            self.payment_gateway = PaymentGatewayClient(
+                base_url=payment_service_url,
+                api_token=payment_api_token
+            )
 
         # Transaction tracking
         self.transactions: Dict[str, ReferralTransaction] = {}
         self.allocations: Dict[str, FundAllocation] = {}
 
-        logger.info("Commercial Fee Processor initialized")
+        logger.info("Commercial Fee Processor initialized with payment gateway")
 
     def process_referral_fee(
         self,
@@ -212,16 +229,15 @@ class CommercialFeeProcessor:
         transaction.status = TransactionStatus.PROCESSING
 
         try:
-            # If payment gateway available, process payment
-            if self.payment_gateway:
-                payment_result = self.payment_gateway.charge(
-                    company_id=transaction.company_id,
-                    amount=transaction.referral_fee,
-                    description=f"Referral fee for {transaction.agent_id}"
-                )
+            # Process payment through payment gateway
+            payment_result = self.payment_gateway.charge(
+                company_id=transaction.company_id,
+                amount=transaction.referral_fee,
+                description=f"Referral fee for agent {transaction.agent_id}"
+            )
 
-                if not payment_result.get("success"):
-                    raise Exception(payment_result.get("error", "Payment failed"))
+            if not payment_result.get("success"):
+                raise Exception(payment_result.get("error", "Payment failed"))
 
             # Payment successful, distribute funds
             transaction.status = TransactionStatus.COMPLETED
@@ -423,15 +439,14 @@ class CommercialFeeProcessor:
 
         try:
             # Process refund through payment gateway
-            if self.payment_gateway:
-                refund_result = self.payment_gateway.refund(
-                    transaction_id=transaction_id,
-                    amount=transaction.referral_fee,
-                    reason=reason
-                )
+            refund_result = self.payment_gateway.refund(
+                transaction_id=transaction_id,
+                amount=transaction.referral_fee,
+                reason=reason
+            )
 
-                if not refund_result.get("success"):
-                    raise Exception(refund_result.get("error", "Refund failed"))
+            if not refund_result.get("success"):
+                raise Exception(refund_result.get("error", "Refund failed"))
 
             transaction.status = TransactionStatus.REFUNDED
 

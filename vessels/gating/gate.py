@@ -5,10 +5,12 @@ This is where the geometry constrains the world.
 All external actions must pass through the gate.
 """
 
-from typing import Dict, Any, Optional, List
-from datetime import datetime
+from typing import Dict, Any, Optional, List, Tuple
+from datetime import datetime, timedelta
 from dataclasses import dataclass
+from collections import defaultdict
 import time
+import logging
 
 from ..measurement.state import PhaseSpaceState, VirtueState, OperationalState
 from ..measurement.operational import OperationalMetrics
@@ -17,6 +19,8 @@ from ..constraints.manifold import Manifold
 from ..constraints.validator import ConstraintValidator
 from ..phase_space.tracker import TrajectoryTracker
 from .events import SecurityEvent, StateTransition, hash_action
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -27,6 +31,38 @@ class GatingResult:
     security_event: Optional[SecurityEvent] = None
     state_transition: Optional[StateTransition] = None
     measured_state: Optional[PhaseSpaceState] = None
+    intervention_triggered: bool = False
+
+
+@dataclass
+class InterventionEvent:
+    """
+    Intervention event triggered when an agent exceeds block threshold.
+
+    This represents a critical state where an agent is repeatedly blocked
+    and requires human attention or automated strategy reset.
+    """
+    agent_id: str
+    timestamp: datetime
+    consecutive_blocks: int
+    block_threshold: int
+    action_pattern: str
+    recent_violations: List[str]
+    recommended_action: str
+    severity: str  # 'warning', 'critical', 'emergency'
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for logging/storage"""
+        return {
+            'agent_id': self.agent_id,
+            'timestamp': self.timestamp.isoformat(),
+            'consecutive_blocks': self.consecutive_blocks,
+            'block_threshold': self.block_threshold,
+            'action_pattern': self.action_pattern,
+            'recent_violations': self.recent_violations,
+            'recommended_action': self.recommended_action,
+            'severity': self.severity
+        }
 
 
 class ActionGate:
@@ -48,7 +84,9 @@ class ActionGate:
         virtue_engine: VirtueInferenceEngine,
         latency_budget_ms: float = 100.0,
         block_on_timeout: bool = True,
-        tracker: Optional[TrajectoryTracker] = None
+        tracker: Optional[TrajectoryTracker] = None,
+        block_threshold: int = 5,
+        intervention_window_minutes: int = 10
     ):
         """
         Initialize action gate.
@@ -59,6 +97,9 @@ class ActionGate:
             virtue_engine: Virtue inference engine
             latency_budget_ms: Maximum latency budget in milliseconds
             block_on_timeout: If True, block on timeout (conservative default)
+            tracker: Optional trajectory tracker
+            block_threshold: Number of consecutive blocks before intervention
+            intervention_window_minutes: Time window for tracking consecutive blocks
         """
         self.manifold = manifold
         self.operational_metrics = operational_metrics
@@ -68,10 +109,20 @@ class ActionGate:
         self.block_on_timeout = block_on_timeout
         self.tracker = tracker
 
+        # Dead letter queue configuration
+        self.block_threshold = block_threshold
+        self.intervention_window = timedelta(minutes=intervention_window_minutes)
+
         # Event logs (in-memory for now, will be persisted to SQLite)
         self.security_events: List[SecurityEvent] = []
         self.state_transitions: List[StateTransition] = []
         self.last_states: Dict[str, PhaseSpaceState] = {}
+
+        # Dead letter queue tracking
+        # Maps agent_id -> list of (timestamp, action_hash, violations)
+        self.blocked_actions: Dict[str, List[Tuple[datetime, str, List[str]]]] = defaultdict(list)
+        self.intervention_events: List[InterventionEvent] = []
+        self.agents_under_intervention: Dict[str, datetime] = {}
 
     def gate_action(
         self,
@@ -314,12 +365,20 @@ class ActionGate:
 
         self.state_transitions.append(transition)
 
+        # Track blocked action in dead letter queue
+        now = datetime.utcnow()
+        self.blocked_actions[agent_id].append((now, action_hash, residual_violations))
+
+        # Check if intervention is needed
+        intervention_triggered = self._check_intervention_needed(agent_id, action_hash)
+
         return GatingResult(
             allowed=False,
             reason=f"Projection failed: {len(residual_violations)} residual violations",
             security_event=event,
             state_transition=transition,
-            measured_state=state
+            measured_state=state,
+            intervention_triggered=intervention_triggered
         )
 
     def _handle_timeout(
@@ -382,6 +441,162 @@ class ActionGate:
             reason=f"Gating error: {error_msg}",
             security_event=event
         )
+
+    def _check_intervention_needed(
+        self,
+        agent_id: str,
+        action_hash: str
+    ) -> bool:
+        """
+        Check if intervention is needed for agent.
+
+        Returns:
+            True if intervention was triggered
+        """
+        # Don't trigger duplicate interventions
+        if agent_id in self.agents_under_intervention:
+            existing_intervention_time = self.agents_under_intervention[agent_id]
+            # Only allow new intervention after 1 hour
+            if datetime.utcnow() - existing_intervention_time < timedelta(hours=1):
+                return False
+
+        # Clean up old blocked actions outside intervention window
+        now = datetime.utcnow()
+        cutoff_time = now - self.intervention_window
+
+        blocked_list = self.blocked_actions[agent_id]
+        recent_blocks = [
+            (ts, ah, viol) for ts, ah, viol in blocked_list
+            if ts >= cutoff_time
+        ]
+
+        # Update the list with only recent blocks
+        self.blocked_actions[agent_id] = recent_blocks
+
+        # Check if threshold exceeded
+        if len(recent_blocks) >= self.block_threshold:
+            self._trigger_intervention(agent_id, action_hash, recent_blocks)
+            return True
+
+        return False
+
+    def _trigger_intervention(
+        self,
+        agent_id: str,
+        action_hash: str,
+        recent_blocks: List[Tuple[datetime, str, List[str]]]
+    ):
+        """
+        Trigger intervention for agent.
+
+        Args:
+            agent_id: Agent ID
+            action_hash: Current action hash
+            recent_blocks: List of recent blocked actions
+        """
+        # Collect violation patterns
+        all_violations = []
+        for _, _, violations in recent_blocks:
+            all_violations.extend(violations)
+
+        # Determine severity based on block count
+        consecutive_blocks = len(recent_blocks)
+        if consecutive_blocks >= self.block_threshold * 2:
+            severity = 'emergency'
+            recommended_action = 'Immediate agent suspension and human review required'
+        elif consecutive_blocks >= self.block_threshold * 1.5:
+            severity = 'critical'
+            recommended_action = 'Escalate to supervisor. Consider agent strategy reset'
+        else:
+            severity = 'warning'
+            recommended_action = 'Review agent configuration. May need retraining'
+
+        # Create intervention event
+        intervention = InterventionEvent(
+            agent_id=agent_id,
+            timestamp=datetime.utcnow(),
+            consecutive_blocks=consecutive_blocks,
+            block_threshold=self.block_threshold,
+            action_pattern=action_hash,
+            recent_violations=list(set(all_violations))[:10],  # Unique violations, max 10
+            recommended_action=recommended_action,
+            severity=severity
+        )
+
+        self.intervention_events.append(intervention)
+        self.agents_under_intervention[agent_id] = datetime.utcnow()
+
+        # Log intervention
+        logger.critical(
+            f"INTERVENTION TRIGGERED for agent {agent_id}: "
+            f"{consecutive_blocks} consecutive blocks (threshold: {self.block_threshold}). "
+            f"Severity: {severity}. {recommended_action}"
+        )
+
+        # Store in tracker if available
+        if self.tracker:
+            # Store as special security event
+            intervention_event = SecurityEvent(
+                agent_id=agent_id,
+                timestamp=datetime.utcnow(),
+                violations=intervention.recent_violations,
+                original_virtue_state={},
+                blocked=True,
+                action_hash=action_hash,
+                event_type='intervention_triggered',
+                metadata={
+                    'consecutive_blocks': consecutive_blocks,
+                    'severity': severity,
+                    'recommended_action': recommended_action
+                }
+            )
+            self.tracker.store_security_event(intervention_event)
+
+    def clear_intervention(self, agent_id: str):
+        """
+        Clear intervention status for agent.
+
+        This should be called after human review or successful strategy reset.
+
+        Args:
+            agent_id: Agent ID
+        """
+        if agent_id in self.agents_under_intervention:
+            del self.agents_under_intervention[agent_id]
+            logger.info(f"Intervention cleared for agent {agent_id}")
+
+        # Clear blocked actions for this agent
+        if agent_id in self.blocked_actions:
+            self.blocked_actions[agent_id].clear()
+
+    def get_intervention_events(
+        self,
+        agent_id: Optional[str] = None,
+        severity: Optional[str] = None
+    ) -> List[InterventionEvent]:
+        """
+        Retrieve intervention events, optionally filtered.
+
+        Args:
+            agent_id: Optional agent ID filter
+            severity: Optional severity filter ('warning', 'critical', 'emergency')
+
+        Returns:
+            List of intervention events
+        """
+        events = self.intervention_events
+
+        if agent_id:
+            events = [e for e in events if e.agent_id == agent_id]
+
+        if severity:
+            events = [e for e in events if e.severity == severity]
+
+        return events
+
+    def get_agents_under_intervention(self) -> List[str]:
+        """Get list of agent IDs currently under intervention"""
+        return list(self.agents_under_intervention.keys())
 
     def get_security_events(
         self,

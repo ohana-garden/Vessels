@@ -27,6 +27,56 @@ import requests
 
 logger = logging.getLogger(__name__)
 
+# Required environment variables for deployment
+REQUIRED_ENV_VARS = [
+    "POSTGRES_PASSWORD",
+    "REDIS_PASSWORD",
+]
+
+# Optional but recommended environment variables
+OPTIONAL_ENV_VARS = [
+    "TIGERBEETLE_CLUSTER_ID",
+    "JWT_SECRET_KEY",
+    "ENCRYPTION_KEY",
+]
+
+
+def validate_environment_variables():
+    """
+    Validate that all required environment variables are set.
+
+    Raises:
+        RuntimeError: If any required environment variable is missing
+    """
+    missing_vars = []
+
+    for var in REQUIRED_ENV_VARS:
+        if not os.environ.get(var):
+            missing_vars.append(var)
+
+    if missing_vars:
+        error_msg = (
+            f"Missing required environment variables: {', '.join(missing_vars)}\n"
+            f"Please set these variables before running deployment.\n"
+            f"Example: export POSTGRES_PASSWORD='your-secure-password'"
+        )
+        logger.error(error_msg)
+        raise RuntimeError(error_msg)
+
+    # Warn about optional variables
+    missing_optional = []
+    for var in OPTIONAL_ENV_VARS:
+        if not os.environ.get(var):
+            missing_optional.append(var)
+
+    if missing_optional:
+        logger.warning(
+            f"Optional environment variables not set: {', '.join(missing_optional)}\n"
+            f"Using default values. For production, consider setting these."
+        )
+
+    logger.info("Environment variable validation passed")
+
 class DeploymentType(Enum):
     LOCAL = "local"
     CLOUD = "cloud"
@@ -80,8 +130,11 @@ class AutoDeploySystem:
     
     def initialize_deployment_system(self):
         """Initialize the auto-deploy system"""
+        # Validate environment variables first
+        validate_environment_variables()
+
         self.running = True
-        
+
         # Initialize Docker client
         try:
             self.docker_client = docker.from_env()
@@ -360,10 +413,17 @@ services:
       - "{config.monitoring['metrics_port']}:{config.monitoring['metrics_port']}"
     environment:
 """
-        
+
         for key, value in config.environment.items():
             compose += f"      - {key}={value}\n"
-        
+
+        # Add secret environment variables from host environment
+        compose += """      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-default-dev-secret-change-in-production}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-default-dev-key-change-in-production}
+"""
+
         compose += f"""
     depends_on:
       - redis
@@ -380,6 +440,7 @@ services:
     image: redis:alpine
     ports:
       - "6379:6379"
+    command: redis-server --requirepass ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
     restart: unless-stopped
 
   postgres:

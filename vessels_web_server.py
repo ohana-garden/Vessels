@@ -4,7 +4,7 @@ VESSELS WEB SERVER - Voice-First UI with Backend Integration
 Connects the clean voice UI to all Vessels functionality
 """
 
-from flask import Flask, abort, jsonify, render_template, request
+from flask import Flask, abort, jsonify, render_template, request, escape
 from flask_cors import CORS
 import json
 import asyncio
@@ -12,6 +12,8 @@ import logging
 from datetime import datetime
 import os
 import sys
+from pydantic import BaseModel, Field, field_validator, ValidationError
+from typing import Optional
 
 # Import Vessels components
 from vessels_fixed import VesselsPlatform
@@ -30,6 +32,94 @@ logger = logging.getLogger(__name__)
 
 # Store active sessions
 sessions = {}
+
+
+# ============================================================================
+# PYDANTIC MODELS FOR INPUT VALIDATION
+# ============================================================================
+
+class VoiceProcessRequest(BaseModel):
+    """Strict validation for voice processing requests"""
+    text: str = Field(..., min_length=1, max_length=10000, description="User input text")
+    session_id: str = Field(default="default", min_length=1, max_length=100)
+    emotion: str = Field(default="neutral", max_length=50)
+
+    @field_validator('text')
+    @classmethod
+    def validate_text(cls, v: str) -> str:
+        """Validate and sanitize text input"""
+        v = v.strip()
+        if not v:
+            raise ValueError("Text cannot be empty or only whitespace")
+        # Basic sanitization - remove any null bytes
+        v = v.replace('\x00', '')
+        return v
+
+    @field_validator('session_id')
+    @classmethod
+    def validate_session_id(cls, v: str) -> str:
+        """Validate session ID format"""
+        v = v.strip()
+        if not v:
+            raise ValueError("Session ID cannot be empty")
+        # Only allow alphanumeric, hyphens, and underscores
+        if not all(c.isalnum() or c in '-_' for c in v):
+            raise ValueError("Session ID contains invalid characters")
+        return v
+
+    @field_validator('emotion')
+    @classmethod
+    def validate_emotion(cls, v: str) -> str:
+        """Validate emotion is from allowed list"""
+        allowed_emotions = {
+            'neutral', 'happy', 'sad', 'frustrated',
+            'uncertain', 'excited', 'concerned'
+        }
+        v = v.strip().lower()
+        if v not in allowed_emotions:
+            # Default to neutral if invalid
+            return 'neutral'
+        return v
+
+
+class ContentGenerateRequest(BaseModel):
+    """Strict validation for content generation requests"""
+    type: str = Field(default="CULTURAL_GUIDE", max_length=100)
+    audience: str = Field(default="community", max_length=100)
+    culture: str = Field(default="hawaiian", max_length=100)
+    language: str = Field(default="en", max_length=10)
+    tone: str = Field(default="warm", max_length=50)
+    urgency: str = Field(default="normal", max_length=50)
+    requirements: dict = Field(default_factory=dict)
+
+
+class GrantSearchRequest(BaseModel):
+    """Strict validation for grant search requests"""
+    query: str = Field(..., min_length=1, max_length=1000)
+
+    @field_validator('query')
+    @classmethod
+    def validate_query(cls, v: str) -> str:
+        """Sanitize search query"""
+        v = v.strip()
+        if not v:
+            raise ValueError("Query cannot be empty")
+        v = v.replace('\x00', '')
+        return v
+
+
+class GrantApplicationRequest(BaseModel):
+    """Strict validation for grant application requests"""
+    grant_id: str = Field(..., min_length=1, max_length=200)
+
+    @field_validator('grant_id')
+    @classmethod
+    def validate_grant_id(cls, v: str) -> str:
+        """Validate grant ID"""
+        v = v.strip()
+        if not v:
+            raise ValueError("Grant ID cannot be empty")
+        return v
 
 @app.errorhandler(Exception)
 def handle_errors(err):
@@ -55,21 +145,16 @@ def process_voice():
     if not data:
         abort(400, description="Invalid or missing JSON body")
 
-    text = data.get('text', '')
-    if not isinstance(text, str):
-        abort(400, description="Text must be a string")
+    # Use pydantic for strict validation
+    try:
+        validated_request = VoiceProcessRequest(**data)
+    except ValidationError as e:
+        logger.warning(f"Validation error: {e}")
+        abort(400, description=f"Validation error: {e.errors()[0]['msg']}")
 
-    text = text.strip().lower()
-    if not text or len(text) > 10000:
-        abort(400, description="Text input is required and must be under 10k characters")
-
-    session_id = data.get('session_id', 'default')
-    if not isinstance(session_id, str) or not session_id:
-        abort(400, description="session_id must be a non-empty string")
-
-    emotion = data.get('emotion', 'neutral')
-    if not isinstance(emotion, str):
-        abort(400, description="emotion must be a string")
+    text = validated_request.text.lower()
+    session_id = validated_request.session_id
+    emotion = validated_request.emotion
     
     # Store session context
     if session_id not in sessions:
@@ -473,17 +558,29 @@ def handle_general_request(text, session):
 @app.route('/api/content/generate', methods=['POST'])
 def generate_content():
     """Generate contextual content"""
-    data = request.json
-    
+    if request.content_type != 'application/json':
+        abort(415, description="Content-Type must be application/json")
+
+    data = request.get_json(silent=True)
+    if not data:
+        abort(400, description="Invalid or missing JSON body")
+
+    # Use pydantic for validation
+    try:
+        validated_request = ContentGenerateRequest(**data)
+    except ValidationError as e:
+        logger.warning(f"Validation error: {e}")
+        abort(400, description=f"Validation error: {e.errors()[0]['msg']}")
+
     # Extract context
     context = ContentContext(
-        content_type=ContentType[data.get('type', 'CULTURAL_GUIDE').upper()],
-        target_audience=data.get('audience', 'community'),
-        cultural_context=data.get('culture', 'hawaiian'),
-        language=data.get('language', 'en'),
-        emotional_tone=data.get('tone', 'warm'),
-        urgency_level=data.get('urgency', 'normal'),
-        specific_requirements=data.get('requirements', {})
+        content_type=ContentType[validated_request.type.upper()],
+        target_audience=validated_request.audience,
+        cultural_context=validated_request.culture,
+        language=validated_request.language,
+        emotional_tone=validated_request.tone,
+        urgency_level=validated_request.urgency,
+        specific_requirements=validated_request.requirements
     )
     
     # Generate content
@@ -503,15 +600,41 @@ def generate_content():
 @app.route('/api/grants/search', methods=['POST'])
 def search_grants():
     """Search for grants"""
-    query = request.json.get('query', '')
-    result = vessels.find_grants(query)
+    if request.content_type != 'application/json':
+        abort(415, description="Content-Type must be application/json")
+
+    data = request.get_json(silent=True)
+    if not data:
+        abort(400, description="Invalid or missing JSON body")
+
+    # Use pydantic for validation
+    try:
+        validated_request = GrantSearchRequest(**data)
+    except ValidationError as e:
+        logger.warning(f"Validation error: {e}")
+        abort(400, description=f"Validation error: {e.errors()[0]['msg']}")
+
+    result = vessels.find_grants(validated_request.query)
     return jsonify(result)
 
 @app.route('/api/grants/apply', methods=['POST'])
 def apply_grant():
     """Generate grant application"""
-    grant_id = request.json.get('grant_id')
-    result = vessels.generate_applications(f"generate application for {grant_id}")
+    if request.content_type != 'application/json':
+        abort(415, description="Content-Type must be application/json")
+
+    data = request.get_json(silent=True)
+    if not data:
+        abort(400, description="Invalid or missing JSON body")
+
+    # Use pydantic for validation
+    try:
+        validated_request = GrantApplicationRequest(**data)
+    except ValidationError as e:
+        logger.warning(f"Validation error: {e}")
+        abort(400, description=f"Validation error: {e.errors()[0]['msg']}")
+
+    result = vessels.generate_applications(f"generate application for {validated_request.grant_id}")
     return jsonify(result)
 
 @app.route('/api/status', methods=['GET'])
