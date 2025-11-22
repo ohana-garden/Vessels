@@ -53,7 +53,56 @@ class VectorEmbedding:
 class CommunityMemory:
     """Distributed memory system for agent coordination"""
 
-    def __init__(self, db_path: Optional[str] = None):
+    def __init__(
+        self,
+        db_path: Optional[str] = None,
+        backend: str = "sqlite",
+        graphiti_client=None,
+        community_id: Optional[str] = None
+    ):
+        """
+        Initialize Community Memory system.
+
+        Args:
+            db_path: Path to SQLite database (for sqlite backend)
+            backend: Backend type: "sqlite", "graphiti", or "hybrid"
+            graphiti_client: VesselsGraphitiClient instance (for graphiti/hybrid backends)
+            community_id: Community ID (for graphiti backend)
+        """
+        self.backend_type = backend
+        self.graphiti_backend = None
+        self.community_id = community_id
+
+        # Initialize Graphiti backend if requested
+        if backend in ["graphiti", "hybrid"]:
+            if graphiti_client is None and community_id:
+                # Lazy-load graphiti client
+                try:
+                    from vessels.knowledge.graphiti_client import VesselsGraphitiClient
+                    graphiti_client = VesselsGraphitiClient(
+                        community_id=community_id,
+                        allow_mock=True  # Allow mock for testing
+                    )
+                except Exception as e:
+                    logger.warning(f"Could not initialize Graphiti client: {e}")
+                    if backend == "graphiti":
+                        raise
+                    # Fall back to SQLite for hybrid mode
+                    self.backend_type = "sqlite"
+
+            if graphiti_client:
+                try:
+                    from vessels.knowledge.memory_backend import GraphitiMemoryBackend
+                    self.graphiti_backend = GraphitiMemoryBackend(graphiti_client)
+                    logger.info(f"Initialized Graphiti memory backend (mode: {backend})")
+                except Exception as e:
+                    logger.warning(f"Could not initialize Graphiti backend: {e}")
+                    if backend == "graphiti":
+                        raise
+                    # Fall back to SQLite for hybrid mode
+                    self.backend_type = "sqlite"
+
+        # Always initialize in-memory structures (used by all backends)
         self.memories: Dict[str, MemoryEntry] = {}
         self.agent_memories: Dict[str, List[str]] = defaultdict(list)
         self.vector_embeddings: Dict[str, VectorEmbedding] = {}
@@ -159,7 +208,7 @@ class CommunityMemory:
     def store_experience(self, agent_id: str, experience: Dict[str, Any]) -> str:
         """Store agent experience in community memory"""
         memory_id = str(uuid.uuid4())
-        
+
         memory_entry = MemoryEntry(
             id=memory_id,
             type=MemoryType.EXPERIENCE,
@@ -170,40 +219,52 @@ class CommunityMemory:
             relationships=experience.get("relationships", []),
             confidence=experience.get("confidence", 1.0)
         )
-        
-        # Store in memory
-        self.memories[memory_id] = memory_entry
-        self.agent_memories[agent_id].append(memory_id)
-        
-        # Generate vector embedding
-        vector = self._generate_embedding(experience)
-        self.vector_embeddings[memory_id] = VectorEmbedding(
-            memory_id=memory_id,
-            vector=vector,
-            metadata={"type": "experience", "agent_id": agent_id}
-        )
-        
-        # Update relationships
-        self._update_relationships(memory_id, experience)
-        
-        # Store event
-        self._store_event({
-            "type": "memory_stored",
-            "memory_id": memory_id,
-            "agent_id": agent_id,
-            "experience_type": experience.get("type", "unknown")
-        })
-        
-        # Persist to database
-        self._persist_memory(memory_entry)
-        
+
+        # Store in Graphiti backend if enabled
+        if self.backend_type in ["graphiti", "hybrid"] and self.graphiti_backend:
+            try:
+                self.graphiti_backend.store_memory(memory_entry)
+                logger.debug(f"Stored experience in Graphiti: {memory_id}")
+            except Exception as e:
+                logger.error(f"Failed to store in Graphiti: {e}")
+                if self.backend_type == "graphiti":
+                    raise
+
+        # Store in SQLite backend (always for hybrid, or if graphiti failed)
+        if self.backend_type in ["sqlite", "hybrid"]:
+            # Store in memory
+            self.memories[memory_id] = memory_entry
+            self.agent_memories[agent_id].append(memory_id)
+
+            # Generate vector embedding
+            vector = self._generate_embedding(experience)
+            self.vector_embeddings[memory_id] = VectorEmbedding(
+                memory_id=memory_id,
+                vector=vector,
+                metadata={"type": "experience", "agent_id": agent_id}
+            )
+
+            # Update relationships
+            self._update_relationships(memory_id, experience)
+
+            # Store event
+            self._store_event({
+                "type": "memory_stored",
+                "memory_id": memory_id,
+                "agent_id": agent_id,
+                "experience_type": experience.get("type", "unknown")
+            })
+
+            # Persist to database
+            self._persist_memory(memory_entry)
+
         logger.info(f"Stored experience for agent {agent_id}: {memory_id}")
         return memory_id
     
     def store_knowledge(self, agent_id: str, knowledge: Dict[str, Any]) -> str:
         """Store community knowledge"""
         memory_id = str(uuid.uuid4())
-        
+
         memory_entry = MemoryEntry(
             id=memory_id,
             type=MemoryType.KNOWLEDGE,
@@ -214,28 +275,40 @@ class CommunityMemory:
             relationships=knowledge.get("relationships", []),
             confidence=knowledge.get("confidence", 0.8)
         )
-        
-        self.memories[memory_id] = memory_entry
-        self.agent_memories[agent_id].append(memory_id)
-        
-        # Generate vector embedding
-        vector = self._generate_embedding(knowledge)
-        self.vector_embeddings[memory_id] = VectorEmbedding(
-            memory_id=memory_id,
-            vector=vector,
-            metadata={"type": "knowledge", "agent_id": agent_id}
-        )
-        
-        self._update_relationships(memory_id, knowledge)
-        self._store_event({
-            "type": "knowledge_stored",
-            "memory_id": memory_id,
-            "agent_id": agent_id,
-            "knowledge_domain": knowledge.get("domain", "general")
-        })
-        
-        self._persist_memory(memory_entry)
-        
+
+        # Store in Graphiti backend if enabled
+        if self.backend_type in ["graphiti", "hybrid"] and self.graphiti_backend:
+            try:
+                self.graphiti_backend.store_memory(memory_entry)
+                logger.debug(f"Stored knowledge in Graphiti: {memory_id}")
+            except Exception as e:
+                logger.error(f"Failed to store in Graphiti: {e}")
+                if self.backend_type == "graphiti":
+                    raise
+
+        # Store in SQLite backend (always for hybrid, or if graphiti failed)
+        if self.backend_type in ["sqlite", "hybrid"]:
+            self.memories[memory_id] = memory_entry
+            self.agent_memories[agent_id].append(memory_id)
+
+            # Generate vector embedding
+            vector = self._generate_embedding(knowledge)
+            self.vector_embeddings[memory_id] = VectorEmbedding(
+                memory_id=memory_id,
+                vector=vector,
+                metadata={"type": "knowledge", "agent_id": agent_id}
+            )
+
+            self._update_relationships(memory_id, knowledge)
+            self._store_event({
+                "type": "knowledge_stored",
+                "memory_id": memory_id,
+                "agent_id": agent_id,
+                "knowledge_domain": knowledge.get("domain", "general")
+            })
+
+            self._persist_memory(memory_entry)
+
         logger.info(f"Stored knowledge from agent {agent_id}: {memory_id}")
         return memory_id
     
