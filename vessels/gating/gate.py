@@ -15,6 +15,7 @@ from ..measurement.operational import OperationalMetrics
 from ..measurement.virtue_inference import VirtueInferenceEngine
 from ..constraints.manifold import Manifold
 from ..constraints.validator import ConstraintValidator
+from ..phase_space.tracker import TrajectoryTracker
 from .events import SecurityEvent, StateTransition, hash_action
 
 
@@ -46,7 +47,8 @@ class ActionGate:
         operational_metrics: OperationalMetrics,
         virtue_engine: VirtueInferenceEngine,
         latency_budget_ms: float = 100.0,
-        block_on_timeout: bool = True
+        block_on_timeout: bool = True,
+        tracker: Optional[TrajectoryTracker] = None
     ):
         """
         Initialize action gate.
@@ -64,6 +66,7 @@ class ActionGate:
         self.validator = ConstraintValidator(manifold)
         self.latency_budget_ms = latency_budget_ms
         self.block_on_timeout = block_on_timeout
+        self.tracker = tracker
 
         # Event logs (in-memory for now, will be persisted to SQLite)
         self.security_events: List[SecurityEvent] = []
@@ -203,6 +206,8 @@ class ActionGate:
 
         self.state_transitions.append(transition)
         self.last_states[agent_id] = state
+        if self.tracker:
+            self.tracker.store_transition(transition)
 
         return GatingResult(
             allowed=True,
@@ -232,10 +237,13 @@ class ActionGate:
             blocked=False,
             action_hash=action_hash,
             operational_state_snapshot=state.operational.to_dict(),
-            event_type="constraint_violation_corrected"
+            event_type="constraint_violation_corrected",
+            metadata=action_metadata
         )
 
         self.security_events.append(event)
+        if self.tracker:
+            self.tracker.store_security_event(event)
 
         # Log state transition
         from_state = self.last_states.get(agent_id)
@@ -250,6 +258,8 @@ class ActionGate:
         )
 
         self.state_transitions.append(transition)
+        if self.tracker:
+            self.tracker.store_transition(transition)
         self.last_states[agent_id] = state
 
         return GatingResult(
@@ -282,10 +292,13 @@ class ActionGate:
             blocked=True,
             action_hash=action_hash,
             operational_state_snapshot=state.operational.to_dict(),
-            event_type="projection_failed"
+            event_type="projection_failed",
+            metadata=action_metadata
         )
 
         self.security_events.append(event)
+        if self.tracker:
+            self.tracker.store_security_event(event)
 
         # Log state transition (blocked)
         from_state = self.last_states.get(agent_id)

@@ -71,9 +71,12 @@ class AdaptiveTools:
     used extensively to aid in debugging and operational monitoring.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, gate: Any = None, tracker: Any = None, vessel_id: str | None = None) -> None:
         self.tools: Dict[str, ToolInstance] = {}
         self.specifications: Dict[str, ToolSpecification] = {}
+        self.gate = gate
+        self.tracker = tracker
+        self.vessel_id = vessel_id
 
     def create_tool(self, spec: ToolSpecification) -> str:
         """Create a new tool instance from a specification."""
@@ -94,8 +97,15 @@ class AdaptiveTools:
         logger.info(f"Created tool {spec.name} ({spec.tool_type.value}) with ID {tool_id}")
         return tool_id
 
-    def execute_tool(self, tool_id: str, params: Dict[str, Any]) -> Dict[str, Any]:
-        """Execute a tool and return its result."""
+    def execute_tool(
+        self,
+        tool_id: str,
+        params: Dict[str, Any],
+        *,
+        agent_id: Optional[str] = None,
+        gate_metadata: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """Execute a tool and return its result, passing through an optional gate."""
         if tool_id not in self.tools:
             logger.error(f"Tool {tool_id} not found")
             return {"success": False, "error": "Tool not found"}
@@ -105,6 +115,28 @@ class AdaptiveTools:
         import time
         tool.last_used = time.time()
 
+        gating_decision = None
+        gate_metadata = gate_metadata or {}
+        gate_metadata.setdefault("tool_id", tool_id)
+        gate_metadata.setdefault("tool_name", tool.specification.name)
+        if self.vessel_id:
+            gate_metadata.setdefault("vessel_id", self.vessel_id)
+
+        if self.gate:
+            gating_decision = self.gate.gate_action(
+                agent_id or "anonymous_agent",
+                {"tool": tool.specification.name, "params": list(params.keys())},
+                action_metadata=gate_metadata,
+            )
+            if not gating_decision.allowed:
+                if getattr(gating_decision, "security_event", None) and self.tracker:
+                    self.tracker.store_security_event(gating_decision.security_event)
+                return {
+                    "success": False,
+                    "error": gating_decision.reason,
+                    "gated": False,
+                }
+
         try:
             result = tool.handler(params)
             # Ensure a consistent response format
@@ -113,7 +145,11 @@ class AdaptiveTools:
                     f"Tool {tool_id} returned non‑conforming result; wrapping in success structure"
                 )
                 return {"success": True, "data": result}
-            return result
+            if gating_decision and gating_decision.security_event and self.tracker:
+                self.tracker.store_security_event(gating_decision.security_event)
+            if gating_decision and gating_decision.state_transition and self.tracker:
+                self.tracker.store_transition(gating_decision.state_transition)
+            return result | {"gating_reason": gating_decision.reason if gating_decision else "skipped"}
         except Exception as e:
             logger.exception(f"Error executing tool {tool_id}: {e}")
             return {"success": False, "error": str(e)}
