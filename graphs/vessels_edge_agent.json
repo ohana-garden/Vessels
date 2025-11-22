@@ -1,0 +1,130 @@
+{
+  "name": "vessels_edge_agent",
+  "version": "0.1.0",
+  "description": "Vessels Edge Agent - Real-time voice interface with local STT/TTS and agentic reasoning",
+  "type": "graph",
+  "nodes": [
+    {
+      "type": "extension",
+      "name": "agora_rtc",
+      "addon": "agora_rtc",
+      "extension_group": "default",
+      "property": {
+        "app_id": "${AGORA_APP_ID}",
+        "channel": "${AGORA_CHANNEL}",
+        "token": "${AGORA_TOKEN}",
+        "uid": 0,
+        "audio_in_enabled": true,
+        "audio_out_enabled": true,
+        "sample_rate": 16000,
+        "channels": 1,
+        "subscribe_audio_uids": []
+      }
+    },
+    {
+      "type": "extension",
+      "name": "whisper_stt",
+      "addon": "whisper_stt",
+      "extension_group": "default",
+      "property": {
+        "model": "small.en",
+        "language": "en",
+        "sample_rate": 16000,
+        "vad_enabled": true,
+        "vad_threshold": 0.5,
+        "beam_size": 5,
+        "streaming": true
+      }
+    },
+    {
+      "type": "extension",
+      "name": "vessels_bridge",
+      "addon": "vessels_bridge",
+      "extension_group": "default",
+      "property": {
+        "user_id": "${VESSELS_USER_ID:-default_user}",
+        "community_id": "${VESSELS_COMMUNITY_ID:-default_community}",
+        "vessel_id": "${VESSELS_VESSEL_ID:-}",
+        "context": "voice_interface",
+        "language": "en",
+        "log_level": "${LOG_LEVEL:-info}"
+      }
+    },
+    {
+      "type": "extension",
+      "name": "kokoro_tts",
+      "addon": "kokoro_tts",
+      "extension_group": "default",
+      "property": {
+        "voice": "default",
+        "sample_rate": 22050,
+        "speed": 1.0,
+        "pitch": 1.0,
+        "energy": 1.0,
+        "emotion": "warm"
+      }
+    }
+  ],
+  "connections": [
+    {
+      "extension_group": "default",
+      "extension": "agora_rtc",
+      "audio_frame": [
+        {
+          "name": "pcm_frame",
+          "dest": [
+            {
+              "extension_group": "default",
+              "extension": "whisper_stt"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "extension_group": "default",
+      "extension": "whisper_stt",
+      "data": [
+        {
+          "name": "text_data",
+          "dest": [
+            {
+              "extension_group": "default",
+              "extension": "vessels_bridge"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "extension_group": "default",
+      "extension": "vessels_bridge",
+      "data": [
+        {
+          "name": "text_data",
+          "dest": [
+            {
+              "extension_group": "default",
+              "extension": "kokoro_tts"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "extension_group": "default",
+      "extension": "kokoro_tts",
+      "audio_frame": [
+        {
+          "name": "pcm_frame",
+          "dest": [
+            {
+              "extension_group": "default",
+              "extension": "agora_rtc"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
