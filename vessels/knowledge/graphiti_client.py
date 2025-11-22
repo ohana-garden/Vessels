@@ -407,6 +407,136 @@ class VesselsGraphitiClient:
             logger.error(f"Error in semantic search: {e}")
             return []
 
+    def create_governance_body(
+        self,
+        body_id: str,
+        name: str,
+        body_type: str,
+        members: List[str]
+    ) -> str:
+        """
+        Create a governance body node in the graph.
+
+        Args:
+            body_id: Unique ID for the governance body
+            name: Human-readable name
+            body_type: Type of body (e.g., "council", "board", "assembly")
+            members: List of member IDs
+
+        Returns:
+            Node ID
+        """
+        from .governance_schema import GovernanceBody
+
+        body = GovernanceBody(
+            id=body_id,
+            name=name,
+            body_type=body_type,
+            community_id=self.community_id,
+            members=members,
+            created_at=datetime.utcnow()
+        )
+
+        from .governance_schema import GovernanceSchemaExtension
+        return GovernanceSchemaExtension.create_governance_body_node(self, body)
+
+    def record_policy_decision(
+        self,
+        decision_id: str,
+        governance_body_id: str,
+        description: str,
+        approved_by: List[str],
+        vessel_id: Optional[str] = None
+    ) -> str:
+        """
+        Record a governance decision in the graph.
+
+        Args:
+            decision_id: Unique decision ID
+            governance_body_id: ID of governance body making the decision
+            description: Decision description
+            approved_by: List of member IDs who approved
+            vessel_id: Optional vessel ID this decision applies to
+
+        Returns:
+            Decision node ID
+        """
+        from .governance_schema import Decision, GovernanceSchemaExtension
+
+        decision = Decision(
+            id=decision_id,
+            governance_body_id=governance_body_id,
+            decision_type="approval",
+            description=description,
+            approved_at=datetime.utcnow(),
+            approved_by=approved_by
+        )
+
+        decision_node_id = GovernanceSchemaExtension.create_decision_node(self, decision)
+
+        # Link to vessel if provided
+        if vessel_id:
+            GovernanceSchemaExtension.link_decision_to_vessel(
+                self,
+                decision_node_id,
+                vessel_id
+            )
+
+        return decision_node_id
+
+    def get_vessel_governance_history(
+        self,
+        vessel_id: str,
+        limit: int = 10
+    ) -> List[Dict[str, Any]]:
+        """
+        Query governance history for a vessel.
+
+        Args:
+            vessel_id: Vessel ID
+            limit: Maximum number of results
+
+        Returns:
+            List of governance decisions and events
+        """
+        from .governance_schema import GovernanceSchemaExtension
+
+        # Query for decisions that approve or govern this vessel
+        cypher = f"""
+        MATCH (d:Decision)-[:{GovernanceSchemaExtension.APPROVES}]->(vessel {{id: $vessel_id}})
+        OPTIONAL MATCH (body:GovernanceBody)-[:{GovernanceSchemaExtension.MADE_DECISION}]->(d)
+        RETURN d as decision, body as governance_body
+        ORDER BY d.approved_at DESC
+        LIMIT $limit
+        """
+
+        try:
+            results = self.query(cypher, vessel_id=vessel_id, limit=limit)
+
+            history = []
+            for record in results:
+                decision = record.get("decision", {})
+                body = record.get("governance_body", {})
+
+                history.append({
+                    "decision_id": decision.get("id"),
+                    "decision_type": decision.get("decision_type"),
+                    "description": decision.get("description"),
+                    "approved_at": decision.get("approved_at"),
+                    "approved_by": decision.get("approved_by", "").split(","),
+                    "governance_body": {
+                        "id": body.get("id"),
+                        "name": body.get("name"),
+                        "type": body.get("body_type")
+                    } if body else None
+                })
+
+            return history
+
+        except Exception as e:
+            logger.error(f"Error querying governance history: {e}")
+            return []
+
 
 class MockGraphitiClient:
     """

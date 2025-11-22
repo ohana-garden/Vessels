@@ -186,6 +186,49 @@ def test_adaptive_tools_with_vessel_context():
     assert result["success"] is True
 
 
+def test_gate_events_include_vessel_id(tmp_path):
+    """AC5: Gate events include vessel_id from action_metadata."""
+    from vessels.gating.gate import ActionGate, GatingResult
+    from vessels.measurement.operational import OperationalMetrics
+    from vessels.measurement.virtue_inference import VirtueInferenceEngine
+    from vessels.constraints.manifold import Manifold
+    from vessels.phase_space.tracker import TrajectoryTracker
+
+    # Create gate components
+    manifold = Manifold.servant_default()
+    operational = OperationalMetrics()
+    virtue_engine = VirtueInferenceEngine()
+    tracker = TrajectoryTracker(db_path=str(tmp_path / "tracker.db"))
+
+    gate = ActionGate(
+        manifold=manifold,
+        operational_metrics=operational,
+        virtue_engine=virtue_engine,
+        tracker=tracker
+    )
+
+    # Gate an action with vessel_id in metadata
+    result = gate.gate_action(
+        agent_id="test_agent",
+        action={"type": "test_action"},
+        action_metadata={"vessel_id": "test_vessel_123", "tool_name": "test_tool"}
+    )
+
+    # Verify action was processed
+    assert isinstance(result, GatingResult)
+
+    # Verify state transition was created with vessel_id
+    assert len(gate.state_transitions) > 0
+    transition = gate.state_transitions[-1]
+    assert transition.action_metadata.get("vessel_id") == "test_vessel_123"
+    assert transition.action_metadata.get("tool_name") == "test_tool"
+
+    # If there's a security event, it should also have vessel_id
+    if gate.security_events:
+        event = gate.security_events[-1]
+        assert event.metadata.get("vessel_id") == "test_vessel_123"
+
+
 def test_vessel_context_tier_config(tmp_path):
     """Test that tier config is accessible from vessel context."""
     registry = VesselRegistry(db_path=str(tmp_path / "test.db"))

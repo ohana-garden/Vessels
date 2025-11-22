@@ -846,9 +846,39 @@ class CommunityMemory:
         pass
     
     def _update_relationship_strengths(self):
-        """Update relationship strengths based on access patterns"""
-        # Analyze access patterns to strengthen relationships
-        pass
+        """
+        Update relationship strengths based on access patterns.
+
+        Memories that are frequently accessed together become more strongly related.
+        This creates emergent knowledge clusters.
+        """
+        # Track co-access patterns: which memories are retrieved together
+        # For simplicity, we'll look at temporal proximity of access
+
+        recent_accesses = []
+        time_window = 300  # 5 minutes
+        current_time = time.time()
+
+        # Get memories accessed in the recent time window
+        for memory_id, memory in self.memories.items():
+            if hasattr(memory, 'last_accessed') and memory.last_accessed:
+                if current_time - memory.last_accessed < time_window:
+                    recent_accesses.append(memory_id)
+
+        # If we have at least 2 recent accesses, strengthen relationships between them
+        if len(recent_accesses) >= 2:
+            for i in range(len(recent_accesses)):
+                for j in range(i + 1, len(recent_accesses)):
+                    mem_id_1 = recent_accesses[i]
+                    mem_id_2 = recent_accesses[j]
+
+                    # Add bidirectional relationship if not already present
+                    if mem_id_2 not in self.relationship_graph[mem_id_1]:
+                        self.relationship_graph[mem_id_1].append(mem_id_2)
+                        logger.debug(f"Strengthened relationship: {mem_id_1} <-> {mem_id_2}")
+
+                    if mem_id_1 not in self.relationship_graph[mem_id_2]:
+                        self.relationship_graph[mem_id_2].append(mem_id_1)
     
     def _remove_memory(self, memory_id: str):
         """Remove memory from system"""
