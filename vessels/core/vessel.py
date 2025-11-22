@@ -7,9 +7,10 @@ A Vessel represents a complete, isolated environment for coordinating community 
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from pathlib import Path
 from typing import Dict, List, Optional, Any
 import uuid
+
+from vessels.knowledge.schema import CommunityPrivacy
 
 
 class PrivacyLevel(Enum):
@@ -20,21 +21,8 @@ class PrivacyLevel(Enum):
     FEDERATED = "federated"      # Cross-community with consent
 
 
-class TierLevel(Enum):
-    """Compute tier levels."""
-    TIER0 = "tier0"  # Device (phone, tablet, laptop)
-    TIER1 = "tier1"  # Edge (local server)
-    TIER2 = "tier2"  # Cloud (remote server or Petals network)
-from dataclasses import dataclass, field
-from enum import Enum
-from typing import Dict, List, Optional
-
-from vessels.knowledge.schema import CommunityPrivacy
-
-
 class TierLevel(str, Enum):
     """Compute tier level for a vessel."""
-
     TIER0 = "device"
     TIER1 = "edge"
     TIER2 = "cloud"
@@ -46,15 +34,18 @@ class TierConfig:
     tier0_enabled: bool = True
     tier0_model: str = "Llama-3.2-1B"
     tier0_device: str = "cpu"
+    tier0_endpoints: Dict[str, str] = field(default_factory=dict)
 
     tier1_enabled: bool = True
     tier1_host: str = "localhost"
     tier1_port: int = 8080
     tier1_model: str = "Llama-3.1-70B"
+    tier1_endpoints: Dict[str, str] = field(default_factory=dict)
 
     tier2_enabled: bool = False
     tier2_allowed_models: List[str] = field(default_factory=list)
     tier2_sanitize_data: bool = True
+    tier2_endpoints: Dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
@@ -77,14 +68,6 @@ class VesselConfig:
     connector_config: ConnectorConfig = field(default_factory=ConnectorConfig)
     trusted_communities: List[str] = field(default_factory=list)
     custom_settings: Dict[str, Any] = field(default_factory=dict)
-    """Describe compute tier availability for a vessel."""
-
-    tier0_enabled: bool = False
-    tier1_enabled: bool = False
-    tier2_enabled: bool = False
-    tier0_endpoints: Dict[str, str] = field(default_factory=dict)
-    tier1_endpoints: Dict[str, str] = field(default_factory=dict)
-    tier2_endpoints: Dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
@@ -100,22 +83,41 @@ class Vessel:
     - Tier configuration
     - Connectors
     """
-    """First-class representation of a vessel configuration."""
-
     vessel_id: str
     name: str
     description: str
     community_ids: List[str]
     graph_namespace: str
-    config: VesselConfig
-
-    # Associated resources
+    privacy_level: CommunityPrivacy
+    constraint_profile_id: str
     servant_project_ids: List[str] = field(default_factory=list)
+    connectors: Dict[str, Dict[str, str]] = field(default_factory=dict)
+    tier_config: TierConfig = field(default_factory=TierConfig)
 
     # Metadata
     created_at: datetime = field(default_factory=datetime.utcnow)
     last_active: datetime = field(default_factory=datetime.utcnow)
     status: str = "active"  # active, paused, archived
+
+    # Convenience config property for backward compatibility
+    @property
+    def config(self) -> VesselConfig:
+        """Get vessel configuration as VesselConfig object."""
+        return VesselConfig(
+            privacy_level=PrivacyLevel(self.privacy_level.value),
+            constraint_profile_id=self.constraint_profile_id,
+            tier_config=self.tier_config,
+            connector_config=ConnectorConfig(
+                nostr_enabled=self.connectors.get("nostr", {}).get("enabled", False) == "true",
+                petals_enabled=self.connectors.get("petals", {}).get("enabled", False) == "true",
+            ),
+            trusted_communities=self._get_trusted_communities(),
+        )
+
+    def _get_trusted_communities(self) -> List[str]:
+        """Extract trusted communities from connectors or other metadata."""
+        # This can be extended to pull from connectors or a dedicated field
+        return []
 
     @classmethod
     def create(
@@ -130,10 +132,8 @@ class Vessel:
         vessel_id = str(uuid.uuid4())
         graph_namespace = f"{community_id}_graph"
 
-        config = VesselConfig(
-            privacy_level=privacy_level,
-            constraint_profile_id=constraint_profile_id,
-        )
+        # Map PrivacyLevel to CommunityPrivacy
+        community_privacy = CommunityPrivacy(privacy_level.value)
 
         return cls(
             vessel_id=vessel_id,
@@ -141,16 +141,17 @@ class Vessel:
             description=description,
             community_ids=[community_id],
             graph_namespace=graph_namespace,
-            config=config,
+            privacy_level=community_privacy,
+            constraint_profile_id=constraint_profile_id,
         )
 
-    def attach_project(self, project_id: str):
+    def attach_project(self, project_id: str) -> None:
         """Attach a servant project to this vessel."""
         if project_id not in self.servant_project_ids:
             self.servant_project_ids.append(project_id)
             self.last_active = datetime.utcnow()
 
-    def detach_project(self, project_id: str):
+    def detach_project(self, project_id: str) -> None:
         """Detach a servant project from this vessel."""
         if project_id in self.servant_project_ids:
             self.servant_project_ids.remove(project_id)
@@ -158,18 +159,25 @@ class Vessel:
 
     def set_privacy_level(self, privacy_level: PrivacyLevel):
         """Update vessel privacy level."""
-        self.config.privacy_level = privacy_level
+        self.privacy_level = CommunityPrivacy(privacy_level.value)
         self.last_active = datetime.utcnow()
 
     def add_trusted_community(self, community_id: str):
         """Add a trusted community for cross-vessel access."""
-        if community_id not in self.config.trusted_communities:
-            self.config.trusted_communities.append(community_id)
+        # For now, store in connectors metadata
+        # In future, could add a dedicated field
+        if "trusted" not in self.connectors:
+            self.connectors["trusted"] = {}
+        if "communities" not in self.connectors["trusted"]:
+            self.connectors["trusted"]["communities"] = []
+        if community_id not in self.connectors["trusted"]["communities"]:
+            self.connectors["trusted"]["communities"].append(community_id)
             self.last_active = datetime.utcnow()
 
     def is_trusted_community(self, community_id: str) -> bool:
         """Check if a community is trusted for cross-access."""
-        return community_id in self.config.trusted_communities
+        trusted = self.connectors.get("trusted", {}).get("communities", [])
+        return community_id in trusted
 
     def to_dict(self) -> Dict[str, Any]:
         """Serialize vessel to dictionary."""
@@ -180,23 +188,24 @@ class Vessel:
             "community_ids": self.community_ids,
             "graph_namespace": self.graph_namespace,
             "servant_project_ids": self.servant_project_ids,
-            "privacy_level": self.config.privacy_level.value,
-            "constraint_profile_id": self.config.constraint_profile_id,
-            "trusted_communities": self.config.trusted_communities,
+            "privacy_level": self.privacy_level.value,
+            "constraint_profile_id": self.constraint_profile_id,
+            "connectors": self.connectors,
             "status": self.status,
             "created_at": self.created_at.isoformat(),
             "last_active": self.last_active.isoformat(),
             "tier_config": {
-                "tier0_enabled": self.config.tier_config.tier0_enabled,
-                "tier0_model": self.config.tier_config.tier0_model,
-                "tier1_enabled": self.config.tier_config.tier1_enabled,
-                "tier1_host": self.config.tier_config.tier1_host,
-                "tier2_enabled": self.config.tier_config.tier2_enabled,
+                "tier0_enabled": self.tier_config.tier0_enabled,
+                "tier0_model": self.tier_config.tier0_model,
+                "tier0_device": self.tier_config.tier0_device,
+                "tier1_enabled": self.tier_config.tier1_enabled,
+                "tier1_host": self.tier_config.tier1_host,
+                "tier1_port": self.tier_config.tier1_port,
+                "tier1_model": self.tier_config.tier1_model,
+                "tier2_enabled": self.tier_config.tier2_enabled,
+                "tier2_allowed_models": self.tier_config.tier2_allowed_models,
+                "tier2_sanitize_data": self.tier_config.tier2_sanitize_data,
             },
-            "connectors": {
-                "nostr_enabled": self.config.connector_config.nostr_enabled,
-                "petals_enabled": self.config.connector_config.petals_enabled,
-            }
         }
 
     @classmethod
@@ -206,23 +215,14 @@ class Vessel:
         tier_config = TierConfig(
             tier0_enabled=tier_config_data.get("tier0_enabled", True),
             tier0_model=tier_config_data.get("tier0_model", "Llama-3.2-1B"),
+            tier0_device=tier_config_data.get("tier0_device", "cpu"),
             tier1_enabled=tier_config_data.get("tier1_enabled", True),
             tier1_host=tier_config_data.get("tier1_host", "localhost"),
+            tier1_port=tier_config_data.get("tier1_port", 8080),
+            tier1_model=tier_config_data.get("tier1_model", "Llama-3.1-70B"),
             tier2_enabled=tier_config_data.get("tier2_enabled", False),
-        )
-
-        connector_config_data = data.get("connectors", {})
-        connector_config = ConnectorConfig(
-            nostr_enabled=connector_config_data.get("nostr_enabled", False),
-            petals_enabled=connector_config_data.get("petals_enabled", False),
-        )
-
-        config = VesselConfig(
-            privacy_level=PrivacyLevel(data.get("privacy_level", "private")),
-            constraint_profile_id=data.get("constraint_profile_id", "servant_default"),
-            tier_config=tier_config,
-            connector_config=connector_config,
-            trusted_communities=data.get("trusted_communities", []),
+            tier2_allowed_models=tier_config_data.get("tier2_allowed_models", []),
+            tier2_sanitize_data=tier_config_data.get("tier2_sanitize_data", True),
         )
 
         return cls(
@@ -231,25 +231,12 @@ class Vessel:
             description=data.get("description", ""),
             community_ids=data["community_ids"],
             graph_namespace=data["graph_namespace"],
-            config=config,
+            privacy_level=CommunityPrivacy(data.get("privacy_level", "private")),
+            constraint_profile_id=data.get("constraint_profile_id", "servant_default"),
             servant_project_ids=data.get("servant_project_ids", []),
-            created_at=datetime.fromisoformat(data["created_at"]),
-            last_active=datetime.fromisoformat(data["last_active"]),
+            connectors=data.get("connectors", {}),
+            tier_config=tier_config,
+            created_at=datetime.fromisoformat(data.get("created_at", datetime.utcnow().isoformat())),
+            last_active=datetime.fromisoformat(data.get("last_active", datetime.utcnow().isoformat())),
             status=data.get("status", "active"),
         )
-    privacy_level: CommunityPrivacy
-    constraint_profile_id: str
-    servant_project_ids: List[str] = field(default_factory=list)
-    connectors: Dict[str, Dict[str, str]] = field(default_factory=dict)
-    tier_config: TierConfig = field(default_factory=TierConfig)
-
-    def attach_project(self, project_id: str) -> None:
-        """Attach a servant project to this vessel."""
-        if project_id not in self.servant_project_ids:
-            self.servant_project_ids.append(project_id)
-
-    def detach_project(self, project_id: str) -> None:
-        """Detach a servant project from this vessel."""
-        if project_id in self.servant_project_ids:
-            self.servant_project_ids.remove(project_id)
-

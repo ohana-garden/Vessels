@@ -223,25 +223,101 @@ class VesselsGraphitiClient:
             logger.error(f"Error creating relationship: {e}")
             raise
 
-    def query(self, cypher: str, **params) -> List[Dict[str, Any]]:
+    def query(
+        self,
+        cypher: str,
+        privacy_filter: bool = False,
+        target_privacy_level: Optional[CommunityPrivacy] = None,
+        **params
+    ) -> List[Dict[str, Any]]:
         """
         Execute a Cypher query on the graph
 
         Args:
             cypher: Cypher query string
+            privacy_filter: If True, apply privacy filtering to results
+            target_privacy_level: Privacy level of target community (for filtering)
             **params: Query parameters
 
         Returns:
             List of result records
         """
         try:
-            # TODO: Add privacy filtering for cross-community queries
             results = self.graphiti.execute_query(cypher, params)
+
+            # Apply privacy filtering if requested
+            if privacy_filter and target_privacy_level:
+                results = self._filter_by_privacy(results, target_privacy_level)
+
             return results
 
         except Exception as e:
             logger.error(f"Error executing query: {e}")
             raise
+
+    def _filter_by_privacy(
+        self,
+        results: List[Dict[str, Any]],
+        privacy_level: CommunityPrivacy
+    ) -> List[Dict[str, Any]]:
+        """
+        Filter query results based on privacy policy.
+
+        Args:
+            results: Raw query results
+            privacy_level: Privacy level to enforce
+
+        Returns:
+            Filtered results
+        """
+        from vessels.policy import get_allowed_node_types, get_allowed_relationship_types
+
+        allowed_nodes = get_allowed_node_types(privacy_level)
+        allowed_rels = get_allowed_relationship_types(privacy_level)
+
+        filtered = []
+        for record in results:
+            # Check if record contains nodes/relationships that are allowed
+            if self._record_allowed(record, allowed_nodes, allowed_rels):
+                filtered.append(record)
+
+        logger.debug(
+            f"Privacy filter: {len(results)} -> {len(filtered)} results "
+            f"(privacy={privacy_level.value})"
+        )
+        return filtered
+
+    def _record_allowed(
+        self,
+        record: Dict[str, Any],
+        allowed_nodes: set,
+        allowed_rels: set
+    ) -> bool:
+        """
+        Check if a record is allowed based on node/relationship types.
+
+        Args:
+            record: Query result record
+            allowed_nodes: Set of allowed node types
+            allowed_rels: Set of allowed relationship types
+
+        Returns:
+            True if record is allowed, False otherwise
+        """
+        # Check node types
+        for key, value in record.items():
+            if isinstance(value, dict) and "type" in value:
+                node_type_str = value["type"]
+                try:
+                    node_type = NodeType(node_type_str)
+                    if node_type not in allowed_nodes:
+                        return False
+                except ValueError:
+                    # Unknown node type - reject for safety
+                    return False
+
+        # If we get here, all nodes are allowed
+        return True
 
     def get_neighbors(
         self,

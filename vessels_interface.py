@@ -23,6 +23,7 @@ from agent_zero_core import agent_zero
 from community_memory import community_memory
 from grant_coordination_system import grant_system
 from adaptive_tools import adaptive_tools
+from vessels.core import VesselContext, VesselRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -47,14 +48,22 @@ class UserInteraction:
 
 class VesselsInterface:
     """Natural language interface for Vessels platform"""
-    
-    def __init__(self):
+
+    def __init__(self, vessel_registry: Optional[VesselRegistry] = None):
+        """
+        Initialize Vessels Interface.
+
+        Args:
+            vessel_registry: Optional vessel registry for vessel context resolution.
+                           If not provided, vessel features will be disabled.
+        """
         self.interactions: Dict[str, UserInteraction] = {}
         self.user_contexts: Dict[str, Dict[str, Any]] = {}
         self.active_sessions: Dict[str, Dict[str, Any]] = {}
         self.interface_thread = None
         self.running = False
-        
+        self.vessel_registry = vessel_registry or VesselRegistry()
+
         self.initialize_interface()
     
     def initialize_interface(self):
@@ -66,34 +75,81 @@ class VesselsInterface:
         
         logger.info("Vessels Natural Language Interface initialized")
     
-    def process_message(self, user_id: str, message: str, 
-                       context: Dict[str, Any] = None) -> Dict[str, Any]:
-        """Process natural language message from user"""
-        
+    def process_message(self, user_id: str, message: str,
+                       context: Dict[str, Any] = None,
+                       vessel_id: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Process natural language message from user.
+
+        Args:
+            user_id: User ID
+            message: User message
+            context: Optional context dict
+            vessel_id: Optional explicit vessel ID (otherwise resolved from user_id)
+
+        Returns:
+            Response dictionary
+        """
+        # Resolve vessel context
+        vessel_context = self._resolve_vessel_context(user_id, vessel_id)
+
         # Create interaction record
         interaction_id = str(uuid.uuid4())
+        interaction_context = context or {}
+
+        # Add vessel metadata to context
+        if vessel_context:
+            interaction_context.update(vessel_context.get_metadata())
+
         interaction = UserInteraction(
             id=interaction_id,
             user_id=user_id,
             message=message,
             interaction_type=self._classify_interaction(message),
             timestamp=datetime.now(),
-            context=context or {}
+            context=interaction_context
         )
-        
+
         self.interactions[interaction_id] = interaction
-        
-        # Process the message
+
+        # Process the message (with vessel context available in interaction.context)
         response = self._process_interaction(interaction)
-        
+
         # Update interaction with response
         interaction.response = response["response"]
         interaction.follow_up_needed = response.get("follow_up_needed", False)
-        
+
         # Store user context
         self._update_user_context(user_id, interaction, response)
-        
+
         return response
+
+    def _resolve_vessel_context(
+        self,
+        user_id: str,
+        vessel_id: Optional[str] = None
+    ) -> Optional[VesselContext]:
+        """
+        Resolve vessel context for a user.
+
+        Args:
+            user_id: User ID
+            vessel_id: Optional explicit vessel ID
+
+        Returns:
+            VesselContext or None
+        """
+        if not self.vessel_registry:
+            return None
+
+        if vessel_id:
+            return VesselContext.from_vessel_id(vessel_id, self.vessel_registry)
+        else:
+            # Try to resolve from user, fall back to default
+            context = VesselContext.from_user_id(user_id, self.vessel_registry)
+            if context is None:
+                context = VesselContext.get_default(self.vessel_registry)
+            return context
     
     def _classify_interaction(self, message: str) -> InteractionType:
         """Classify the type of user interaction"""

@@ -69,18 +69,37 @@ class LLMRouter:
     - Default → Tier 1
     """
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: Dict[str, Any] = None, tier_config=None):
         """
         Initialize LLM router
 
         Args:
-            config: {
-                "tier0": {"enabled": bool, "models": List[str]},
-                "tier1": {"enabled": bool, "host": str, "port": int},
-                "tier2": {"enabled": bool, "models": List[str]}
-            }
+            config: Traditional config dict (legacy)
+            tier_config: TierConfig from vessel (preferred)
         """
-        self.config = config
+        # Support both config dict and TierConfig
+        if tier_config:
+            from vessels.core.vessel import TierConfig
+            self.tier_config = tier_config
+            # Convert TierConfig to legacy config format
+            self.config = {
+                "tier0": {
+                    "enabled": tier_config.tier0_enabled,
+                    "model": tier_config.tier0_model,
+                },
+                "tier1": {
+                    "enabled": tier_config.tier1_enabled,
+                    "host": tier_config.tier1_host,
+                    "port": tier_config.tier1_port,
+                },
+                "tier2": {
+                    "enabled": tier_config.tier2_enabled,
+                    "models": tier_config.tier2_allowed_models,
+                }
+            }
+        else:
+            self.config = config or {}
+            self.tier_config = None
 
         # Initialize tier clients
         self.tier0 = None

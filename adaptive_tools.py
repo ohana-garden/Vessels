@@ -74,11 +74,15 @@ class AdaptiveTools:
     are checked against moral constraints before execution.
     """
 
-    def __init__(self, gate=None) -> None:
-        self.tools: Dict[str, ToolInstance] = {}
-        self.specifications: Dict[str, ToolSpecification] = {}
-        self.gate = gate  # Optional ActionGate for constraint checking
     def __init__(self, gate: Any = None, tracker: Any = None, vessel_id: str | None = None) -> None:
+        """
+        Initialize AdaptiveTools.
+
+        Args:
+            gate: Optional ActionGate for constraint checking
+            tracker: Optional tracker for security events and state transitions
+            vessel_id: Optional vessel ID for context tracking
+        """
         self.tools: Dict[str, ToolInstance] = {}
         self.specifications: Dict[str, ToolSpecification] = {}
         self.gate = gate
@@ -104,21 +108,6 @@ class AdaptiveTools:
         logger.info(f"Created tool {spec.name} ({spec.tool_type.value}) with ID {tool_id}")
         return tool_id
 
-    def execute_tool(self, tool_id: str, params: Dict[str, Any], agent_id: Optional[str] = None) -> Dict[str, Any]:
-        """
-        Execute a tool and return its result.
-
-        If a gate is configured and agent_id is provided, the tool execution
-        will be gated through moral constraint validation.
-
-        Args:
-            tool_id: ID of the tool to execute
-            params: Parameters to pass to the tool
-            agent_id: Optional agent ID for gating
-
-        Returns:
-            Tool execution result
-        """
     def execute_tool(
         self,
         tool_id: str,
@@ -127,51 +116,39 @@ class AdaptiveTools:
         agent_id: Optional[str] = None,
         gate_metadata: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        """Execute a tool and return its result, passing through an optional gate."""
+        """
+        Execute a tool and return its result, passing through an optional gate.
+
+        Args:
+            tool_id: ID of the tool to execute
+            params: Parameters to pass to the tool
+            agent_id: Optional agent ID for gating
+            gate_metadata: Optional metadata for gating context
+
+        Returns:
+            Tool execution result with success/error status
+        """
         if tool_id not in self.tools:
             logger.error(f"Tool {tool_id} not found")
             return {"success": False, "error": "Tool not found"}
 
         tool = self.tools[tool_id]
 
-        # Gate the action if gate is configured and agent_id provided
-        if self.gate and agent_id:
-            action_metadata = {
-                "tool_id": tool_id,
-                "tool_type": tool.specification.tool_type.value,
-                "tool_name": tool.specification.name,
-                "params_summary": str(params)[:100]  # Truncate for logging
-            }
-
-            gating_result = self.gate.gate_action(
-                agent_id=agent_id,
-                action=f"execute_tool:{tool_id}",
-                action_metadata=action_metadata
-            )
-
-            if not gating_result.allowed:
-                logger.warning(
-                    f"Tool execution blocked by gate: {tool_id} for agent {agent_id}. "
-                    f"Reason: {gating_result.reason}"
-                )
-                return {
-                    "success": False,
-                    "error": f"Action blocked by gate: {gating_result.reason}",
-                    "gating_result": gating_result.reason
-                }
-
-        # Execute tool
+        # Update usage tracking
         tool.usage_count += 1
         import time
         tool.last_used = time.time()
 
+        # Prepare gate metadata
         gating_decision = None
         gate_metadata = gate_metadata or {}
         gate_metadata.setdefault("tool_id", tool_id)
         gate_metadata.setdefault("tool_name", tool.specification.name)
+        gate_metadata.setdefault("tool_type", tool.specification.tool_type.value)
         if self.vessel_id:
             gate_metadata.setdefault("vessel_id", self.vessel_id)
 
+        # Gate the action if gate is configured
         if self.gate:
             gating_decision = self.gate.gate_action(
                 agent_id or "anonymous_agent",
