@@ -1,91 +1,100 @@
-# Core dependencies for Vessels Platform
-aiohttp>=3.8.0
-python-dateutil>=2.8.0
-requests>=2.26.0
-beautifulsoup4>=4.9.0
-flask>=2.0.0
-flask-cors>=3.0.10
+# ============================================================================
+# Core dependencies for Vessels Platform - PINNED VERSIONS
+# ============================================================================
 
-websockets>=10.0.0
+# Web frameworks and HTTP
+aiohttp==3.9.1
+python-dateutil==2.8.2
+requests==2.31.0
+beautifulsoup4==4.12.3
+flask==3.0.0
+flask-cors==4.0.0
+
+websockets==12.0
 
 # Knowledge graph and embeddings
-graphiti-core>=0.3.0
-sentence-transformers>=2.2.0
-redis>=5.0.0
-falkordb>=4.0.0
+graphiti-core==0.3.5
+sentence-transformers==2.2.2
+redis==5.0.1
+falkordb==4.0.11
 
-jinja2>=3.0.0
-pandas>=1.3.0
-numpy>=1.21.0
-scikit-learn>=1.0.0
-psycopg2-binary>=2.9.0
-networkx>=3.0
-lxml>=4.9.0
+# Templating and data processing
+jinja2==3.1.2
+pandas==2.1.4
+numpy==1.26.3
+scikit-learn==1.3.2
+psycopg2-binary==2.9.9
+networkx==3.2.1
+lxml==5.1.0
 
 # YAML parser used for BMAD loader
-pyyaml>=5.4.0
+pyyaml==6.0.1
 
 # ============================================================================
 # NEW INTEGRATIONS (FalkorDB + Graphiti + Nostr + On-Device AI + Petals)
 # ============================================================================
 
 # Communication: Nostr protocol
-cryptography>=41.0.0  # For Nostr keypair generation and signing
+cryptography==42.0.1
 
 # On-Device AI: Speech-to-Text (Whisper)
 # Option 1: faster-whisper (recommended, most efficient)
-faster-whisper>=0.10.0
+faster-whisper==0.10.1
 
 # Option 2: whisper.cpp Python bindings
-# whispercpp>=0.1.0  # Uncomment if using whisper.cpp directly
+# whispercpp==0.1.0  # Uncomment if using whisper.cpp directly
 
 # Option 3: OpenAI Whisper (fallback)
-# openai-whisper>=20230314  # Uncomment if needed
+# openai-whisper==20231117  # Uncomment if needed
 
 # On-Device AI: Text-to-Speech
 # Kokoro-82M (Apache 2.0)
-# kokoro-tts>=0.1.0  # Install when available
+# kokoro-tts==0.1.0  # Install when available
 
 # Piper TTS (MIT)
-# piper-tts>=1.2.0  # Install when available
+# piper-tts==1.2.0  # Install when available
 
 # StyleTTS2 (alternative)
-# styletts2>=0.1.0  # Install when available
+# styletts2==0.1.0  # Install when available
 
 # On-Device AI: Local LLM
 # Option 1: ExecuTorch (PyTorch on-device runtime)
-# executorch>=0.1.0  # Install when available from PyTorch
+# executorch==0.1.0  # Install when available from PyTorch
 
 # Option 2: llama.cpp Python bindings (recommended)
-llama-cpp-python>=0.2.0
+llama-cpp-python==0.2.27
 
 # Option 3: MLC-LLM (mobile deployment)
-# mlc-llm>=0.1.0  # Install when available
+# mlc-llm==0.1.0  # Install when available
 
 # Option 4: Transformers (fallback, slower but always works)
-transformers>=4.35.0
-torch>=2.1.0
+transformers==4.37.2
+torch==2.2.0
 
 # Distributed Compute: Petals
 # OPTIONAL: Only install if using Tier 2 (Petals network)
-# petals>=2.0.0  # Uncomment to enable distributed large model inference
+# petals==2.1.0  # Uncomment to enable distributed large model inference
 
 # Emotional Intelligence: ML models
 # bhadresh-savani/distilbert-base-uncased-emotion via transformers
 
 # Audio processing (for STT/TTS/Emotion)
-# pyaudio>=0.2.13  # Uncomment if using microphone input
-soundfile>=0.12.0  # For audio file I/O
+# pyaudio==0.2.14  # Uncomment if using microphone input
+soundfile==0.12.1
 
 # ============================================================================
-
 # Optional dependencies for enhanced functionality
-matplotlib>=3.4.0
-seaborn>=0.11.0
-docker>=5.0.0
+# ============================================================================
 
+matplotlib==3.8.2
+seaborn==0.13.1
+docker==7.0.0
+
+# ============================================================================
 # Development dependencies
-pytest>=6.2.0
-pytest-cov>=2.12.0
-black>=21.0.0
-flake8>=3.9.0
+# ============================================================================
+
+pytest==7.4.4
+pytest-cov==4.1.0
+black==23.12.1
+flake8==7.0.0

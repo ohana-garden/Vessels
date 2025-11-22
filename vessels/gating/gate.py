@@ -9,6 +9,7 @@ from typing import Dict, Any, Optional, List
 from datetime import datetime
 from dataclasses import dataclass
 import time
+import logging
 
 from ..measurement.state import PhaseSpaceState, VirtueState, OperationalState
 from ..measurement.operational import OperationalMetrics
@@ -17,6 +18,21 @@ from ..constraints.manifold import Manifold
 from ..constraints.validator import ConstraintValidator
 from ..phase_space.tracker import TrajectoryTracker
 from .events import SecurityEvent, StateTransition, hash_action
+
+
+logger = logging.getLogger(__name__)
+
+
+class SystemIntervention(Exception):
+    """
+    Critical exception raised when system intervention is required.
+
+    Used for scenarios like:
+    - Repeated agent blocking (dead letter queue)
+    - Unrecoverable constraint violations
+    - System safety thresholds exceeded
+    """
+    pass
 
 
 @dataclass
@@ -48,7 +64,8 @@ class ActionGate:
         virtue_engine: VirtueInferenceEngine,
         latency_budget_ms: float = 100.0,
         block_on_timeout: bool = True,
-        tracker: Optional[TrajectoryTracker] = None
+        tracker: Optional[TrajectoryTracker] = None,
+        max_consecutive_blocks: int = 5
     ):
         """
         Initialize action gate.
@@ -59,6 +76,8 @@ class ActionGate:
             virtue_engine: Virtue inference engine
             latency_budget_ms: Maximum latency budget in milliseconds
             block_on_timeout: If True, block on timeout (conservative default)
+            tracker: Optional trajectory tracker for persistence
+            max_consecutive_blocks: Maximum consecutive blocks before intervention
         """
         self.manifold = manifold
         self.operational_metrics = operational_metrics
@@ -67,11 +86,16 @@ class ActionGate:
         self.latency_budget_ms = latency_budget_ms
         self.block_on_timeout = block_on_timeout
         self.tracker = tracker
+        self.max_consecutive_blocks = max_consecutive_blocks
 
         # Event logs (in-memory for now, will be persisted to SQLite)
         self.security_events: List[SecurityEvent] = []
         self.state_transitions: List[StateTransition] = []
         self.last_states: Dict[str, PhaseSpaceState] = {}
+
+        # Dead letter safety: track consecutive blocks per agent
+        self.consecutive_blocks: Dict[str, int] = {}
+        self.dead_letter_agents: List[str] = []
 
     def gate_action(
         self,
@@ -192,6 +216,10 @@ class ActionGate:
         action_metadata: Dict[str, Any]
     ) -> GatingResult:
         """Allow an action with valid state."""
+        # Reset consecutive block counter on successful action
+        if agent_id in self.consecutive_blocks:
+            self.consecutive_blocks[agent_id] = 0
+
         # Log state transition
         from_state = self.last_states.get(agent_id)
         transition = StateTransition(
@@ -226,6 +254,10 @@ class ActionGate:
         action_metadata: Dict[str, Any]
     ) -> GatingResult:
         """Allow action after successful projection."""
+        # Reset consecutive block counter on successful action
+        if agent_id in self.consecutive_blocks:
+            self.consecutive_blocks[agent_id] = 0
+
         # Log security event (non-blocking)
         event = SecurityEvent(
             agent_id=agent_id,
@@ -281,6 +313,37 @@ class ActionGate:
         action_metadata: Dict[str, Any]
     ) -> GatingResult:
         """Block an action due to unresolvable constraint violations."""
+        # Increment consecutive block counter (Dead Letter Safety)
+        if agent_id not in self.consecutive_blocks:
+            self.consecutive_blocks[agent_id] = 0
+        self.consecutive_blocks[agent_id] += 1
+
+        consecutive_count = self.consecutive_blocks[agent_id]
+
+        # Check if agent has exceeded maximum consecutive blocks
+        if consecutive_count > self.max_consecutive_blocks:
+            # Add to dead letter queue
+            if agent_id not in self.dead_letter_agents:
+                self.dead_letter_agents.append(agent_id)
+
+            logger.critical(
+                f"SYSTEM INTERVENTION REQUIRED: Agent {agent_id} blocked "
+                f"{consecutive_count} times consecutively. Agent added to dead letter queue."
+            )
+
+            # Raise exception to prevent infinite loop
+            raise SystemIntervention(
+                f"Agent {agent_id} blocked {consecutive_count} consecutive times "
+                f"(max: {self.max_consecutive_blocks}). System intervention required."
+            )
+
+        # Log warning if approaching threshold
+        if consecutive_count >= self.max_consecutive_blocks - 1:
+            logger.warning(
+                f"Agent {agent_id} has been blocked {consecutive_count} consecutive times. "
+                f"Approaching dead letter threshold ({self.max_consecutive_blocks})."
+            )
+
         # Log security event (CRITICAL)
         event = SecurityEvent(
             agent_id=agent_id,
@@ -293,7 +356,11 @@ class ActionGate:
             action_hash=action_hash,
             operational_state_snapshot=state.operational.to_dict(),
             event_type="projection_failed",
-            metadata=action_metadata
+            metadata={
+                **action_metadata,
+                "consecutive_blocks": consecutive_count,
+                "max_consecutive_blocks": self.max_consecutive_blocks
+            }
         )
 
         self.security_events.append(event)
@@ -309,14 +376,18 @@ class ActionGate:
             to_state=state.to_dict(),
             action_hash=action_hash,
             gating_result="blocked",
-            action_metadata=action_metadata
+            action_metadata={
+                **action_metadata,
+                "consecutive_blocks": consecutive_count
+            }
         )
 
         self.state_transitions.append(transition)
 
         return GatingResult(
             allowed=False,
-            reason=f"Projection failed: {len(residual_violations)} residual violations",
+            reason=f"Projection failed: {len(residual_violations)} residual violations "
+                   f"(consecutive blocks: {consecutive_count}/{self.max_consecutive_blocks})",
             security_event=event,
             state_transition=transition,
             measured_state=state
@@ -410,3 +481,64 @@ class ActionGate:
             transitions = [t for t in transitions if t.agent_id == agent_id]
 
         return transitions
+
+    def get_consecutive_blocks(self, agent_id: str) -> int:
+        """
+        Get the number of consecutive blocks for an agent.
+
+        Args:
+            agent_id: Agent ID
+
+        Returns:
+            Number of consecutive blocks
+        """
+        return self.consecutive_blocks.get(agent_id, 0)
+
+    def get_dead_letter_agents(self) -> List[str]:
+        """
+        Get list of agents in the dead letter queue.
+
+        Returns:
+            List of agent IDs in dead letter queue
+        """
+        return list(self.dead_letter_agents)
+
+    def reset_agent_blocks(self, agent_id: str) -> bool:
+        """
+        Reset consecutive block counter for an agent.
+
+        Use this to rehabilitate an agent after manual intervention.
+
+        Args:
+            agent_id: Agent ID to reset
+
+        Returns:
+            True if agent was reset, False if not found
+        """
+        if agent_id in self.consecutive_blocks:
+            previous_count = self.consecutive_blocks[agent_id]
+            self.consecutive_blocks[agent_id] = 0
+
+            # Remove from dead letter queue if present
+            if agent_id in self.dead_letter_agents:
+                self.dead_letter_agents.remove(agent_id)
+
+            logger.info(
+                f"Reset agent {agent_id} consecutive blocks "
+                f"(was: {previous_count}, now: 0)"
+            )
+            return True
+
+        return False
+
+    def is_agent_in_dead_letter(self, agent_id: str) -> bool:
+        """
+        Check if an agent is in the dead letter queue.
+
+        Args:
+            agent_id: Agent ID to check
+
+        Returns:
+            True if agent is in dead letter queue
+        """
+        return agent_id in self.dead_letter_agents
