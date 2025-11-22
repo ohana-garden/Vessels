@@ -61,7 +61,6 @@ class PropertyName(str, Enum):
     DESCRIPTION = "description"
 
 
-@dataclass
 class VesselsGraphSchema:
     """
     Comprehensive schema for Vessels knowledge graph

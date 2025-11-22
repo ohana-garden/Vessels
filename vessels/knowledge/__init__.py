@@ -9,17 +9,9 @@ This package provides the knowledge layer for Vessels, including:
 - Fast context assembly pipeline
 """
 
-from .schema import VesselsGraphSchema
-from .graphiti_client import VesselsGraphitiClient
-from .embeddings import VesselsEmbedder
-from .vector_stores import ProjectVectorStore, SharedVectorStore
-from .context_assembly import ContextAssembler
+from .schema import VesselsGraphSchema, CommunityPrivacy
 
 __all__ = [
     "VesselsGraphSchema",
-    "VesselsGraphitiClient",
-    "VesselsEmbedder",
-    "ProjectVectorStore",
-    "SharedVectorStore",
-    "ContextAssembler",
+    "CommunityPrivacy",
 ]

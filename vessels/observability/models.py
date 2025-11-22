@@ -7,6 +7,9 @@ Simple dataclasses for presenting observability data.
 from dataclasses import dataclass
 from typing import List, Dict, Any, Optional
 from datetime import datetime
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Dict, Optional
 
 
 @dataclass
@@ -20,6 +23,12 @@ class GatingEventView:
     reason: str
     vessel_id: Optional[str] = None
     action_hash: Optional[str] = None
+    agent_id: str
+    blocked: bool
+    event_type: str
+    timestamp: datetime
+    vessel_id: Optional[str]
+    metadata: Dict
 
 
 @dataclass
@@ -32,6 +41,10 @@ class AttractorView:
     agent_count: int
     discovered_at: datetime
     vessel_id: Optional[str] = None
+    attractor_id: int
+    classification: str
+    discovered_at: str
+    metadata: Dict
 
 
 @dataclass
@@ -55,3 +68,6 @@ class VesselMetrics:
     start_time: datetime
     end_time: datetime
     window_hours: float
+    vessel_id: str
+    total_events: int
+    blocked_events: int
