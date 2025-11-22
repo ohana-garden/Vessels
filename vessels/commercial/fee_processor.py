@@ -214,14 +214,30 @@ class CommercialFeeProcessor:
         try:
             # If payment gateway available, process payment
             if self.payment_gateway:
-                payment_result = self.payment_gateway.charge(
+                payment_result = self.payment_gateway.charge_company(
                     company_id=transaction.company_id,
                     amount=transaction.referral_fee,
-                    description=f"Referral fee for {transaction.agent_id}"
+                    description=f"Referral fee for agent {transaction.agent_id}",
+                    metadata={
+                        "transaction_id": transaction.transaction_id,
+                        "agent_id": transaction.agent_id,
+                        "customer_id": transaction.customer_id,
+                        "community_id": transaction.community_id
+                    }
                 )
 
                 if not payment_result.get("success"):
                     raise Exception(payment_result.get("error", "Payment failed"))
+
+                logger.info(
+                    f"Payment gateway charged ${transaction.referral_fee:.2f} "
+                    f"from {transaction.company_id}"
+                )
+            else:
+                logger.warning(
+                    f"No payment gateway configured. Transaction {transaction.transaction_id} "
+                    "recorded but no actual payment collected."
+                )
 
             # Payment successful, distribute funds
             transaction.status = TransactionStatus.COMPLETED
@@ -432,6 +448,16 @@ class CommercialFeeProcessor:
 
                 if not refund_result.get("success"):
                     raise Exception(refund_result.get("error", "Refund failed"))
+
+                logger.info(
+                    f"Payment gateway refunded ${transaction.referral_fee:.2f} "
+                    f"for transaction {transaction_id}"
+                )
+            else:
+                logger.warning(
+                    f"No payment gateway configured. Transaction {transaction_id} "
+                    "marked as refunded but no actual refund processed."
+                )
 
             transaction.status = TransactionStatus.REFUNDED
 

@@ -1,6 +1,10 @@
 version: '3.8'
 
 services:
+  # ============================================================================
+  # INFRASTRUCTURE
+  # ============================================================================
+
   falkordb:
     image: falkordb/falkordb:latest
     container_name: vessels-falkordb
@@ -26,26 +30,93 @@ services:
       timeout: 10s
       retries: 3
 
-  # Vessels application (commented out - run manually for development)
-  # vessels:
+  # ============================================================================
+  # APPLICATION SERVICES
+  # ============================================================================
+
+  vessels-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: vessels-app
+    depends_on:
+      falkordb:
+        condition: service_healthy
+    environment:
+      - FALKORDB_HOST=falkordb
+      - FALKORDB_PORT=6379
+      - PYTHONUNBUFFERED=1
+      # Payment gateway integration
+      - PAYMENT_API_URL=http://payment-service:3000/graphql
+      - PAYMENT_API_KEY=${PAYMENT_API_KEY}
+    volumes:
+      - ./work_dir:/app/work_dir
+      - ./vessels:/app/vessels
+      - ./.bmad:/app/.bmad
+    networks:
+      - vessels-network
+    restart: unless-stopped
+    # Only expose to internal network - gateway will route external traffic
+    expose:
+      - "5000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Payment service (TypeScript/TigerBeetle)
+  # TODO: Add Dockerfile to payment/ directory before uncommenting
+  # payment-service:
   #   build:
-  #     context: .
+  #     context: ./payment
   #     dockerfile: Dockerfile
-  #   container_name: vessels-app
-  #   depends_on:
-  #     falkordb:
-  #       condition: service_healthy
+  #   container_name: vessels-payment
   #   environment:
-  #     - FALKORDB_HOST=falkordb
-  #     - FALKORDB_PORT=6379
-  #     - PYTHONUNBUFFERED=1
-  #   volumes:
-  #     - ./work_dir:/app/work_dir
-  #     - ./vessels:/app/vessels
-  #     - ./.bmad:/app/.bmad
+  #     - NODE_ENV=production
+  #     - TIGERBEETLE_CLUSTER_ID=${TIGERBEETLE_CLUSTER_ID:-0}
+  #     - TIGERBEETLE_REPLICA_ADDRESSES=${TIGERBEETLE_REPLICA_ADDRESSES:-3000}
+  #     - JWT_SECRET=${JWT_SECRET}
+  #     - DATABASE_URL=${DATABASE_URL}
   #   networks:
   #     - vessels-network
   #   restart: unless-stopped
+  #   expose:
+  #     - "3000"
+  #   healthcheck:
+  #     test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 3
+  #     start_period: 40s
+
+  # ============================================================================
+  # API GATEWAY
+  # ============================================================================
+
+  gateway:
+    image: nginx:alpine
+    container_name: vessels-gateway
+    depends_on:
+      - vessels-app
+      # - payment-service  # Uncomment when payment service is ready
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      # SSL certificates (add when ready for production)
+      # - ./nginx/ssl:/etc/nginx/ssl:ro
+    networks:
+      - vessels-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
 volumes:
   falkordb-data:
