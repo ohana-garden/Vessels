@@ -69,8 +69,15 @@ class AdaptiveTools:
     type is requested that has no implementation, a stub function is returned
     which informs the caller that the tool is not yet implemented.  Logging is
     used extensively to aid in debugging and operational monitoring.
+
+    Supports optional gating: when a gate is provided, all tool executions
+    are checked against moral constraints before execution.
     """
 
+    def __init__(self, gate=None) -> None:
+        self.tools: Dict[str, ToolInstance] = {}
+        self.specifications: Dict[str, ToolSpecification] = {}
+        self.gate = gate  # Optional ActionGate for constraint checking
     def __init__(self, gate: Any = None, tracker: Any = None, vessel_id: str | None = None) -> None:
         self.tools: Dict[str, ToolInstance] = {}
         self.specifications: Dict[str, ToolSpecification] = {}
@@ -97,6 +104,21 @@ class AdaptiveTools:
         logger.info(f"Created tool {spec.name} ({spec.tool_type.value}) with ID {tool_id}")
         return tool_id
 
+    def execute_tool(self, tool_id: str, params: Dict[str, Any], agent_id: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Execute a tool and return its result.
+
+        If a gate is configured and agent_id is provided, the tool execution
+        will be gated through moral constraint validation.
+
+        Args:
+            tool_id: ID of the tool to execute
+            params: Parameters to pass to the tool
+            agent_id: Optional agent ID for gating
+
+        Returns:
+            Tool execution result
+        """
     def execute_tool(
         self,
         tool_id: str,
@@ -111,6 +133,34 @@ class AdaptiveTools:
             return {"success": False, "error": "Tool not found"}
 
         tool = self.tools[tool_id]
+
+        # Gate the action if gate is configured and agent_id provided
+        if self.gate and agent_id:
+            action_metadata = {
+                "tool_id": tool_id,
+                "tool_type": tool.specification.tool_type.value,
+                "tool_name": tool.specification.name,
+                "params_summary": str(params)[:100]  # Truncate for logging
+            }
+
+            gating_result = self.gate.gate_action(
+                agent_id=agent_id,
+                action=f"execute_tool:{tool_id}",
+                action_metadata=action_metadata
+            )
+
+            if not gating_result.allowed:
+                logger.warning(
+                    f"Tool execution blocked by gate: {tool_id} for agent {agent_id}. "
+                    f"Reason: {gating_result.reason}"
+                )
+                return {
+                    "success": False,
+                    "error": f"Action blocked by gate: {gating_result.reason}",
+                    "gating_result": gating_result.reason
+                }
+
+        # Execute tool
         tool.usage_count += 1
         import time
         tool.last_used = time.time()
