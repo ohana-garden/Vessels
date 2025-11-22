@@ -56,6 +56,25 @@ def create_vessel(args):
     print(f"  Privacy: {vessel.config.privacy_level.value}")
 
 
+def validate_vessel_manifest(args):
+    """Validate a vessel manifest file without importing."""
+    errors = validate_manifest(args.manifest)
+
+    if errors:
+        print(f"❌ Manifest validation failed with {len(errors)} error(s):")
+        for error in errors:
+            print(f"  - {error}")
+        sys.exit(1)
+    else:
+        print(f"✓ Manifest is valid: {args.manifest}")
+
+        # Show what would be loaded
+        vessels = load_manifest(args.manifest)
+        print(f"\nManifest contains {len(vessels)} vessel(s):")
+        for vessel in vessels:
+            print(f"  - {vessel.name} ({vessel.vessel_id})")
+
+
 def load_from_manifest(args):
     """Load vessels from manifest file."""
     # Validate first
@@ -134,6 +153,11 @@ def main():
     )
 
     subparsers = parser.add_subparsers(dest="command", help="Command to execute")
+
+    # Validate command
+    validate_parser = subparsers.add_parser("validate", help="Validate a vessel manifest")
+    validate_parser.add_argument("manifest", help="Path to manifest YAML file")
+    validate_parser.set_defaults(func=validate_vessel_manifest)
 
     # List command
     list_parser = subparsers.add_parser("list", help="List all vessels")
