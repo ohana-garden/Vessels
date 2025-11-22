@@ -94,9 +94,18 @@ class TrajectoryTracker:
                 classification TEXT NOT NULL,
                 agent_count INTEGER NOT NULL,
                 discovered_at TEXT NOT NULL,
-                outcomes TEXT
+                outcomes TEXT,
+                metadata TEXT
             )
         """)
+
+        # Backfill metadata column for existing databases
+        cursor.execute(
+            "PRAGMA table_info(attractors)"
+        )
+        existing_columns = [row[1] for row in cursor.fetchall()]
+        if "metadata" not in existing_columns:
+            cursor.execute("ALTER TABLE attractors ADD COLUMN metadata TEXT")
 
         # Create indexes
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_states_agent ON states(agent_id)")
@@ -177,7 +186,8 @@ class TrajectoryTracker:
         radius: float,
         classification: str,
         agent_count: int,
-        outcomes: Optional[Dict[str, Any]] = None
+        outcomes: Optional[Dict[str, Any]] = None,
+        metadata: Optional[Dict[str, Any]] = None
     ) -> int:
         """
         Store a discovered attractor.
@@ -189,15 +199,16 @@ class TrajectoryTracker:
 
         cursor.execute("""
             INSERT INTO attractors
-            (center, radius, classification, agent_count, discovered_at, outcomes)
-            VALUES (?, ?, ?, ?, ?, ?)
+            (center, radius, classification, agent_count, discovered_at, outcomes, metadata)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
         """, (
             json.dumps(center),
             radius,
             classification,
             agent_count,
             datetime.utcnow().isoformat(),
-            json.dumps(outcomes) if outcomes else None
+            json.dumps(outcomes) if outcomes else None,
+            json.dumps(metadata) if metadata else None
         ))
 
         self.conn.commit()
@@ -378,12 +389,31 @@ class TrajectoryTracker:
                 'classification': row[3],
                 'agent_count': row[4],
                 'discovered_at': row[5],
-                'outcomes': json.loads(row[6]) if row[6] else None
+                'outcomes': json.loads(row[6]) if row[6] else None,
+                'metadata': json.loads(row[7]) if len(row) > 7 and row[7] else None
             })
 
         # Write to file
         with open(output_path, 'w') as f:
             json.dump(data, f, indent=2)
+
+    def get_attractors(self) -> List[Dict[str, Any]]:
+        """Return all attractors with metadata."""
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT * FROM attractors ORDER BY discovered_at DESC")
+        records = []
+        for row in cursor.fetchall():
+            records.append({
+                'id': row[0],
+                'center': json.loads(row[1]),
+                'radius': row[2],
+                'classification': row[3],
+                'agent_count': row[4],
+                'discovered_at': row[5],
+                'outcomes': json.loads(row[6]) if row[6] else None,
+                'metadata': json.loads(row[7]) if len(row) > 7 and row[7] else None,
+            })
+        return records
 
     def close(self):
         """Close database connection."""
