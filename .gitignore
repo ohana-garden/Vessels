@@ -51,3 +51,4 @@ htmlcov/
 
 # Logs
 *.log
+work_dir/test_projects/
