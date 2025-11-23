@@ -29,6 +29,8 @@ class AgentStatus(Enum):
     PROCESSING = "processing"
     COMPLETED = "completed"
     ERROR = "error"
+    PAUSED_FOR_CONSULTATION = "paused_for_consultation"
+    WAITING_ASYNC = "waiting_async"
 
 @dataclass
 class AgentSpecification:
@@ -54,6 +56,7 @@ class AgentInstance:
     tools: List[str] = field(default_factory=list)
     connections: List[str] = field(default_factory=list)
     message_queue: queue.Queue = field(default_factory=queue.Queue)
+    active_consultation: Optional[Any] = None
     
 class AgentZeroCore:
     """Meta-coordination engine that spawns and manages agents"""
@@ -68,6 +71,9 @@ class AgentZeroCore:
         self.coordination_thread = None
         self.memory_system = None
         self.tool_system = None
+        self.gate = None  # Action gate (optional)
+        self.consensus_engine = None  # Village consensus engine (optional)
+        self.interface = None  # Interface for sending messages to users
         
     def initialize(self, memory_system=None, tool_system=None):
         """Initialize the coordination system"""
@@ -528,6 +534,196 @@ class AgentZeroCore:
             for agent in idle_agents[:2]:  # Activate up to 2 idle agents
                 agent.status = AgentStatus.ACTIVE
     
+    def execute_gated_action(
+        self,
+        agent_id: str,
+        action: Any,
+        action_metadata: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """
+        Execute an action through the gate with consultation support.
+
+        Args:
+            agent_id: ID of the agent attempting the action
+            action: The action to execute
+            action_metadata: Optional metadata about the action
+
+        Returns:
+            Dictionary with execution result
+        """
+        if agent_id not in self.agents:
+            return {
+                "success": False,
+                "error": f"Agent {agent_id} not found"
+            }
+
+        agent = self.agents[agent_id]
+
+        # If no gate is configured, execute directly
+        if not self.gate:
+            logger.warning("No gate configured, executing action without gating")
+            result = self._execute_agent_task(agent_id, {"type": "action", "action": action})
+            return {"success": result.get("success", False), "result": result}
+
+        # Gate the action
+        gate_result = self.gate.gate_action(agent_id, action, action_metadata)
+
+        if not gate_result.allowed:
+            # Check if this is a consultation request
+            if gate_result.meta.get("type") == "CONSULTATION_REQUIRED":
+                # Extract the consultation request
+                consultation_req = gate_result.meta["consultation_request"]
+
+                # Store consultation in agent
+                agent.active_consultation = consultation_req
+
+                # Trigger the UI/Interface
+                if self.interface and self.consensus_engine:
+                    prompt = self.consensus_engine.initiate_check_in(consultation_req)
+                    self.send_message_to_user(agent_id, prompt)
+
+                # Pause agent state
+                agent.status = AgentStatus.PAUSED_FOR_CONSULTATION
+                logger.info(f"Agent {agent_id} paused for consultation: {gate_result.reason}")
+
+                return {
+                    "success": False,
+                    "blocked": True,
+                    "reason": gate_result.reason,
+                    "consultation_required": True,
+                    "consultation_request": consultation_req
+                }
+            else:
+                # Standard block
+                logger.warning(f"Action blocked for agent {agent_id}: {gate_result.reason}")
+                return {
+                    "success": False,
+                    "blocked": True,
+                    "reason": gate_result.reason
+                }
+
+        # Action allowed - execute it
+        result = self._execute_agent_task(agent_id, {"type": "action", "action": action})
+        return {"success": result.get("success", False), "result": result}
+
+    def send_message_to_user(self, agent_id: str, message: str):
+        """
+        Send a message to the user/interface.
+
+        Args:
+            agent_id: ID of the agent sending the message
+            message: Message content
+        """
+        if self.interface:
+            try:
+                # If interface has a send_message method, use it
+                if hasattr(self.interface, 'send_message'):
+                    self.interface.send_message(agent_id, message)
+                else:
+                    logger.warning(f"Interface does not have send_message method")
+                    print(f"\n[Agent {agent_id}]\n{message}\n")
+            except Exception as e:
+                logger.error(f"Error sending message to user: {e}")
+                print(f"\n[Agent {agent_id}]\n{message}\n")
+        else:
+            # Fallback: print to console
+            print(f"\n[Agent {agent_id}]\n{message}\n")
+
+    def handle_consultation_response(
+        self,
+        agent_id: str,
+        user_response: str
+    ) -> Dict[str, Any]:
+        """
+        Handle user response to a consultation request.
+
+        Args:
+            agent_id: ID of the agent in consultation
+            user_response: User's response
+
+        Returns:
+            Dictionary with handling result
+        """
+        if agent_id not in self.agents:
+            return {"success": False, "error": f"Agent {agent_id} not found"}
+
+        agent = self.agents[agent_id]
+
+        # Check if agent is in consultation mode
+        if agent.status != AgentStatus.PAUSED_FOR_CONSULTATION:
+            return {
+                "success": False,
+                "error": f"Agent {agent_id} is not in consultation mode"
+            }
+
+        if not agent.active_consultation:
+            return {
+                "success": False,
+                "error": f"No active consultation for agent {agent_id}"
+            }
+
+        if not self.consensus_engine:
+            return {
+                "success": False,
+                "error": "No consensus engine configured"
+            }
+
+        consultation_req = agent.active_consultation
+        response_lower = user_response.lower()
+
+        # Case A: User says "Use Precedent"
+        if "precedent" in response_lower:
+            if consultation_req.relevant_precedents:
+                precedent = consultation_req.relevant_precedents[0]
+                self.consensus_engine.resolve_consultation(
+                    consultation_req.request_id,
+                    resolution_summary=f"Applied precedent: {precedent.title}",
+                    consensus_action=precedent.resolution_principle,
+                    principle=precedent.resolution_principle,
+                    store_as_parable=False
+                )
+                agent.status = AgentStatus.ACTIVE
+                agent.active_consultation = None
+                return {
+                    "success": True,
+                    "message": "Precedent applied. Resuming action.",
+                    "action": "precedent_applied"
+                }
+            else:
+                return {
+                    "success": False,
+                    "error": "No precedents available for this consultation"
+                }
+
+        # Case B: User says "Async"
+        elif "async" in response_lower:
+            self.consensus_engine.set_async_mode(consultation_req.request_id)
+            agent.status = AgentStatus.WAITING_ASYNC
+            return {
+                "success": True,
+                "message": "Understood. Switching to async mode.",
+                "action": "async_mode"
+            }
+
+        # Case C: User provides a decision
+        else:
+            # Extract principle if provided (simple heuristic)
+            principle = user_response if len(user_response) < 200 else "User guidance provided"
+
+            self.consensus_engine.resolve_consultation(
+                consultation_req.request_id,
+                resolution_summary=user_response,
+                consensus_action="Proceed based on user input",
+                principle=principle
+            )
+            agent.status = AgentStatus.ACTIVE
+            agent.active_consultation = None
+            return {
+                "success": True,
+                "message": "Wisdom received. Action unblocked.",
+                "action": "resolved"
+            }
+
     def shutdown(self):
         """Shutdown the coordination system"""
         self.running = False

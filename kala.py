@@ -76,21 +76,58 @@ class KalaValueSystem:
     4. Generate reports on community value creation
     """
 
-    def __init__(self):
+    def __init__(self, use_crdt: bool = False, node_id: Optional[str] = None):
+        """
+        Initialize Kala Value System.
+
+        Args:
+            use_crdt: Use CRDT-backed accounts for distributed sync
+            node_id: Node ID for CRDT backend (required if use_crdt=True)
+        """
         self.contributions: Dict[str, KalaContribution] = {}
         self.accounts: Dict[str, KalaAccount] = {}
+        self.crdt_accounts: Dict[str, Any] = {}  # CRDT-backed accounts
         self.exchange_rate = KALA_TO_USD_RATE
+        self.use_crdt = use_crdt
+        self.node_id = node_id
+
+        # Initialize CRDT backend if requested
+        if use_crdt:
+            try:
+                from vessels.crdt.kala import CRDTKalaAccount
+                self.CRDTKalaAccount = CRDTKalaAccount
+                logger.info(f"Kala Value System initialized with CRDT support (node: {node_id})")
+            except ImportError as e:
+                logger.error(f"Could not import CRDT support: {e}")
+                raise
 
         logger.info(f"Kala Value System initialized (1 kala ≈ ${self.exchange_rate} USD)")
 
     def create_account(self, account_id: str, name: str) -> KalaAccount:
-        """Create a new kala account for tracking contributions"""
+        """
+        Create a new kala account for tracking contributions.
+
+        If CRDT mode is enabled, creates a CRDT-backed account for
+        distributed synchronization.
+        """
+        # Create regular account for tracking
         account = KalaAccount(
             id=account_id,
             name=name
         )
         self.accounts[account_id] = account
-        logger.info(f"Created kala account: {name} ({account_id})")
+
+        # Create CRDT account if enabled
+        if self.use_crdt:
+            crdt_account = self.CRDTKalaAccount(
+                account_id=account_id,
+                node_id=self.node_id
+            )
+            self.crdt_accounts[account_id] = crdt_account
+            logger.info(f"Created CRDT kala account: {name} ({account_id})")
+        else:
+            logger.info(f"Created kala account: {name} ({account_id})")
+
         return account
 
     def record_contribution(
@@ -144,6 +181,13 @@ class KalaValueSystem:
         contributor.contributions_given.append(contribution_id)
         contributor.total_kala_given += kala_value
 
+        # Update CRDT account if enabled (contributor gives kala)
+        if self.use_crdt and contributor_id in self.crdt_accounts:
+            self.crdt_accounts[contributor_id].debit(
+                kala_value,
+                f"Contribution: {description}"
+            )
+
         # Update recipient account if specified
         if recipient_id:
             if recipient_id not in self.accounts:
@@ -152,6 +196,13 @@ class KalaValueSystem:
             recipient = self.accounts[recipient_id]
             recipient.contributions_received.append(contribution_id)
             recipient.total_kala_received += kala_value
+
+            # Update CRDT account if enabled (recipient receives kala)
+            if self.use_crdt and recipient_id in self.crdt_accounts:
+                self.crdt_accounts[recipient_id].credit(
+                    kala_value,
+                    f"Received: {description}"
+                )
 
         logger.info(
             f"Recorded contribution: {contributor_id} -> "
@@ -419,6 +470,50 @@ class KalaValueSystem:
             }
             for a in accounts[:limit]
         ]
+
+    def merge_crdt_account(self, account_id: str, peer_crdt_account) -> None:
+        """
+        Merge CRDT account state with peer for synchronization.
+
+        Args:
+            account_id: Account to merge
+            peer_crdt_account: CRDT account from peer node
+        """
+        if not self.use_crdt:
+            logger.warning("CRDT not enabled, cannot merge accounts")
+            return
+
+        if account_id not in self.crdt_accounts:
+            logger.warning(f"Account {account_id} not found in CRDT accounts")
+            return
+
+        # Merge CRDT states
+        self.crdt_accounts[account_id] = self.crdt_accounts[account_id].merge_with(peer_crdt_account)
+        logger.info(f"Merged CRDT account {account_id}, new balance: {self.crdt_accounts[account_id].balance()} kala")
+
+    def get_crdt_balance(self, account_id: str) -> Optional[float]:
+        """Get CRDT account balance."""
+        if not self.use_crdt or account_id not in self.crdt_accounts:
+            return None
+        return self.crdt_accounts[account_id].balance()
+
+    def export_crdt_accounts(self) -> Dict[str, Any]:
+        """Export all CRDT accounts for persistence."""
+        if not self.use_crdt:
+            return {}
+        return {
+            account_id: crdt_account.to_dict()
+            for account_id, crdt_account in self.crdt_accounts.items()
+        }
+
+    def import_crdt_accounts(self, crdt_data: Dict[str, Any]) -> None:
+        """Import CRDT accounts from persistence."""
+        if not self.use_crdt:
+            return
+        for account_id, account_data in crdt_data.items():
+            crdt_account = self.CRDTKalaAccount.from_dict(account_data)
+            self.crdt_accounts[account_id] = crdt_account
+        logger.info(f"Imported {len(crdt_data)} CRDT accounts")
 
     def export_data(self) -> Dict[str, Any]:
         """Export all kala data for backup or analysis"""

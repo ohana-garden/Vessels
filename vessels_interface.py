@@ -15,6 +15,7 @@ from datetime import datetime
 from typing import Dict, List, Any, Optional
 from dataclasses import dataclass, field
 from enum import Enum
+from collections import defaultdict
 import re
 import uuid
 
@@ -72,7 +73,10 @@ class VesselsInterface:
         self.interface_thread = threading.Thread(target=self._interface_loop)
         self.interface_thread.daemon = True
         self.interface_thread.start()
-        
+
+        # Wire up agent_zero to use this interface for consultation messages
+        agent_zero.interface = self
+
         logger.info("Vessels Natural Language Interface initialized")
     
     def process_message(self, user_id: str, message: str,
@@ -196,7 +200,15 @@ class VesselsInterface:
     
     def _process_interaction(self, interaction: UserInteraction) -> Dict[str, Any]:
         """Process the user interaction and generate response"""
-        
+
+        # First check if this is a response to an active consultation
+        consultation_response = self._check_for_consultation(
+            interaction.user_id,
+            interaction.message
+        )
+        if consultation_response:
+            return consultation_response
+
         if interaction.interaction_type == InteractionType.COMMAND:
             return self._process_command(interaction)
         elif interaction.interaction_type == InteractionType.QUESTION:
@@ -821,6 +833,71 @@ All core systems are operational and ready to coordinate community needs.
             
             time.sleep(3600)  # Run every hour
     
+    def send_message(self, agent_id: str, message: str):
+        """
+        Send a message to a user (for consultation prompts).
+
+        Args:
+            agent_id: Agent ID sending the message
+            message: Message content
+        """
+        # For now, just log it. In production, this would route to the appropriate user
+        logger.info(f"Message from agent {agent_id}:\n{message}")
+        print(f"\n{message}\n")
+
+    def handle_consultation_response(
+        self,
+        agent_id: str,
+        user_response: str
+    ) -> Dict[str, Any]:
+        """
+        Handle user response to a consultation request.
+
+        This routes the response to the agent orchestrator to resolve the consultation.
+
+        Args:
+            agent_id: ID of the agent in consultation
+            user_response: User's response
+
+        Returns:
+            Dictionary with handling result
+        """
+        # Route to agent_zero for handling
+        result = agent_zero.handle_consultation_response(agent_id, user_response)
+
+        if result.get("success"):
+            return {
+                "response": result.get("message", "Consultation resolved."),
+                "action": result.get("action"),
+                "follow_up_needed": False
+            }
+        else:
+            return {
+                "response": f"Error handling consultation: {result.get('error', 'Unknown error')}",
+                "follow_up_needed": True
+            }
+
+    def _check_for_consultation(self, user_id: str, message: str) -> Optional[Dict[str, Any]]:
+        """
+        Check if this message is a response to an active consultation.
+
+        Args:
+            user_id: User ID
+            message: User message
+
+        Returns:
+            Consultation response result if applicable, None otherwise
+        """
+        # Check if any agents are in consultation mode for this user
+        # For now, we'll check all agents (in production, map users to agents)
+        for agent_id, agent in agent_zero.agents.items():
+            if agent.status.value == "paused_for_consultation":
+                # This message might be a consultation response
+                logger.info(f"Found agent {agent_id} in consultation mode, processing response")
+                return self.handle_consultation_response(agent_id, message)
+
+        return None
+
     def get_system_insights(self) -> Dict[str, Any]:
         """Get insights about system usage and performance"""
         insights = {
