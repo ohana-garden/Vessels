@@ -74,7 +74,10 @@ case "$COMMAND" in
     web)
         echo "Starting Vessels Web Server..."
         echo "Web interface will be available at http://localhost:5000"
+        echo "Access from host: http://localhost:5000"
         echo ""
+        # Set DAEMON=true to keep container running
+        export DAEMON=true
         python /app/vessels_web_server.py &
         VESSELS_PID=$!
         ;;

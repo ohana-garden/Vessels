@@ -25,11 +25,13 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
-COPY shoghi/ ./shoghi/
+COPY vessels/ ./vessels/
 COPY .bmad/ ./.bmad/
 COPY *.py ./
 COPY examples/ ./examples/
 COPY scripts/ ./scripts/
+COPY *.html ./
+COPY *.js ./
 
 # Create required directories
 RUN mkdir -p \
@@ -76,11 +78,12 @@ HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
 # Environment variables
 ENV PYTHONUNBUFFERED=1 \
     FALKORDB_HOST=localhost \
-    FALKORDB_PORT=6379
+    FALKORDB_PORT=6379 \
+    DAEMON=true
 
 # Volume for persistence
 VOLUME ["/data/falkordb", "/app/work_dir"]
 
 # Run startup script
 ENTRYPOINT ["/entrypoint.sh"]
-CMD ["demo"]
+CMD ["web"]
