@@ -8,6 +8,7 @@ from typing import Dict, Any, Optional
 from vessels.core.registry import VesselRegistry
 from vessels.core.vessel import Vessel, PrivacyLevel
 from vessels.knowledge.schema import CommunityPrivacy
+from vessels.storage.session import create_session_store, SessionStore
 
 logger = logging.getLogger(__name__)
 
@@ -17,9 +18,26 @@ class VesselsSystem:
     This replaces the mock/hardcoded approach in vessels_fixed.py.
     """
 
-    def __init__(self, db_path: str = "vessels_metadata.db"):
-        """Initialize the Vessels system with proper component integration."""
+    def __init__(
+        self,
+        db_path: str = "vessels_metadata.db",
+        session_store_type: str = "memory",
+        enable_gating: bool = False,
+        **session_kwargs
+    ):
+        """
+        Initialize the Vessels system with proper component integration.
+
+        Args:
+            db_path: Path to vessel registry database
+            session_store_type: Type of session store ("memory", "redis", "falkordb")
+            enable_gating: Enable moral gating (requires full stack)
+            **session_kwargs: Additional arguments for session store
+        """
         self.registry = VesselRegistry(db_path=db_path)
+        self.session_store = create_session_store(session_store_type, **session_kwargs)
+        self.gating_enabled = enable_gating
+        self.gate = None
 
         # Initialize Kala if available
         try:
@@ -37,11 +55,58 @@ class VesselsSystem:
             logger.warning("Community Memory not available")
             self.memory = None
 
+        # Initialize ActionGate if enabled and components available
+        if enable_gating:
+            self._initialize_action_gate()
+
         # Bootstrap default vessel if none exists
         if not self.registry.list_vessels():
             self._bootstrap_default_vessel()
 
-        logger.info("🌺 Vessels System initialized")
+        logger.info(
+            f"🌺 Vessels System initialized "
+            f"(session={session_store_type}, gating={'enabled' if self.gate else 'disabled'})"
+        )
+
+    def _initialize_action_gate(self):
+        """
+        Initialize the ActionGate for moral constraint enforcement.
+        Requires full measurement stack to be available.
+        """
+        try:
+            from vessels.gating.gate import ActionGate
+            from vessels.constraints.bahai import BahaiManifold
+            from vessels.measurement.operational import OperationalMetrics
+            from vessels.measurement.virtue_inference import VirtueInferenceEngine
+
+            # Create manifold
+            manifold = BahaiManifold()
+
+            # Create operational metrics tracker
+            operational_metrics = OperationalMetrics()
+
+            # Create virtue inference engine
+            virtue_engine = VirtueInferenceEngine()
+
+            # Create gate
+            self.gate = ActionGate(
+                manifold=manifold,
+                operational_metrics=operational_metrics,
+                virtue_engine=virtue_engine,
+                latency_budget_ms=100.0,
+                block_on_timeout=True,
+                max_consecutive_blocks=5
+            )
+
+            logger.info("✅ ActionGate initialized - moral constraints active")
+
+        except ImportError as e:
+            logger.warning(
+                f"ActionGate not available: {e}. "
+                f"Moral gating disabled. System running WITHOUT ethical constraints."
+            )
+            self.gate = None
+            self.gating_enabled = False
 
     def _bootstrap_default_vessel(self):
         """Create a default vessel if none exists."""
@@ -54,11 +119,46 @@ class VesselsSystem:
         )
         self.registry.create_vessel(vessel)
 
+    def get_or_create_session(self, session_id: str) -> Dict[str, Any]:
+        """
+        Get an existing session or create a new one.
+
+        Args:
+            session_id: Session identifier
+
+        Returns:
+            Session data dictionary
+        """
+        session = self.session_store.get_session(session_id)
+
+        if not session:
+            session = {
+                'history': [],
+                'emotion_history': [],
+                'context': {}
+            }
+            self.session_store.create_session(session_id, session)
+
+        return session
+
+    def update_session(self, session_id: str, data: Dict[str, Any]) -> bool:
+        """
+        Update session data.
+
+        Args:
+            session_id: Session identifier
+            data: Data to update
+
+        Returns:
+            True if successful
+        """
+        return self.session_store.update_session(session_id, data)
+
     def process_request(self, text: str, session_id: str, context: Dict[str, Any]) -> Dict[str, Any]:
         """
         Main processing pipeline:
         1. Intent Recognition
-        2. Moral Gating (when implemented)
+        2. Moral Gating (if enabled)
         3. Agent Dispatch
         4. Response Generation
 
@@ -66,14 +166,40 @@ class VesselsSystem:
         """
         logger.info(f"Processing request for session {session_id}: {text[:50]}...")
 
-        # 1. Intent Recognition (cleaner routing logic)
+        # 1. Intent Recognition
         intent = self._infer_intent(text)
 
-        # 2. TODO: Moral Gating (ActionGate will go here)
-        # from vessels.gating.gate import ActionGate
-        # gate_result = self.gate.check(intent)
-        # if not gate_result.allowed:
-        #     return {"error": "Ethical constraint violation", "reason": gate_result.reason}
+        # 2. Moral Gating (if enabled)
+        if self.gating_enabled and self.gate:
+            action_metadata = {
+                "intent": intent,
+                "text": text,
+                "session_id": session_id
+            }
+
+            gate_result = self.gate.gate_action(
+                agent_id=f"session_{session_id}",
+                action={"type": "process_request", "intent": intent, "text": text},
+                action_metadata=action_metadata
+            )
+
+            if not gate_result.allowed:
+                logger.warning(
+                    f"Request blocked by ActionGate: {gate_result.reason} "
+                    f"(session={session_id})"
+                )
+                return {
+                    "error": "Request blocked by ethical constraints",
+                    "reason": gate_result.reason,
+                    "agent": "ActionGate",
+                    "content_type": "error",
+                    "data": {
+                        "message": gate_result.reason,
+                        "security_event": gate_result.security_event.to_dict() if gate_result.security_event else None
+                    }
+                }
+
+            logger.debug(f"Request passed ActionGate: {gate_result.reason}")
 
         # 3. Agent Dispatch
         response_data = self._dispatch_agent(intent, text, context)

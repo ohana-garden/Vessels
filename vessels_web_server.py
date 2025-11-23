@@ -16,16 +16,18 @@ app = Flask(__name__, template_folder=".")
 app.config["MAX_CONTENT_LENGTH"] = 1024 * 1024  # 1MB cap
 CORS(app)
 
-# Initialize the Clean System
-system = VesselsSystem()
-
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# TODO: Replace with Redis/FalkorDB in production
-# This is a known limitation for Tier 2+ deployment
-SESSION_STORE = {}
+# Initialize the Clean System
+# Session management is now handled by VesselsSystem
+# To enable Redis: session_store_type="redis", redis_client=redis_client
+# To enable moral gating: enable_gating=True (requires full measurement stack)
+system = VesselsSystem(
+    session_store_type="memory",  # Change to "redis" for production
+    enable_gating=False  # Enable when measurement stack is available
+)
 
 
 @app.errorhandler(Exception)
@@ -62,20 +64,18 @@ def process_voice():
     if not text or len(text) > 10000:
         abort(400, description="Text is required and must be under 10k characters")
 
-    # Update Session State
-    if session_id not in SESSION_STORE:
-        SESSION_STORE[session_id] = {
-            'history': [],
-            'emotion_history': [],
-            'context': {}
-        }
+    # Get or create session (now managed by VesselsSystem)
+    session = system.get_or_create_session(session_id)
 
-    session = SESSION_STORE[session_id]
+    # Update session with new input
     session['history'].append(text)
 
     # Store emotion if provided
     emotion = data.get('emotion', 'neutral')
     session['emotion_history'].append(emotion)
+
+    # Persist session updates
+    system.update_session(session_id, session)
 
     # Delegate to the Core System
     try:
@@ -183,8 +183,9 @@ def get_status():
 @app.route('/api/session/<session_id>', methods=['GET'])
 def get_session(session_id):
     """Get session information."""
-    if session_id in SESSION_STORE:
-        return jsonify(SESSION_STORE[session_id])
+    session = system.session_store.get_session(session_id)
+    if session:
+        return jsonify(session)
     return jsonify({'error': 'Session not found'}), 404
 
 
