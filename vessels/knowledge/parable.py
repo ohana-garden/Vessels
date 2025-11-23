@@ -222,6 +222,45 @@ class Parable:
 
         return cls.from_dict(data)
 
+    def generate_search_queries(self) -> List[str]:
+        """
+        Generate semantic search queries for finding external wisdom related to this parable.
+
+        Converts the moral tension in this parable into search queries that can be used
+        to find related history, philosophy, case studies, and precedents from the outside world.
+
+        Returns:
+            List of search query strings optimized for finding relevant external wisdom
+        """
+        # Get dimension names in human-readable form
+        dim1 = self.conflict_pair[0].value.lower().replace('_', ' ')
+        dim2 = self.conflict_pair[1].value.lower().replace('_', ' ')
+
+        # Generate varied queries to find different types of wisdom
+        queries = [
+            # Ethics and case studies
+            f"ethics of {dim1} vs {dim2} case studies",
+            f"moral dilemma {dim1} {dim2} examples",
+
+            # Historical precedents
+            f"historical cases {dim1} conflicts with {dim2}",
+            f"philosophy {dim1} versus {dim2}",
+
+            # Practical resolution examples
+            f"how to balance {dim1} and {dim2}",
+            f"resolving tension between {dim1} and {dim2}",
+
+            # Specific context from the situation
+            f"{dim1} {dim2} {self.situation_summary[:50]}",
+        ]
+
+        # Add tag-based queries if relevant tags exist
+        for tag in self.tags:
+            if tag != "parable" and not tag.startswith("conflict:"):
+                queries.append(f"{dim1} {dim2} {tag} ethics")
+
+        return queries
+
 
 class ParableLibrary:
     """
