@@ -7,7 +7,7 @@ All external actions must pass through the gate.
 
 from typing import Dict, Any, Optional, List
 from datetime import datetime
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import time
 import logging
 
@@ -43,6 +43,7 @@ class GatingResult:
     security_event: Optional[SecurityEvent] = None
     state_transition: Optional[StateTransition] = None
     measured_state: Optional[PhaseSpaceState] = None
+    meta: Dict[str, Any] = field(default_factory=dict)
 
 
 class ActionGate:
@@ -65,7 +66,8 @@ class ActionGate:
         latency_budget_ms: float = 100.0,
         block_on_timeout: bool = True,
         tracker: Optional[TrajectoryTracker] = None,
-        max_consecutive_blocks: int = 5
+        max_consecutive_blocks: int = 5,
+        consensus_engine: Optional[Any] = None
     ):
         """
         Initialize action gate.
@@ -78,6 +80,7 @@ class ActionGate:
             block_on_timeout: If True, block on timeout (conservative default)
             tracker: Optional trajectory tracker for persistence
             max_consecutive_blocks: Maximum consecutive blocks before intervention
+            consensus_engine: Optional village consensus engine for teachable moments
         """
         self.manifold = manifold
         self.operational_metrics = operational_metrics
@@ -87,6 +90,7 @@ class ActionGate:
         self.block_on_timeout = block_on_timeout
         self.tracker = tracker
         self.max_consecutive_blocks = max_consecutive_blocks
+        self.consensus_engine = consensus_engine
 
         # Event logs (in-memory for now, will be persisted to SQLite)
         self.security_events: List[SecurityEvent] = []
@@ -134,7 +138,29 @@ class ActionGate:
                     elapsed_ms
                 )
 
-            # Step 2: Validate virtue state
+            # Step 2: NEW - Tension Detection (Teachable Moments)
+            if self.consensus_engine:
+                # Check if this action triggers a moral tension needing human eyes
+                consultation_req = self.consensus_engine.detect_tension(
+                    agent_id=agent_id,
+                    proposed_action=action,
+                    current_state=measured_state
+                )
+
+                if consultation_req:
+                    # BLOCK the action and return a special status
+                    return GatingResult(
+                        allowed=False,
+                        reason="Consultation Required",
+                        security_event=None,
+                        measured_state=measured_state,
+                        meta={
+                            "type": "CONSULTATION_REQUIRED",
+                            "consultation_request": consultation_req
+                        }
+                    )
+
+            # Step 3: Validate virtue state
             virtue_dict = measured_state.virtue.to_dict()
             validation = self.validator.validate(virtue_dict)
 
@@ -147,7 +173,7 @@ class ActionGate:
                     action_metadata
                 )
 
-            # Step 3: State is invalid - try projection
+            # Step 4: State is invalid - try projection
             projection = self.validator.project_to_valid(virtue_dict)
 
             # Check latency budget again
@@ -160,7 +186,7 @@ class ActionGate:
                     elapsed_ms
                 )
 
-            # Step 4: Check if projection succeeded
+            # Step 5: Check if projection succeeded
             if projection.residual_violations:
                 # Projection failed - BLOCK
                 return self._block_action(
