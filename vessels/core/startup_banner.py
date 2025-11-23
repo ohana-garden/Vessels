@@ -288,9 +288,50 @@ def check_nostr(status: ServiceStatus) -> bool:
         return False
 
 
+def load_env_file():
+    """Load .env file if it exists"""
+    from pathlib import Path
+    env_file = Path(__file__).parent.parent.parent / ".env"
+
+    if env_file.exists():
+        with open(env_file) as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith('#') and '=' in line:
+                    key, value = line.split('=', 1)
+                    os.environ.setdefault(key.strip(), value.strip())
+
+
+def check_config_status():
+    """Check if configuration is complete"""
+    required_for_basic = [
+        'FALKORDB_HOST',
+    ]
+
+    ai_providers = [
+        'OPENAI_API_KEY',
+        'ANTHROPIC_API_KEY',
+        'AZURE_OPENAI_API_KEY',
+        'OLLAMA_ENABLED'
+    ]
+
+    has_ai = any(os.getenv(key) for key in ai_providers)
+
+    if not has_ai:
+        print("⚠️  WARNING: No AI providers configured!", flush=True)
+        print("   Run 'python setup.py' to configure Agent Zero", flush=True)
+        print(flush=True)
+
+
 def run_startup_checks():
     """Run all startup checks and display status"""
+    # Load .env file
+    load_env_file()
+
     print_banner()
+
+    # Check if setup is complete
+    check_config_status()
 
     status = ServiceStatus()
 
