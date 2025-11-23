@@ -2,124 +2,79 @@ version: '3.8'
 
 services:
   # ============================================================================
-  # INFRASTRUCTURE
+  # VESSELS - UNIFIED CONTAINER
+  # All-in-one: Python + Node.js + TEN Framework + TigerBeetle + Petals + FalkorDB
   # ============================================================================
 
-  falkordb:
-    image: falkordb/falkordb:latest
-    container_name: vessels-falkordb
-    ports:
-      - "6379:6379"
-    volumes:
-      - falkordb-data:/data
-    restart: unless-stopped
-    command: >
-      --save 900 1
-      --save 300 10
-      --save 60 10000
-      --dbfilename dump.rdb
-      --dir /data
-      --appendonly no
-      --maxmemory 512mb
-      --maxmemory-policy allkeys-lru
-    networks:
-      - vessels-network
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-
-  # ============================================================================
-  # APPLICATION SERVICES
-  # ============================================================================
-
-  vessels-app:
+  vessels:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: vessels-app
-    depends_on:
-      falkordb:
-        condition: service_healthy
+    container_name: vessels-unified
+    ports:
+      - "5000:5000"    # Vessels web interface
+      - "6379:6379"    # FalkorDB
+      - "3000:3000"    # Payment service API
+      - "8080:8080"    # TEN Framework
     environment:
-      - FALKORDB_HOST=falkordb
-      - FALKORDB_PORT=6379
+      # Python/Vessels
       - PYTHONUNBUFFERED=1
-      # Payment gateway integration
-      - PAYMENT_API_URL=http://payment-service:3000/graphql
-      - PAYMENT_API_KEY=${PAYMENT_API_KEY}
+      - FALKORDB_HOST=localhost
+      - FALKORDB_PORT=6379
+      - DAEMON=true
+
+      # Payment Service
+      - PAYMENT_SERVICE_URL=http://localhost:3000
+      - PORT=3000
+      - NODE_ENV=production
+
+      # TigerBeetle
+      - TIGERBEETLE_CLUSTER_ID=${TIGERBEETLE_CLUSTER_ID:-0}
+      - TIGERBEETLE_REPLICA_ADDRESSES=localhost:3001
+
+      # Database
+      - DATABASE_URL=postgresql://vessels:${POSTGRES_PASSWORD:-vessels_dev}@localhost:5432/vessels_payment
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-vessels_dev}
+
+      # Auth
+      - JWT_SECRET=${JWT_SECRET:-change-this-in-production}
+
+      # Mojaloop (optional)
+      - MOJALOOP_ENABLED=${MOJALOOP_ENABLED:-false}
+      - MOJALOOP_SWITCH_URL=${MOJALOOP_SWITCH_URL:-}
+      - MOJALOOP_PARTICIPANT_ID=${MOJALOOP_PARTICIPANT_ID:-vessels-dfsp}
+      - MOJALOOP_API_KEY=${MOJALOOP_API_KEY:-}
+      - MOJALOOP_CALLBACK_URL=${MOJALOOP_CALLBACK_URL:-}
+
+      # TEN Framework
+      - TEN_FRAMEWORK_ENABLED=${TEN_FRAMEWORK_ENABLED:-true}
+      - TEN_GRAPHS_DIR=/app/graphs
+
+      # Petals (distributed AI)
+      - PETALS_ENABLED=${PETALS_ENABLED:-false}
+      - PETALS_MODEL=${PETALS_MODEL:-petals-team/StableBeluga2}
+
+      # Logging
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+
     volumes:
       - ./work_dir:/app/work_dir
-      - ./vessels:/app/vessels
-      - ./.bmad:/app/.bmad
-    networks:
-      - vessels-network
-    restart: unless-stopped
-    # Only expose to internal network - gateway will route external traffic
-    expose:
-      - "5000"
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
-
-  # Payment service (TypeScript/TigerBeetle)
-  # TODO: Add Dockerfile to payment/ directory before uncommenting
-  # payment-service:
-  #   build:
-  #     context: ./payment
-  #     dockerfile: Dockerfile
-  #   container_name: vessels-payment
-  #   environment:
-  #     - NODE_ENV=production
-  #     - TIGERBEETLE_CLUSTER_ID=${TIGERBEETLE_CLUSTER_ID:-0}
-  #     - TIGERBEETLE_REPLICA_ADDRESSES=${TIGERBEETLE_REPLICA_ADDRESSES:-3000}
-  #     - JWT_SECRET=${JWT_SECRET}
-  #     - DATABASE_URL=${DATABASE_URL}
-  #   networks:
-  #     - vessels-network
-  #   restart: unless-stopped
-  #   expose:
-  #     - "3000"
-  #   healthcheck:
-  #     test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
-  #     interval: 30s
-  #     timeout: 10s
-  #     retries: 3
-  #     start_period: 40s
-
-  # ============================================================================
-  # API GATEWAY
-  # ============================================================================
-
-  gateway:
-    image: nginx:alpine
-    container_name: vessels-gateway
-    depends_on:
-      - vessels-app
-      # - payment-service  # Uncomment when payment service is ready
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./nginx/conf.d:/etc/nginx/conf.d:ro
-      # SSL certificates (add when ready for production)
-      # - ./nginx/ssl:/etc/nginx/ssl:ro
+      - vessels-data:/data
+      - ./config:/app/config
+      - ./graphs:/app/graphs
+      - ./ten_packages:/app/ten_packages
     networks:
       - vessels-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "nginx", "-t"]
+      test: ["CMD-SHELL", "redis-cli -p 6379 ping && curl -f http://localhost:5000/health && curl -f http://localhost:3000/health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 60s
 
 volumes:
-  falkordb-data:
+  vessels-data:
     driver: local
 
 networks:

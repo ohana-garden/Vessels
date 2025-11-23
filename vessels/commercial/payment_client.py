@@ -555,3 +555,228 @@ class PaymentGatewayClient:
         except Exception as e:
             logger.warning(f"Payment service health check failed: {e}")
             return False
+
+    # ========================================================================
+    # NEW: TigerBeetle + Mojaloop + RTP Integration
+    # ========================================================================
+
+    def create_vendor_accounts(self, vendor_id: str, name: str) -> Dict[str, Any]:
+        """
+        Create vendor accounts in TigerBeetle ledger.
+
+        Args:
+            vendor_id: Unique vendor UUID
+            name: Vendor display name
+
+        Returns:
+            Vendor data with account IDs
+        """
+        mutation = """
+        mutation CreateVendor($vendorId: String!, $name: String!) {
+            createVendor(vendorId: $vendorId, name: $name) {
+                id
+                name
+                createdAt
+            }
+        }
+        """
+
+        try:
+            data = self._execute_graphql(mutation, {"vendorId": vendor_id, "name": name})
+            return {"success": True, "vendor": data.get("createVendor")}
+        except Exception as e:
+            logger.error(f"Failed to create vendor accounts: {e}")
+            return {"success": False, "error": str(e)}
+
+    def get_vendor_balance(
+        self,
+        vendor_id: str,
+        account_type: str = "vendor_get_reserve"
+    ) -> Dict[str, Any]:
+        """
+        Get vendor account balance from TigerBeetle.
+
+        Args:
+            vendor_id: Vendor UUID
+            account_type: Account type (vendor_get_reserve, vendor_tax_reserve, vendor_kala)
+
+        Returns:
+            Balance data
+        """
+        query = """
+        query GetBalance($vendorId: String!, $accountType: String!) {
+            accountBalance(vendorId: $vendorId, accountType: $accountType) {
+                vendorId
+                accountType
+                balanceUsd
+                asOf
+            }
+        }
+        """
+
+        try:
+            data = self._execute_graphql(query, {"vendorId": vendor_id, "accountType": account_type})
+            balance_data = data.get("accountBalance", {})
+            return {
+                "success": True,
+                "balance_usd": balance_data.get("balanceUsd", 0),
+                "as_of": balance_data.get("asOf")
+            }
+        except Exception as e:
+            logger.error(f"Failed to get vendor balance: {e}")
+            return {"success": False, "error": str(e)}
+
+    def transfer_vendor_to_vendor(
+        self,
+        from_vendor_id: str,
+        to_vendor_id: str,
+        amount_usd: float,
+        description: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Transfer funds between vendors using TigerBeetle.
+
+        Args:
+            from_vendor_id: Source vendor UUID
+            to_vendor_id: Destination vendor UUID
+            amount_usd: Amount in USD
+            description: Optional transfer note
+
+        Returns:
+            Transfer result
+        """
+        mutation = """
+        mutation Transfer(
+            $fromVendorId: String!
+            $toVendorId: String!
+            $amountUsd: Float!
+            $description: String
+        ) {
+            transfer(
+                fromVendorId: $fromVendorId
+                toVendorId: $toVendorId
+                amountUsd: $amountUsd
+                description: $description
+            ) {
+                transferId
+                status
+                amountUsd
+            }
+        }
+        """
+
+        try:
+            data = self._execute_graphql(mutation, {
+                "fromVendorId": from_vendor_id,
+                "toVendorId": to_vendor_id,
+                "amountUsd": amount_usd,
+                "description": description
+            })
+            return {"success": True, "transfer": data.get("transfer")}
+        except Exception as e:
+            logger.error(f"Failed to transfer funds: {e}")
+            return {"success": False, "error": str(e)}
+
+    def payout_vendor(
+        self,
+        vendor_id: str,
+        amount_usd: float,
+        method: str = "ACH"
+    ) -> Dict[str, Any]:
+        """
+        Send payout to vendor using ACH, RTP, Mojaloop, or Card.
+
+        Args:
+            vendor_id: Vendor UUID
+            amount_usd: Amount in USD
+            method: Payout method (ACH, RTP, MOJALOOP, CARD)
+
+        Returns:
+            Payout result with fees
+        """
+        mutation = """
+        mutation Payout(
+            $vendorId: String!
+            $amountUsd: Float!
+            $method: PayoutMethod!
+        ) {
+            payout(
+                vendorId: $vendorId
+                amountUsd: $amountUsd
+                method: $method
+            ) {
+                payoutId
+                status
+                amountUsd
+                feesUsd
+            }
+        }
+        """
+
+        try:
+            data = self._execute_graphql(mutation, {
+                "vendorId": vendor_id,
+                "amountUsd": amount_usd,
+                "method": method
+            })
+            payout_data = data.get("payout", {})
+            return {
+                "success": True,
+                "payout_id": payout_data.get("payoutId"),
+                "status": payout_data.get("status"),
+                "amount_usd": payout_data.get("amountUsd"),
+                "fees_usd": payout_data.get("feesUsd", 0)
+            }
+        except Exception as e:
+            logger.error(f"Failed to send payout: {e}")
+
+            # Queue for retry
+            if self.enable_local_queue:
+                self._queue_transaction(
+                    operation_type="payout_vendor",
+                    payload={
+                        "vendor_id": vendor_id,
+                        "amount_usd": amount_usd,
+                        "method": method
+                    }
+                )
+
+            return {"success": False, "error": str(e)}
+
+    def get_transaction_history(
+        self,
+        vendor_id: str,
+        limit: int = 50
+    ) -> Dict[str, Any]:
+        """
+        Get transaction history for a vendor.
+
+        Args:
+            vendor_id: Vendor UUID
+            limit: Maximum transactions to return
+
+        Returns:
+            Transaction list
+        """
+        query = """
+        query TransactionHistory($vendorId: String!, $limit: Int) {
+            transactionHistory(vendorId: $vendorId, limit: $limit) {
+                id
+                fromVendor
+                toVendor
+                amountUsd
+                description
+                timestamp
+            }
+        }
+        """
+
+        try:
+            data = self._execute_graphql(query, {"vendorId": vendor_id, "limit": limit})
+            return {
+                "success": True,
+                "transactions": data.get("transactionHistory", [])
+            }
+        except Exception as e:
+            logger.error(f"Failed to get transaction history: {e}")
+            return {"success": False, "error": str(e)}
