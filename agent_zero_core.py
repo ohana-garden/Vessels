@@ -4,6 +4,14 @@ AGENT ZERO CORE - Meta-Coordination Engine
 Spawns agents dynamically from natural language descriptions
 Self-organizes based on community needs
 Coordinates entire agent ecosystem
+
+VESSEL-NATIVE DESIGN:
+- Accepts VesselRegistry for multi-vessel agent coordination
+- Each agent spawned within a vessel gets vessel-scoped resources:
+  * Memory backend (namespaced per agent)
+  * Action gate (enforcing privacy/moral constraints)
+  * Tools (with permission-based access)
+- No global memory/tool system - all resources come from vessels
 """
 
 import asyncio
@@ -11,13 +19,18 @@ import json
 import logging
 import uuid
 from datetime import datetime
-from typing import Dict, List, Any, Optional, Callable
+from typing import Dict, List, Any, Optional, Callable, TYPE_CHECKING
 from dataclasses import dataclass, field
 from enum import Enum
 import threading
 import queue
 from concurrent.futures import ThreadPoolExecutor
 import inspect
+
+# Avoid circular imports
+if TYPE_CHECKING:
+    from vessels.core.registry import VesselRegistry
+    from vessels.core.vessel import Vessel
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -46,44 +59,88 @@ class AgentSpecification:
     
 @dataclass
 class AgentInstance:
-    """Live agent instance"""
+    """Live agent instance with vessel-scoped resources"""
     id: str
     specification: AgentSpecification
     status: AgentStatus
     created_at: datetime
     last_active: datetime
+    vessel_id: Optional[str] = None  # Vessel this agent belongs to
     memory: Dict[str, Any] = field(default_factory=dict)
+    memory_backend: Optional[Any] = None  # Vessel-injected memory backend
+    action_gate: Optional[Any] = None  # Vessel-injected action gate
     tools: List[str] = field(default_factory=list)
     connections: List[str] = field(default_factory=list)
     message_queue: queue.Queue = field(default_factory=queue.Queue)
     active_consultation: Optional[Any] = None
     
 class AgentZeroCore:
-    """Meta-coordination engine that spawns and manages agents"""
-    
-    def __init__(self):
+    """
+    Meta-coordination engine that spawns and manages agents.
+
+    VESSEL-NATIVE ARCHITECTURE:
+    - Accepts VesselRegistry to coordinate agents across multiple vessels
+    - Each agent is spawned within a specific vessel and gets vessel-scoped:
+      * Memory backend (namespaced per agent)
+      * Action gate (privacy/moral constraints from vessel)
+      * Tools (permission-controlled from vessel)
+    - Backward compatible: works without VesselRegistry (legacy mode)
+    """
+
+    def __init__(self, vessel_registry: Optional[Any] = None, *,
+                 default_memory=None, default_tools=None):
+        """
+        Initialize AgentZeroCore.
+
+        Args:
+            vessel_registry: Optional VesselRegistry for vessel-native coordination
+            default_memory: Fallback memory system (used if no vessel provided)
+            default_tools: Fallback tool system (used if no vessel provided)
+        """
+        self.vessel_registry = vessel_registry
         self.agents: Dict[str, AgentInstance] = {}
         self.agent_specifications: Dict[str, AgentSpecification] = {}
         self.message_bus = queue.Queue()
-        self.system_memory = {}
         self.executor = ThreadPoolExecutor(max_workers=50)
         self.running = False
         self.coordination_thread = None
-        self.memory_system = None
-        self.tool_system = None
-        self.gate = None  # Action gate (optional)
+
+        # Legacy fallback systems (used when no vessel is provided)
+        self.system_memory = default_memory or {}
+        self.memory_system = default_memory
+        self.tool_system = default_tools
+        self.gate = None  # Global gate (fallback, vessel gates preferred)
+
+        # Village consensus and interface
         self.consensus_engine = None  # Village consensus engine (optional)
         self.interface = None  # Interface for sending messages to users
         
     def initialize(self, memory_system=None, tool_system=None):
-        """Initialize the coordination system"""
-        self.memory_system = memory_system
-        self.tool_system = tool_system
+        """
+        Initialize the coordination system.
+
+        Note: When using vessel_registry, memory/tools come from vessels.
+        This method is primarily for backward compatibility.
+        """
+        if memory_system:
+            self.memory_system = memory_system
+        if tool_system:
+            self.tool_system = tool_system
         self.running = True
         self.coordination_thread = threading.Thread(target=self._coordination_loop)
         self.coordination_thread.daemon = True
         self.coordination_thread.start()
         logger.info("Agent Zero Core initialized")
+
+    def set_vessel_registry(self, registry: Any) -> None:
+        """
+        Set or update the vessel registry.
+
+        Args:
+            registry: VesselRegistry instance for vessel-native coordination
+        """
+        self.vessel_registry = registry
+        logger.info("Vessel registry configured for AgentZeroCore")
         
     def interpret_community_needs(self, need_description: str) -> List[AgentSpecification]:
         """Interpret natural language community needs into agent specifications"""
@@ -223,50 +280,134 @@ class AgentZeroCore:
             )
         ]
     
-    def spawn_agents(self, specifications: List[AgentSpecification]) -> List[str]:
-        """Spawn agents from specifications"""
+    def spawn_agents(self, specifications: List[AgentSpecification],
+                     vessel_id: Optional[str] = None, **kwargs) -> List[str]:
+        """
+        Spawn agents from specifications within a vessel.
+
+        Args:
+            specifications: List of agent specifications to spawn
+            vessel_id: ID of vessel to spawn agents in (vessel-native mode)
+            **kwargs: Additional parameters for agent spawning
+
+        Returns:
+            List of spawned agent IDs
+
+        Raises:
+            ValueError: If vessel_id provided but vessel not found in registry
+        """
+        # Get vessel if vessel_id provided
+        vessel = None
+        if vessel_id:
+            if not self.vessel_registry:
+                raise ValueError("vessel_id provided but no vessel_registry configured")
+            vessel = self.vessel_registry.get_vessel(vessel_id)
+            if not vessel:
+                raise ValueError(f"Vessel {vessel_id} not found in registry")
+
         spawned_ids = []
-        
         for spec in specifications:
-            agent_id = self._spawn_agent(spec)
+            agent_id = self._spawn_agent(spec, vessel=vessel, **kwargs)
             spawned_ids.append(agent_id)
-            
-        logger.info(f"Spawned {len(spawned_ids)} agents")
+
+        logger.info(f"Spawned {len(spawned_ids)} agents" +
+                   (f" in vessel {vessel_id}" if vessel_id else ""))
         return spawned_ids
     
-    def _spawn_agent(self, specification: AgentSpecification) -> str:
-        """Spawn a single agent"""
+    def _spawn_agent(self, specification: AgentSpecification,
+                     vessel: Optional[Any] = None, **kwargs) -> str:
+        """
+        Spawn a single agent with vessel-scoped resources.
+
+        Args:
+            specification: Agent specification
+            vessel: Optional Vessel instance providing scoped resources
+            **kwargs: Additional parameters
+
+        Returns:
+            Agent ID
+        """
         agent_id = str(uuid.uuid4())
-        
+
+        # Determine resource sources: vessel or fallback
+        action_gate = vessel.action_gate if vessel else self.gate
+        memory_backend = vessel.memory_backend if vessel else self.memory_system
+        vessel_id = vessel.vessel_id if vessel else None
+
+        # Create agent instance with vessel-scoped resources
         agent = AgentInstance(
             id=agent_id,
             specification=specification,
             status=AgentStatus.IDLE,
             created_at=datetime.now(),
-            last_active=datetime.now()
+            last_active=datetime.now(),
+            vessel_id=vessel_id,
+            action_gate=action_gate,
+            memory_backend=memory_backend
         )
-        
-        # Assign tools based on specification
-        agent.tools = self._assign_tools(specification.tools_needed)
-        
-        # Initialize agent memory
-        agent.memory = {
-            "specification": specification,
-            "interaction_history": [],
-            "learned_patterns": [],
-            "active_tasks": []
-        }
-        
+
+        # Assign tools based on specification and vessel
+        if vessel and vessel.tools:
+            # Resolve tools from vessel with permission checks
+            agent.tools = self._resolve_vessel_tools(
+                specification.tools_needed, vessel
+            )
+        else:
+            # Fallback to legacy tool assignment
+            agent.tools = self._assign_tools(specification.tools_needed)
+
+        # Initialize agent memory namespace
+        if memory_backend and hasattr(memory_backend, 'create_namespace'):
+            # Create namespaced memory for this agent
+            agent_memory = memory_backend.create_namespace(agent_id)
+            agent.memory = agent_memory
+        else:
+            # Fallback to in-memory dict
+            agent.memory = {
+                "specification": specification,
+                "interaction_history": [],
+                "learned_patterns": [],
+                "active_tasks": []
+            }
+
         self.agents[agent_id] = agent
         self.agent_specifications[agent_id] = specification
-        
+
         # Start agent processing loop
-        agent_thread = threading.Thread(target=self._agent_processing_loop, args=(agent_id,))
+        agent_thread = threading.Thread(
+            target=self._agent_processing_loop, args=(agent_id,)
+        )
         agent_thread.daemon = True
         agent_thread.start()
-        
-        logger.info(f"Spawned agent {specification.name} with ID {agent_id}")
+
+        logger.info(
+            f"Spawned agent {specification.name} with ID {agent_id}" +
+            (f" in vessel {vessel_id}" if vessel_id else "")
+        )
         return agent_id
+
+    def _resolve_vessel_tools(self, tools_needed: List[str],
+                             vessel: Any) -> List[str]:
+        """
+        Resolve tool names to vessel-scoped implementations.
+
+        Args:
+            tools_needed: List of tool names from specification
+            vessel: Vessel instance with tool bindings
+
+        Returns:
+            List of resolved tool identifiers
+        """
+        resolved = []
+        for tool_name in tools_needed:
+            tool_impl = vessel.get_tool(tool_name)
+            if tool_impl:
+                resolved.append(tool_name)
+            else:
+                logger.warning(
+                    f"Tool '{tool_name}' not found in vessel {vessel.vessel_id}"
+                )
+        return resolved
     
     def _assign_tools(self, tools_needed: List[str]) -> List[str]:
         """Assign available tools to agent"""
@@ -301,36 +442,59 @@ class AgentZeroCore:
         return available_tools
     
     def _agent_processing_loop(self, agent_id: str):
-        """Main processing loop for each agent"""
+        """
+        Main processing loop for each agent.
+
+        Uses vessel-injected memory backend if available, otherwise falls back
+        to legacy memory system.
+        """
         agent = self.agents[agent_id]
-        
+
         while self.running:
             try:
                 # Check for messages
                 if not agent.message_queue.empty():
                     message = agent.message_queue.get_nowait()
                     self._process_agent_message(agent_id, message)
-                
+
                 # Process active tasks
-                if agent.memory.get("active_tasks"):
+                active_tasks = None
+                if isinstance(agent.memory, dict):
+                    active_tasks = agent.memory.get("active_tasks")
+                elif hasattr(agent.memory, 'get_active_tasks'):
+                    active_tasks = agent.memory.get_active_tasks()
+
+                if active_tasks:
                     agent.status = AgentStatus.PROCESSING
                     self._process_agent_tasks(agent_id)
                     agent.last_active = datetime.now()
                 else:
                     agent.status = AgentStatus.IDLE
-                    
-                # Share learnings with memory system
-                if self.memory_system and agent.memory.get("learned_patterns"):
-                    self.memory_system.store_experience(
-                        agent_id, 
-                        agent.memory["learned_patterns"]
-                    )
-                    agent.memory["learned_patterns"] = []
-                
+
+                # Share learnings with memory backend (vessel-native or legacy)
+                memory_backend = agent.memory_backend or self.memory_system
+                learned_patterns = None
+
+                if isinstance(agent.memory, dict):
+                    learned_patterns = agent.memory.get("learned_patterns", [])
+                elif hasattr(agent.memory, 'get_learned_patterns'):
+                    learned_patterns = agent.memory.get_learned_patterns()
+
+                if memory_backend and learned_patterns:
+                    if hasattr(memory_backend, 'store_experience'):
+                        memory_backend.store_experience(
+                            agent_id, learned_patterns
+                        )
+                    # Clear learned patterns after storing
+                    if isinstance(agent.memory, dict):
+                        agent.memory["learned_patterns"] = []
+                    elif hasattr(agent.memory, 'clear_learned_patterns'):
+                        agent.memory.clear_learned_patterns()
+
             except Exception as e:
                 logger.error(f"Agent {agent_id} processing error: {e}")
                 agent.status = AgentStatus.ERROR
-                
+
             threading.Event().wait(1)  # Brief pause
     
     def _process_agent_message(self, agent_id: str, message: Dict[str, Any]):
@@ -543,6 +707,9 @@ class AgentZeroCore:
         """
         Execute an action through the gate with consultation support.
 
+        Uses the agent's vessel-scoped action gate if available, otherwise
+        falls back to the global gate.
+
         Args:
             agent_id: ID of the agent attempting the action
             action: The action to execute
@@ -559,14 +726,22 @@ class AgentZeroCore:
 
         agent = self.agents[agent_id]
 
+        # Use vessel-scoped action gate if available, otherwise global gate
+        action_gate = agent.action_gate or self.gate
+
         # If no gate is configured, execute directly
-        if not self.gate:
-            logger.warning("No gate configured, executing action without gating")
-            result = self._execute_agent_task(agent_id, {"type": "action", "action": action})
+        if not action_gate:
+            logger.warning(
+                f"No gate configured for agent {agent_id}, "
+                "executing action without gating"
+            )
+            result = self._execute_agent_task(
+                agent_id, {"type": "action", "action": action}
+            )
             return {"success": result.get("success", False), "result": result}
 
-        # Gate the action
-        gate_result = self.gate.gate_action(agent_id, action, action_metadata)
+        # Gate the action using vessel-scoped or global gate
+        gate_result = action_gate.gate_action(agent_id, action, action_metadata)
 
         if not gate_result.allowed:
             # Check if this is a consultation request

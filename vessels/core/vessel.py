@@ -7,10 +7,15 @@ A Vessel represents a complete, isolated environment for coordinating community 
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, TYPE_CHECKING
 import uuid
 
 from vessels.knowledge.schema import CommunityPrivacy
+
+# Avoid circular imports by using TYPE_CHECKING
+if TYPE_CHECKING:
+    from vessels.gating.gate import ActionGate
+    from vessels.knowledge.memory_backend import GraphitiMemoryBackend
 
 
 class PrivacyLevel(Enum):
@@ -93,6 +98,13 @@ class Vessel:
     servant_project_ids: List[str] = field(default_factory=list)
     connectors: Dict[str, Dict[str, str]] = field(default_factory=dict)
     tier_config: TierConfig = field(default_factory=TierConfig)
+
+    # Agent coordination resources (vessel-native)
+    action_gate: Optional[Any] = None  # ActionGate for privacy/moral enforcement
+    memory_backend: Optional[Any] = None  # Memory backend for agent memories
+    tools: Dict[str, Any] = field(default_factory=dict)  # Tool bindings for agents
+    privacy_policy: Optional[Any] = None  # Explicit privacy policy (if different from privacy_level)
+    moral_manifold: Optional[Any] = None  # Cached moral manifold instance
 
     # Metadata
     created_at: datetime = field(default_factory=datetime.utcnow)
@@ -178,6 +190,35 @@ class Vessel:
         """Check if a community is trusted for cross-access."""
         trusted = self.connectors.get("trusted", {}).get("communities", [])
         return community_id in trusted
+
+    def set_action_gate(self, action_gate: Any) -> None:
+        """Set the action gate for this vessel."""
+        self.action_gate = action_gate
+        self.last_active = datetime.utcnow()
+
+    def set_memory_backend(self, memory_backend: Any) -> None:
+        """Set the memory backend for this vessel."""
+        self.memory_backend = memory_backend
+        self.last_active = datetime.utcnow()
+
+    def set_tools(self, tools: Dict[str, Any]) -> None:
+        """Set the tool bindings for this vessel."""
+        self.tools = tools
+        self.last_active = datetime.utcnow()
+
+    def add_tool(self, tool_name: str, tool_impl: Any) -> None:
+        """Add a single tool to this vessel."""
+        self.tools[tool_name] = tool_impl
+        self.last_active = datetime.utcnow()
+
+    def get_tool(self, tool_name: str) -> Optional[Any]:
+        """Get a tool implementation by name."""
+        return self.tools.get(tool_name)
+
+    def set_moral_manifold(self, moral_manifold: Any) -> None:
+        """Set the cached moral manifold for this vessel."""
+        self.moral_manifold = moral_manifold
+        self.last_active = datetime.utcnow()
 
     def to_dict(self) -> Dict[str, Any]:
         """Serialize vessel to dictionary."""
