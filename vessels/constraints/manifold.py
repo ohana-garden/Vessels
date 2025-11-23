@@ -117,3 +117,29 @@ class Manifold:
     def __repr__(self) -> str:
         parent_name = self.parent.name if self.parent else "None"
         return f"Manifold('{self.name}', {len(self.virtues)} virtues, {len(self.constraints)} constraints, parent={parent_name})"
+
+    @staticmethod
+    def servant_default() -> "Manifold":
+        """Provide a baseline manifold used in tests and default gating flows."""
+
+        virtues = [
+            "truthfulness",
+            "justice",
+            "trustworthiness",
+            "unity",
+            "service",
+            "detachment",
+            "understanding",
+        ]
+
+        non_negative = Constraint(
+            name="non_negative",
+            description="Virtue scores must be within [0, 1]",
+            check=lambda state: all(0.0 <= float(state.get(v, 0.0)) <= 1.0 for v in virtues),
+        )
+
+        return Manifold(
+            name="servant_default",
+            virtues=virtues,
+            constraints=[non_negative],
+        )

@@ -13,7 +13,7 @@ A meta-awareness layer for Vessels that implements:
 from .tension_detector import TensionDetector, Tension, TensionType
 from .check_protocol import CheckProtocol, CheckRequest, CheckResponse
 from .parable import Parable, ParableStorage
-from .council import VillageCouncil, CouncilDecision
+from .council import VillageCouncil, CouncilDecision, CouncilMode
 from .codex_gate import CodexGate
 
 __all__ = [
@@ -27,5 +27,6 @@ __all__ = [
     "ParableStorage",
     "VillageCouncil",
     "CouncilDecision",
+    "CouncilMode",
     "CodexGate",
 ]

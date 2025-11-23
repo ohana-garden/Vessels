@@ -12,7 +12,12 @@ This module provides the foundational Vessel abstraction that binds together:
 
 from .vessel import Vessel, VesselConfig, PrivacyLevel, ConnectorConfig, TierConfig
 from .registry import VesselRegistry
-from .context import VesselContext, map_user_to_vessel, get_user_vessel_id
+from .context import (
+    VesselContext,
+    map_user_to_vessel,
+    get_user_vessel_id,
+    clear_user_vessel_mappings,
+)
 
 __all__ = [
     "Vessel",
@@ -24,5 +29,6 @@ __all__ = [
     "VesselContext",
     "map_user_to_vessel",
     "get_user_vessel_id",
+    "clear_user_vessel_mappings",
 ]
 

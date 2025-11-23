@@ -9,7 +9,7 @@ import logging
 from dataclasses import dataclass
 from typing import Optional, Dict, Any
 
-from .vessel import Vessel
+from .vessel import PrivacyLevel, Vessel
 from .registry import VesselRegistry
 
 logger = logging.getLogger(__name__)
@@ -194,14 +194,13 @@ class VesselContext:
 
         # No vessels exist - create a default one
         logger.info("No vessels found, creating default vessel")
-        from .vessel import PrivacyLevel
-
-        vessel = registry.create_vessel(
+        vessel = Vessel.create(
             name="Default Vessel",
             community_id="default_community",
             description="Auto-created default vessel",
             privacy_level=PrivacyLevel.PRIVATE,
         )
+        registry.create_vessel(vessel)
 
         return cls(vessel=vessel, registry=registry)
 
