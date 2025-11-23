@@ -60,7 +60,11 @@ def load_agents(bmad_dir: str = ".bmad") -> List[AgentSpecification]:
         try:
             with open(filepath, "r", encoding="utf-8") as f:
                 content = f.read()
-        except Exception:
+        except (IOError, OSError) as e:
+            logger.warning(f"Failed to read agent file {filepath}: {e}")
+            continue
+        except UnicodeDecodeError as e:
+            logger.warning(f"File encoding error in {filepath}: {e}")
             continue
         yaml_content = _extract_yaml_block(content)
         if not yaml_content:
@@ -68,7 +72,8 @@ def load_agents(bmad_dir: str = ".bmad") -> List[AgentSpecification]:
         if yaml:
             try:
                 data = yaml.safe_load(yaml_content)
-            except Exception:
+            except yaml.YAMLError as e:
+                logger.warning(f"YAML parsing error in {filepath}: {e}")
                 data = None
         else:
             data = None
@@ -128,7 +133,11 @@ def load_stories(bmad_dir: str = ".bmad") -> Dict[str, Dict[str, str]]:
         try:
             with open(filepath, "r", encoding="utf-8") as f:
                 content = f.read()
-        except Exception:
+        except (IOError, OSError) as e:
+            logger.warning(f"Failed to read story file {filepath}: {e}")
+            continue
+        except UnicodeDecodeError as e:
+            logger.warning(f"File encoding error in {filepath}: {e}")
             continue
         # Split on headings (lines starting with `#` followed by a space)
         sections: Dict[str, str] = {}

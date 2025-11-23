@@ -31,9 +31,13 @@ class DynamicAgentFactory:
         bmad_path = os.path.join(os.path.dirname(__file__), ".bmad")
         try:
             self.bmad_agents = bmad_loader.load_agents(bmad_path)
+        except (OSError, IOError) as e:
+            # If loading fails due to file system issues, log and continue with an empty list
+            logger.warning(f"Failed to load BMAD agents due to file system error: {e}")
+            self.bmad_agents = []
         except Exception as e:
-            # If loading fails, log and continue with an empty list
-            logger.warning(f"Failed to load BMAD agents: {e}")
+            # Unexpected error - log with more detail
+            logger.error(f"Unexpected error loading BMAD agents: {e}", exc_info=True)
             self.bmad_agents = []
         
     def _load_intent_patterns(self) -> Dict[str, List[str]]:
@@ -45,8 +49,12 @@ class DynamicAgentFactory:
                     config = json.load(f)
                 logger.info(f"Loaded intent configuration from {config_path}")
                 return {intent: data.get("patterns", []) for intent, data in config.items()}
+            except (IOError, OSError) as e:
+                logger.error(f"Failed to read intent config file {config_path}: {e}")
+            except json.JSONDecodeError as e:
+                logger.error(f"Invalid JSON in intent config {config_path}: {e}")
             except Exception as e:
-                logger.error(f"Failed to load intent config {config_path}: {e}")
+                logger.error(f"Unexpected error loading intent config {config_path}: {e}", exc_info=True)
 
         logger.warning("Using built-in intent patterns; provide config/intent_config.json to extend them")
         return {

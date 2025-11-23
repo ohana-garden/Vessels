@@ -526,9 +526,20 @@
             }
         }
         
+        // Utility function to prevent XSS by escaping HTML
+        function escapeHtml(unsafe) {
+            if (!unsafe) return '';
+            return unsafe.toString()
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+
         function renderContent(type, data) {
             const contentArea = document.getElementById('contentArea');
-            
+
             switch(type) {
                 case 'grant_cards':
                     renderGrantCards(contentArea, data);
@@ -553,16 +564,16 @@
                     break;
             }
         }
-        
+
         function renderGrantCards(container, data) {
             const grants = data.grants || [];
             container.innerHTML = `
                 <div class="grant-cards">
                     ${grants.map(grant => `
                         <div class="grant-card">
-                            <div class="grant-title">${grant.title}</div>
-                            <div class="grant-amount">${grant.amount}</div>
-                            <div class="grant-description">${grant.description}</div>
+                            <div class="grant-title">${escapeHtml(grant.title)}</div>
+                            <div class="grant-amount">${escapeHtml(grant.amount)}</div>
+                            <div class="grant-description">${escapeHtml(grant.description)}</div>
                         </div>
                     `).join('')}
                 </div>
@@ -572,10 +583,10 @@
         function renderCareProtocol(container, data) {
             container.innerHTML = `
                 <div class="care-protocol">
-                    <div class="protocol-title">${data.title}</div>
+                    <div class="protocol-title">${escapeHtml(data.title)}</div>
                     ${data.steps.map(step => `
                         <div class="protocol-step">
-                            <strong>${step.title}:</strong> ${step.description}
+                            <strong>${escapeHtml(step.title)}:</strong> ${escapeHtml(step.description)}
                         </div>
                     `).join('')}
                 </div>
@@ -597,7 +608,7 @@
                         <div class="map-overlay">
                             ${data.routes.map(route => `
                                 <div class="route-info">
-                                    <strong>${route.driver}:</strong> ${route.stops} stops, ${route.distance}
+                                    <strong>${escapeHtml(route.driver)}:</strong> ${escapeHtml(route.stops)} stops, ${escapeHtml(route.distance)}
                                 </div>
                             `).join('')}
                         </div>
@@ -609,11 +620,11 @@
         function renderCalendarView(container, data) {
             container.innerHTML = `
                 <div class="calendar-view">
-                    <div class="calendar-header">${data.title}</div>
+                    <div class="calendar-header">${escapeHtml(data.title)}</div>
                     <div class="time-slots">
                         ${data.slots.map(slot => `
                             <div class="time-slot ${slot.available ? 'available' : ''} ${slot.selected ? 'selected' : ''}">
-                                ${slot.day} ${slot.time}
+                                ${escapeHtml(slot.day)} ${escapeHtml(slot.time)}
                             </div>
                         `).join('')}
                     </div>
@@ -628,7 +639,7 @@
                     ${data.items.map((item, i) => `
                         <div class="photo-item">
                             <div style="width: 100%; height: 100%; background: linear-gradient(135deg, ${colors[i % colors.length]}, ${colors[(i+1) % colors.length]});"></div>
-                            <div class="photo-label">${item.name} - ${item.location}</div>
+                            <div class="photo-label">${escapeHtml(item.name)} - ${escapeHtml(item.location)}</div>
                         </div>
                     `).join('')}
                 </div>
@@ -641,8 +652,8 @@
                     <div class="help-title">I Can Help With</div>
                     ${data.items.map(item => `
                         <div class="help-item">
-                            <span class="help-icon">${item.icon}</span>
-                            <span>${item.text}</span>
+                            <span class="help-icon">${escapeHtml(item.icon)}</span>
+                            <span>${escapeHtml(item.text)}</span>
                         </div>
                     `).join('')}
                 </div>
@@ -651,24 +662,29 @@
         
         function addSubtitle(text, type, speaker) {
             const subtitles = document.getElementById('subtitles');
-            
+
             // Clear old subtitles
             if (subtitles.children.length > 2) {
                 subtitles.innerHTML = '';
             }
-            
+
             const subtitle = document.createElement('div');
-            subtitle.className = `subtitle ${type}`;
-            
+            // Sanitize type to prevent class injection
+            const sanitizedType = type ? type.replace(/[^a-z0-9-_]/gi, '') : '';
+            subtitle.className = `subtitle ${sanitizedType}`;
+
             if (speaker) {
-                subtitle.innerHTML = `
-                    <div class="speaker-label">${speaker}</div>
-                    ${text}
-                `;
+                const speakerLabel = document.createElement('div');
+                speakerLabel.className = 'speaker-label';
+                speakerLabel.textContent = speaker;  // Using textContent prevents XSS
+                subtitle.appendChild(speakerLabel);
+
+                const textNode = document.createTextNode(text);  // Using textContent prevents XSS
+                subtitle.appendChild(textNode);
             } else {
                 subtitle.textContent = text;
             }
-            
+
             subtitles.appendChild(subtitle);
         }
         
