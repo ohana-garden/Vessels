@@ -6,9 +6,11 @@ import sqlite3
 import logging
 from typing import Any, Dict, List, Optional
 from datetime import datetime
+from pathlib import Path
 
+# Ensure these imports match your project structure
+from .vessel import TierConfig, Vessel
 from vessels.knowledge.schema import CommunityPrivacy
-from .vessel import TierConfig, Vessel, PrivacyLevel
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +46,6 @@ class VesselRegistry:
         self.conn.commit()
 
     def create_vessel(self, vessel: Vessel) -> Vessel:
-        """Create or update a vessel record."""
         cursor = self.conn.cursor()
         cursor.execute(
             """
@@ -71,7 +72,6 @@ class VesselRegistry:
             ),
         )
         self.conn.commit()
-        logger.info(f"Persisted vessel: {vessel.name} ({vessel.vessel_id})")
         return vessel
 
     def get_vessel(self, vessel_id: str) -> Optional[Vessel]:
@@ -87,11 +87,10 @@ class VesselRegistry:
         cursor.execute("SELECT * FROM vessels ORDER BY vessel_id")
         return [self._row_to_vessel(r) for r in cursor.fetchall()]
 
-    def delete_vessel(self, vessel_id: str) -> bool:
+    def delete_vessel(self, vessel_id: str) -> None:
         cursor = self.conn.cursor()
         cursor.execute("DELETE FROM vessels WHERE vessel_id = ?", (vessel_id,))
         self.conn.commit()
-        return cursor.rowcount > 0
 
     def attach_project_to_vessel(self, vessel_id: str, project_id: str) -> Optional[Vessel]:
         vessel = self.get_vessel(vessel_id)
@@ -139,7 +138,6 @@ class VesselRegistry:
             connectors, tier_config, created_at, last_active, status
         ) = row
 
-        # Handle Privacy Level conversion safely
         try:
             privacy_level = CommunityPrivacy(privacy_level_str)
         except ValueError:
