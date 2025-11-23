@@ -30,6 +30,9 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-pip-
 
+    - name: Install FFmpeg libraries
+      run: sudo apt-get update && sudo apt-get install -y ffmpeg libavformat-dev libavcodec-dev libavdevice-dev libavutil-dev libavfilter-dev libswscale-dev libswresample-dev
+
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
@@ -70,6 +73,9 @@ jobs:
       with:
         python-version: ${{ env.PYTHON_VERSION }}
 
+    - name: Install FFmpeg libraries
+      run: sudo apt-get update && sudo apt-get install -y ffmpeg libavformat-dev libavcodec-dev libavdevice-dev libavutil-dev libavutil-dev libavfilter-dev libswscale-dev libswresample-dev
+
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
@@ -107,6 +113,9 @@ jobs:
       with:
         path: ~/.cache/pip
         key: ${{ runner.os }}-pip-test-${{ hashFiles('requirements-dev.txt') }}
+
+    - name: Install FFmpeg libraries
+      run: sudo apt-get update && sudo apt-get install -y ffmpeg libavformat-dev libavcodec-dev libavdevice-dev libavutil-dev libavfilter-dev libswscale-dev libswresample-dev
 
     - name: Install dependencies
       run: |
