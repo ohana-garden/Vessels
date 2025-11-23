@@ -58,20 +58,34 @@ class CommunityMemory:
         db_path: Optional[str] = None,
         backend: str = "sqlite",
         graphiti_client=None,
-        community_id: Optional[str] = None
+        community_id: Optional[str] = None,
+        node_id: Optional[str] = None
     ):
         """
         Initialize Community Memory system.
 
         Args:
             db_path: Path to SQLite database (for sqlite backend)
-            backend: Backend type: "sqlite", "graphiti", or "hybrid"
+            backend: Backend type: "sqlite", "graphiti", "hybrid", or "crdt"
             graphiti_client: VesselsGraphitiClient instance (for graphiti/hybrid backends)
             community_id: Community ID (for graphiti backend)
+            node_id: Node ID (for CRDT backend)
         """
         self.backend_type = backend
         self.graphiti_backend = None
+        self.crdt_backend = None
         self.community_id = community_id
+        self.node_id = node_id
+
+        # Initialize CRDT backend if requested
+        if backend == "crdt":
+            try:
+                from vessels.knowledge.crdt_backend import CRDTMemoryBackend
+                self.crdt_backend = CRDTMemoryBackend(node_id=node_id)
+                logger.info(f"Initialized CRDT memory backend (node: {self.crdt_backend.crdt_memory.lww_set.node_id})")
+            except Exception as e:
+                logger.error(f"Could not initialize CRDT backend: {e}")
+                raise
 
         # Initialize Graphiti backend if requested
         if backend in ["graphiti", "hybrid"]:
@@ -219,6 +233,19 @@ class CommunityMemory:
             relationships=experience.get("relationships", []),
             confidence=experience.get("confidence", 1.0)
         )
+
+        # Store in CRDT backend if enabled
+        if self.backend_type == "crdt" and self.crdt_backend:
+            try:
+                self.crdt_backend.store_memory(memory_entry)
+                logger.debug(f"Stored experience in CRDT: {memory_id}")
+                # For CRDT backend, we still maintain in-memory structures for fast access
+                self.memories[memory_id] = memory_entry
+                self.agent_memories[agent_id].append(memory_id)
+                return memory_id
+            except Exception as e:
+                logger.error(f"Failed to store in CRDT: {e}")
+                raise
 
         # Store in Graphiti backend if enabled
         if self.backend_type in ["graphiti", "hybrid"] and self.graphiti_backend:
