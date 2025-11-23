@@ -1,0 +1,111 @@
+version: '3.8'
+
+services:
+  # Redis with FalkorDB module
+  redis:
+    image: falkordb/falkordb:latest
+    container_name: vessels-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - vessels-network
+    restart: unless-stopped
+
+  # Vessels application
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.optimized
+    container_name: vessels-app
+    ports:
+      - "5000:5000"  # API
+      - "8080:8080"  # Health checks
+      - "9090:9090"  # Metrics
+    environment:
+      # Security (use secrets in production)
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-development-secret-key-CHANGE-IN-PRODUCTION}
+      - SESSION_SECRET=${SESSION_SECRET:-development-session-secret}
+
+      # Database
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - VESSELS_DB_PATH=/app/data/vessels.db
+
+      # Configuration
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - ENABLE_STRUCTURED_LOGGING=true
+
+      # Performance
+      - MAX_WORKERS=50
+      - ENABLE_CACHING=true
+
+      # CORS
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:3000}
+
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./config:/app/config:ro
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - vessels-network
+    restart: unless-stopped
+
+  # Prometheus for metrics (optional)
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: vessels-prometheus
+    ports:
+      - "9091:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+    networks:
+      - vessels-network
+    restart: unless-stopped
+    profiles:
+      - monitoring
+
+  # Grafana for visualization (optional)
+  grafana:
+    image: grafana/grafana:latest
+    container_name: vessels-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+    volumes:
+      - grafana-data:/var/lib/grafana
+    networks:
+      - vessels-network
+    restart: unless-stopped
+    profiles:
+      - monitoring
+
+volumes:
+  redis-data:
+  prometheus-data:
+  grafana-data:
+
+networks:
+  vessels-network:
+    driver: bridge
