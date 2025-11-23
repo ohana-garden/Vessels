@@ -178,91 +178,229 @@ class FalkorDBSessionStore(SessionStore):
     """
     FalkorDB-backed session store (Tier 2).
 
-    Stores sessions as graph nodes with full provenance tracking.
+    Stores sessions as graph nodes with full provenance tracking,
+    user relationships, and interaction history.
     """
 
-    def __init__(self, falkor_client, ttl_seconds: int = 3600):
+    def __init__(self, falkor_client, ttl_seconds: int = 3600, graph_name: str = "vessels_sessions"):
         """
         Initialize FalkorDB session store.
 
         Args:
-            falkor_client: FalkorDB client instance
+            falkor_client: FalkorDBClient instance
             ttl_seconds: Session TTL in seconds
+            graph_name: Graph namespace for sessions
         """
-        self.falkor = falkor_client
+        self.falkor_client = falkor_client
+        self.graph = falkor_client.get_graph(graph_name)
         self.ttl_seconds = ttl_seconds
-        logger.info(f"Using FalkorDBSessionStore with graph integration")
+        logger.info(f"Using FalkorDBSessionStore with graph '{graph_name}', TTL={ttl_seconds}s")
 
     def create_session(self, session_id: str, data: Dict[str, Any]) -> bool:
-        # Create session node in graph
-        query = """
-        CREATE (s:Session {
-            session_id: $session_id,
-            created_at: $created_at,
-            updated_at: $updated_at,
-            data: $data,
-            ttl_seconds: $ttl
-        })
         """
+        Create session node with optional user relationship.
 
-        self.falkor.query(query, {
-            "session_id": session_id,
-            "created_at": datetime.utcnow().isoformat(),
-            "updated_at": datetime.utcnow().isoformat(),
-            "data": json.dumps(data),
-            "ttl": self.ttl_seconds
-        })
-        return True
+        Graph structure:
+            (user:User) -[HAS_SESSION]-> (session:Session)
+        """
+        try:
+            # Extract user_id if present
+            user_id = data.get('user_id')
+
+            # Build session properties
+            session_props = {
+                "session_id": session_id,
+                "created_at": datetime.utcnow().isoformat(),
+                "updated_at": datetime.utcnow().isoformat(),
+                "data": json.dumps(data),
+                "ttl_seconds": self.ttl_seconds
+            }
+
+            if user_id:
+                # Create session with user relationship
+                query = """
+                MERGE (u:User {user_id: $user_id})
+                CREATE (s:Session $session_props)
+                CREATE (u)-[:HAS_SESSION {created_at: $created_at}]->(s)
+                RETURN s
+                """
+                params = {
+                    "user_id": user_id,
+                    "session_props": session_props,
+                    "created_at": session_props["created_at"]
+                }
+            else:
+                # Create standalone session
+                query = """
+                CREATE (s:Session $session_props)
+                RETURN s
+                """
+                params = {"session_props": session_props}
+
+            self.graph.query(query, params)
+            logger.debug(f"Created session {session_id} in FalkorDB")
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to create session {session_id}: {e}")
+            return False
 
     def get_session(self, session_id: str) -> Optional[Dict[str, Any]]:
-        query = """
-        MATCH (s:Session {session_id: $session_id})
-        WHERE datetime(s.created_at) > datetime() - duration({seconds: s.ttl_seconds})
-        RETURN s
         """
+        Retrieve session with TTL check.
 
-        result = self.falkor.query(query, {"session_id": session_id})
+        Automatically cleans up expired sessions.
+        """
+        try:
+            # Query with TTL validation
+            query = """
+            MATCH (s:Session {session_id: $session_id})
+            RETURN s, s.created_at as created, s.ttl_seconds as ttl, s.data as data
+            """
 
-        if not result or not result.result_set:
+            result = self.graph.query(query, {"session_id": session_id})
+
+            if not result or not result.result_set:
+                return None
+
+            row = result.result_set[0]
+            created_at_str = row[1]
+            ttl_seconds = row[2]
+            data_json = row[3]
+
+            # Check TTL manually (FalkorDB datetime functions vary by version)
+            created_at = datetime.fromisoformat(created_at_str)
+            age_seconds = (datetime.utcnow() - created_at).total_seconds()
+
+            if age_seconds > ttl_seconds:
+                # Expired - delete and return None
+                self.delete_session(session_id)
+                logger.debug(f"Session {session_id} expired (age={age_seconds}s, TTL={ttl_seconds}s)")
+                return None
+
+            # Parse and return session data
+            return json.loads(data_json)
+
+        except Exception as e:
+            logger.error(f"Failed to get session {session_id}: {e}")
             return None
 
-        session_node = result.result_set[0][0]
-        data = json.loads(session_node.properties.get("data", "{}"))
-
-        return data
-
     def update_session(self, session_id: str, data: Dict[str, Any]) -> bool:
-        query = """
-        MATCH (s:Session {session_id: $session_id})
-        SET s.data = $data, s.updated_at = $updated_at
-        RETURN s
         """
+        Update session data and timestamp.
 
-        result = self.falkor.query(query, {
-            "session_id": session_id,
-            "data": json.dumps(data),
-            "updated_at": datetime.utcnow().isoformat()
-        })
+        Preserves user relationships and interaction history.
+        """
+        try:
+            query = """
+            MATCH (s:Session {session_id: $session_id})
+            SET s.data = $data, s.updated_at = $updated_at
+            RETURN s
+            """
 
-        return result and len(result.result_set) > 0
+            params = {
+                "session_id": session_id,
+                "data": json.dumps(data),
+                "updated_at": datetime.utcnow().isoformat()
+            }
+
+            result = self.graph.query(query, params)
+
+            if result and result.result_set:
+                logger.debug(f"Updated session {session_id}")
+                return True
+
+            logger.warning(f"Session {session_id} not found for update")
+            return False
+
+        except Exception as e:
+            logger.error(f"Failed to update session {session_id}: {e}")
+            return False
 
     def delete_session(self, session_id: str) -> bool:
-        query = """
-        MATCH (s:Session {session_id: $session_id})
-        DELETE s
         """
+        Delete session and all related interactions.
 
-        self.falkor.query(query, {"session_id": session_id})
-        return True
+        Uses DETACH DELETE to remove all relationships.
+        """
+        try:
+            query = """
+            MATCH (s:Session {session_id: $session_id})
+            DETACH DELETE s
+            """
+
+            self.graph.query(query, {"session_id": session_id})
+            logger.debug(f"Deleted session {session_id}")
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to delete session {session_id}: {e}")
+            return False
 
     def exists(self, session_id: str) -> bool:
-        query = """
-        MATCH (s:Session {session_id: $session_id})
-        RETURN count(s) > 0 as exists
-        """
+        """Check if session exists."""
+        try:
+            query = """
+            MATCH (s:Session {session_id: $session_id})
+            RETURN count(s) as count
+            """
 
-        result = self.falkor.query(query, {"session_id": session_id})
-        return result and result.result_set[0][0]
+            result = self.graph.query(query, {"session_id": session_id})
+
+            if result and result.result_set:
+                count = result.result_set[0][0]
+                return count > 0
+
+            return False
+
+        except Exception as e:
+            logger.error(f"Failed to check session existence {session_id}: {e}")
+            return False
+
+    def record_interaction(
+        self,
+        session_id: str,
+        agent_type: str,
+        request_data: Dict[str, Any],
+        response_data: Dict[str, Any],
+        emotion: Optional[str] = None
+    ) -> bool:
+        """
+        Record an interaction in the session graph.
+
+        Graph structure:
+            (session:Session) -[HAS_INTERACTION]-> (interaction:Interaction)
+            (interaction) -[WITH_AGENT]-> (agent:Agent {type: agent_type})
+        """
+        try:
+            interaction_props = {
+                "timestamp": datetime.utcnow().isoformat(),
+                "request": json.dumps(request_data),
+                "response": json.dumps(response_data),
+                "emotion": emotion or "neutral"
+            }
+
+            query = """
+            MATCH (s:Session {session_id: $session_id})
+            MERGE (a:Agent {type: $agent_type})
+            CREATE (i:Interaction $interaction_props)
+            CREATE (s)-[:HAS_INTERACTION]->(i)
+            CREATE (i)-[:WITH_AGENT]->(a)
+            RETURN i
+            """
+
+            params = {
+                "session_id": session_id,
+                "agent_type": agent_type,
+                "interaction_props": interaction_props
+            }
+
+            result = self.graph.query(query, params)
+            return result and result.result_set
+
+        except Exception as e:
+            logger.error(f"Failed to record interaction for session {session_id}: {e}")
+            return False
 
 
 def create_session_store(

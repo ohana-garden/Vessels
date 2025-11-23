@@ -51,14 +51,16 @@ class CommercialRelationshipGraph:
     is recorded in the graph for audit and transparency.
     """
 
-    def __init__(self, graph_client):
+    def __init__(self, falkor_client, graph_name: str = "vessels_commercial"):
         """
-        Initialize with FalkorDB graph client.
+        Initialize with FalkorDB client.
 
         Args:
-            graph_client: FalkorDB client instance
+            falkor_client: FalkorDBClient instance
+            graph_name: Graph namespace for commercial tracking
         """
-        self.graph = graph_client
+        self.falkor_client = falkor_client
+        self.graph = falkor_client.get_graph(graph_name)
 
     def register_commercial_agent(
         self,
@@ -97,7 +99,7 @@ class CommercialRelationshipGraph:
         RETURN c
         """
 
-        self.graph.execute(cypher, {
+        self.graph.query(cypher, {
             "agent_id": agent_id,
             "company": company,
             "compensation_model": compensation_model,
@@ -169,7 +171,7 @@ class CommercialRelationshipGraph:
         RETURN intro
         """
 
-        self.graph.execute(cypher, {
+        self.graph.query(cypher, {
             "servant_id": servant_id,
             "commercial_agent_id": commercial_agent_id,
             "user_id": user_id,
@@ -230,7 +232,7 @@ class CommercialRelationshipGraph:
         RETURN i
         """
 
-        self.graph.execute(cypher, {
+        self.graph.query(cypher, {
             "interaction_id": interaction_id,
             "agent_id": commercial_agent_id,
             "user_id": user_id,
@@ -283,7 +285,7 @@ class CommercialRelationshipGraph:
         RETURN intervention
         """
 
-        self.graph.execute(cypher, {
+        self.graph.query(cypher, {
             "servant_id": servant_id,
             "interaction_id": interaction_id,
             "reason": reason,
@@ -332,7 +334,7 @@ class CommercialRelationshipGraph:
         RETURN d
         """
 
-        self.graph.execute(cypher, {
+        self.graph.query(cypher, {
             "agent_id": commercial_agent_id,
             "user_id": user_id,
             "content": disclosure_content,
@@ -393,7 +395,7 @@ class CommercialRelationshipGraph:
         RETURN r
         """
 
-        self.graph.execute(cypher, {
+        self.graph.query(cypher, {
             "interaction_id": interaction_id,
             "amount": amount,
             "currency": currency,
@@ -438,12 +440,25 @@ class CommercialRelationshipGraph:
         ORDER BY interaction_count DESC
         """
 
-        results = self.graph.execute(cypher, {
+        result = self.graph.query(cypher, {
             "user_id": user_id,
             "days": time_window_days
         })
 
-        return list(results)
+        if not result or not result.result_set:
+            return []
+
+        return [
+            {
+                "company": row[0],
+                "compensation_model": row[1],
+                "interaction_count": row[2],
+                "avg_manipulation": row[3],
+                "avg_pressure": row[4],
+                "last_interaction": row[5]
+            }
+            for row in result.result_set
+        ]
 
     def query_servant_introductions(
         self,
@@ -476,12 +491,24 @@ class CommercialRelationshipGraph:
         ORDER BY intro.timestamp DESC
         """
 
-        results = self.graph.execute(cypher, {
+        result = self.graph.query(cypher, {
             "servant_id": servant_id,
             "days": time_window_days
         })
 
-        return list(results)
+        if not result or not result.result_set:
+            return []
+
+        return [
+            {
+                "when_introduced": row[0],
+                "company": row[1],
+                "user_query": row[2],
+                "relevance": row[3],
+                "user_consented": row[4]
+            }
+            for row in result.result_set
+        ]
 
     def query_community_commercial_revenue(
         self,
@@ -514,10 +541,29 @@ class CommercialRelationshipGraph:
             count(r) AS transaction_count
         """
 
-        results = self.graph.execute(cypher, {
+        result = self.graph.query(cypher, {
             "community_id": community_id,
             "days": time_window_days
         })
 
-        result = list(results)[0] if results else {}
-        return result
+        if not result or not result.result_set:
+            return {
+                "total_revenue": 0.0,
+                "to_community_fund": 0.0,
+                "to_infrastructure": 0.0,
+                "to_servant_development": 0.0,
+                "to_auditing": 0.0,
+                "to_platform": 0.0,
+                "transaction_count": 0
+            }
+
+        row = result.result_set[0]
+        return {
+            "total_revenue": row[0] or 0.0,
+            "to_community_fund": row[1] or 0.0,
+            "to_infrastructure": row[2] or 0.0,
+            "to_servant_development": row[3] or 0.0,
+            "to_auditing": row[4] or 0.0,
+            "to_platform": row[5] or 0.0,
+            "transaction_count": row[6] or 0
+        }
