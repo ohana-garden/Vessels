@@ -58,6 +58,7 @@ class Parable:
     timestamp: datetime = field(default_factory=datetime.utcnow)
     tags: List[str] = field(default_factory=list)
     context: Dict[str, any] = field(default_factory=dict)
+    external_wisdom: List[Dict] = field(default_factory=list)
 
     def __post_init__(self):
         """Validate parable structure."""
@@ -67,6 +68,29 @@ class Parable:
             )
         if not all(isinstance(d, Dimension) for d in self.conflict_pair):
             raise ValueError("conflict_pair must contain Dimension enum values")
+
+    def generate_search_templates(self) -> List[str]:
+        """
+        Generate semantic search queries based on the moral conflict.
+
+        Converts abstract value tensions into concrete search queries that can
+        find historical examples, case studies, and philosophical discussions.
+
+        Returns:
+            List of search query strings
+        """
+        dim1, dim2 = self.conflict_pair[0].value, self.conflict_pair[1].value
+
+        # Create diverse query templates to find relevant external wisdom
+        templates = [
+            f"{dim1} vs {dim2} ethical dilemma case studies",
+            f"balancing {dim1} and {dim2} in practice",
+            f"when {dim1} conflicts with {dim2} examples",
+            f"moral philosophy {dim1} {dim2} tension",
+            f"historical examples {dim1} versus {dim2}",
+        ]
+
+        return templates
 
     @classmethod
     def create(
@@ -130,6 +154,7 @@ class Parable:
             "timestamp": self.timestamp.isoformat(),
             "tags": self.tags,
             "context": self.context,
+            "external_wisdom": self.external_wisdom,
         }
 
     @classmethod
@@ -170,6 +195,7 @@ class Parable:
             timestamp=timestamp,
             tags=data.get("tags", []),
             context=data.get("context", {}),
+            external_wisdom=data.get("external_wisdom", []),
         )
 
     def to_memory_entry(self) -> MemoryEntry:
