@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional
 from datetime import datetime
 from pathlib import Path
 
-# Ensure these imports match your project structure
+# Imports assuming standard package structure
 from .vessel import TierConfig, Vessel
 from vessels.knowledge.schema import CommunityPrivacy
 

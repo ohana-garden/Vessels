@@ -9,7 +9,7 @@ from flask_cors import CORS
 import logging
 import os
 
-# IMPORT THE NEW SYSTEM (Crucial Step)
+# Import the NEW Clean System
 from vessels.system import VesselsSystem
 
 app = Flask(__name__, template_folder=".")
@@ -17,11 +17,13 @@ app.config["MAX_CONTENT_LENGTH"] = 1024 * 1024
 CORS(app)
 
 # Initialize the Clean System
+# This creates the DB and connects to Kala
 system = VesselsSystem()
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Simple in-memory session store (Replace with Redis in production)
 SESSION_STORE = {}
 
 @app.route('/')
@@ -42,7 +44,7 @@ def process_voice():
     if not text:
         abort(400, "Text required")
 
-    # Session Management
+    # Update Session State
     if session_id not in SESSION_STORE:
         SESSION_STORE[session_id] = {'history': []}
     SESSION_STORE[session_id]['history'].append(text)
@@ -61,7 +63,7 @@ def process_voice():
             'content_type': result.get('content_type', 'chat'),
             'content_data': result.get('data', {}),
             'subtitles': [{
-                'text': f"Processed via Clean Architecture: {result['agent']}",
+                'text': f"Processed via System: {result['agent']}",
                 'speaker': result['agent'],
                 'type': 'status',
                 'delay': 500

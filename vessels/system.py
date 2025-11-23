@@ -2,10 +2,11 @@
 Vessels System Bootstrap: The Clean Entrypoint
 """
 import logging
-from typing import Dict, Any
+from typing import Dict, Any, List
 
 from vessels.core.registry import VesselRegistry
 from vessels.core.vessel import Vessel, PrivacyLevel
+# Import Kala directly assuming it's in the python path/root
 from kala import KalaValueSystem
 
 logger = logging.getLogger(__name__)
@@ -15,7 +16,7 @@ class VesselsSystem:
         self.registry = VesselRegistry(db_path=db_path)
         self.kala = KalaValueSystem()
 
-        # Bootstrap default vessel if needed
+        # Bootstrap default vessel if none exists
         if not self.registry.list_vessels():
             self._bootstrap_default_vessel()
 
@@ -33,18 +34,23 @@ class VesselsSystem:
     def process_request(self, text: str, session_id: str, context: Dict[str, Any]) -> Dict[str, Any]:
         """
         Main Pipeline: Intent -> Agent -> Action
-        Replaces the hardcoded logic in the web server.
+        This logic replaces the hardcoded "grant" checks in the old web server.
         """
         logger.info(f"Processing request for {session_id}: {text[:30]}...")
 
         intent = self._infer_intent(text)
+
+        # Future: Insert Moral Gating here
+        # self.gate.check(intent)
+
+        # Dispatch to appropriate agent
         result = self._dispatch_agent(intent, text)
 
-        # Record Value (The Economic Engine)
+        # Record Economic Value (Kala)
         self.kala.record_contribution(
             contributor_id=result['agent'],
             contribution_type="service",
-            description=f"Handled {intent}",
+            description=f"Handled {intent} request",
             kala_value=0.5
         )
 
@@ -60,21 +66,22 @@ class VesselsSystem:
     def _dispatch_agent(self, intent: str, text: str) -> Dict[str, Any]:
         """
         Dispatch to specialized agents.
+        In a full implementation, this would route to specific Agent instances.
         """
         if intent == 'finance':
             return {
                 "agent": "GrantFinder",
                 "content_type": "grant_cards",
                 "data": [
-                    # This is where you will eventually hook up the Vector DB
-                    {'title': 'Older Americans Act (Fetched via System)', 'amount': '$50k', 'funder': 'ACL'}
+                    {'title': 'Older Americans Act (System Fetch)', 'amount': '$50k', 'funder': 'ACL'},
+                    {'title': 'Hawaii Community Fdn', 'amount': '$10k', 'funder': 'HCF'}
                 ]
             }
         elif intent == 'care':
             return {
                 "agent": "ElderSpecialist",
                 "content_type": "care_protocol",
-                "data": {"title": "Protocol Generation Active", "steps": []}
+                "data": {"title": "Kupuna Care Protocol", "steps": ["Morning Check", "Medication Review"]}
             }
 
         return {
