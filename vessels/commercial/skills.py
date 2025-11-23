@@ -145,7 +145,7 @@ FORBIDDEN_TACTICS = {
         "examples": [
             "Only 2 spots left!",
             "Price doubles in 24 hours!",
-            "Limited time offer!" (when always available)
+            "Limited time offer! (when always available)"
         ],
         "consequence": "Immediate agent termination"
     },

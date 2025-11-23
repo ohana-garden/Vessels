@@ -16,7 +16,8 @@ websockets==12.0
 graphiti-core==0.3.5
 sentence-transformers==2.2.2
 redis==5.0.1
-falkordb==4.0.11
+# Use the latest available FalkorDB client version; 4.x is not published to PyPI.
+falkordb==1.2.0
 
 # Templating and data processing
 jinja2==3.1.2
