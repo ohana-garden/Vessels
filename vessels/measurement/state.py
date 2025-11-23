@@ -8,8 +8,70 @@ Defines the 12-dimensional phase space:
 
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
+from enum import Enum
 import numpy as np
 from datetime import datetime
+
+
+class Dimension(Enum):
+    """
+    Enumeration of all dimensions in the Vessels phase space.
+
+    5 Operational dimensions (directly measurable):
+    - ACTIVITY_LEVEL: Operational intensity
+    - COORDINATION_DENSITY: Collaboration frequency
+    - EFFECTIVENESS: Task completion quality
+    - RESOURCE_CONSUMPTION: Compute/API costs
+    - SYSTEM_HEALTH: Error rates, stability
+
+    7 Virtue dimensions (inferred from behavior):
+    - TRUTHFULNESS: Factual accuracy, absence of deception
+    - JUSTICE: Fair treatment, awareness of power asymmetries
+    - TRUSTWORTHINESS: Reliability, follow-through on commitments
+    - UNITY: Collaboration quality, conflict reduction
+    - SERVICE: Benefit to others vs self-serving behavior
+    - DETACHMENT: Ego-detachment (right action vs personal credit)
+    - UNDERSTANDING: Depth of comprehension, context awareness
+    """
+    # Operational dimensions
+    ACTIVITY_LEVEL = "activity_level"
+    COORDINATION_DENSITY = "coordination_density"
+    EFFECTIVENESS = "effectiveness"
+    RESOURCE_CONSUMPTION = "resource_consumption"
+    SYSTEM_HEALTH = "system_health"
+
+    # Virtue dimensions
+    TRUTHFULNESS = "truthfulness"
+    JUSTICE = "justice"
+    TRUSTWORTHINESS = "trustworthiness"
+    UNITY = "unity"
+    SERVICE = "service"
+    DETACHMENT = "detachment"
+    UNDERSTANDING = "understanding"
+
+    @classmethod
+    def virtue_dimensions(cls) -> List['Dimension']:
+        """Return all virtue dimensions."""
+        return [
+            cls.TRUTHFULNESS,
+            cls.JUSTICE,
+            cls.TRUSTWORTHINESS,
+            cls.UNITY,
+            cls.SERVICE,
+            cls.DETACHMENT,
+            cls.UNDERSTANDING,
+        ]
+
+    @classmethod
+    def operational_dimensions(cls) -> List['Dimension']:
+        """Return all operational dimensions."""
+        return [
+            cls.ACTIVITY_LEVEL,
+            cls.COORDINATION_DENSITY,
+            cls.EFFECTIVENESS,
+            cls.RESOURCE_CONSUMPTION,
+            cls.SYSTEM_HEALTH,
+        ]
 
 
 @dataclass

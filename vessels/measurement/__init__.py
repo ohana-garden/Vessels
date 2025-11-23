@@ -1,6 +1,7 @@
 """Measurement layer for operational and virtue state inference."""
 
 from .state import (
+    Dimension,
     OperationalState,
     VirtueState,
     PhaseSpaceState,
@@ -8,6 +9,7 @@ from .state import (
 )
 
 __all__ = [
+    'Dimension',
     'OperationalState',
     'VirtueState',
     'PhaseSpaceState',

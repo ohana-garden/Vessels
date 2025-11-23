@@ -7,11 +7,15 @@ This package provides the knowledge layer for Vessels, including:
 - Project-specific and shared vector stores
 - Graph backup and restore utilities
 - Fast context assembly pipeline
+- Parable system for moral precedent memory
 """
 
 from .schema import VesselsGraphSchema, CommunityPrivacy
+from .parable import Parable, ParableLibrary
 
 __all__ = [
     "VesselsGraphSchema",
     "CommunityPrivacy",
+    "Parable",
+    "ParableLibrary",
 ]
