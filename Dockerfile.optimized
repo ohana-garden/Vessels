@@ -8,12 +8,20 @@ FROM python:3.12-slim as builder
 
 WORKDIR /build
 
-# Install build dependencies
+# Install build dependencies including FFmpeg libraries
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     gcc \
     g++ \
     git \
+    ffmpeg \
+    libavformat-dev \
+    libavcodec-dev \
+    libavdevice-dev \
+    libavutil-dev \
+    libavfilter-dev \
+    libswscale-dev \
+    libswresample-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements
@@ -32,10 +40,18 @@ LABEL version="0.2.0"
 
 WORKDIR /app
 
-# Install runtime dependencies only
+# Install runtime dependencies including FFmpeg
 RUN apt-get update && apt-get install -y --no-install-recommends \
     redis-tools \
     curl \
+    ffmpeg \
+    libavformat58 \
+    libavcodec58 \
+    libavdevice58 \
+    libavutil56 \
+    libavfilter7 \
+    libswscale5 \
+    libswresample3 \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy installed packages from builder
