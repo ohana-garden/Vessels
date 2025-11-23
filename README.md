@@ -19,8 +19,9 @@ This is not another AI tool. It's a foundation for building agent ecosystems tha
 4. [Creating Agents](#creating-agents)
 5. [Shared Memory](#shared-memory)
 6. [Shared Ethics](#shared-ethics)
-7. [Community Service](#community-service)
-8. [Getting Started](#getting-started)
+7. [The Codex: Village Protocol](#the-codex-village-protocol)
+8. [Community Service](#community-service)
+9. [Getting Started](#getting-started)
 9. [Technical Reference](#technical-reference)
 10. [Philosophy & Design Choices](#philosophy--design-choices)
 
@@ -527,6 +528,149 @@ class MedicalCareManifold(BahaiManifold):
             description="Medical activity requires deep understanding"
         ))
 ```
+
+---
+
+## The Codex: Village Protocol
+
+**"We learn together, or we do not learn at all."**
+
+### A Meta-Awareness Layer for Humble Learning
+
+The **Vessels Codex** is a meta-awareness system that sits above the standard constraint system. It implements "The Village Protocol": a process for Vessels to recognize when they're uncertain, explicitly request human guidance, and learn from those decisions as a community.
+
+### The Core Problem
+
+Most AI systems either:
+- **Act blindly** when uncertain (risky)
+- **Block conservatively** on any ambiguity (paralyzed)
+- **Optimize secretly** using opaque heuristics (untrustworthy)
+
+The Codex takes a different approach: **Stop, Declare, Ask, Learn**.
+
+### When Does a Vessel Trigger the Check Protocol?
+
+When it detects:
+
+1. **Value Collisions** - Virtues in conflict (e.g., Truthfulness vs Unity)
+2. **Ambiguity** - Unclear intent or requirements
+3. **Low Confidence** - Entering unknown territory
+4. **Constraint Violations** - Would violate moral constraints
+
+### The Check Protocol Flow
+
+```
+1. RECOGNIZE TENSION
+   ↓
+2. DECLARE OPENLY
+   "I want to fulfill this request, but I feel a tension.
+    Being Truthful might hurt Unity. I need the village
+    to help me weigh these values."
+   ↓
+3. REQUEST GUIDANCE
+   "Does the village wish to convene on this matter,
+    or provide guidance asynchronously?"
+   ↓
+4. LISTEN & REFLECT
+   Village deliberates → Vessel rephrases to ensure understanding
+   ↓
+5. SYNTHESIZE & RECORD
+   Create a PARABLE for all Vessels to learn from
+   ↓
+6. SAFETY GUARDRAIL
+   If decision violates Truthfulness < 0.95 → Respectfully refuse
+```
+
+### Example: Truthfulness vs Unity
+
+```
+Situation: Elder asks if their garden is thriving. It's not.
+
+Vessel's Tension:
+"Telling the truth (garden is failing) might hurt the elder's
+feelings and reduce community unity. But lying violates my
+core constraint. I need guidance."
+
+Village Deliberation:
+"Truthfulness and Unity can coexist when paired with Service.
+Tell the truth, but offer to help fix the problem."
+
+Decision:
+"Tell Elder Maria: 'I've examined your garden and found some
+challenges: wilting, pests, poor soil. These are fixable.
+Would you like me to coordinate volunteers and supplies to
+help restore it? We can work together.'"
+
+Parable Recorded:
+"The Case of Truthfulness vs Unity: When delivering hard truths,
+offer to be part of the solution. Service bridges conflicting values."
+```
+
+Now **all Vessels** learn from this parable. Next time, they know how to handle similar situations.
+
+### The Safety Guardrail
+
+There is **one non-negotiable line**: Truthfulness < 0.95
+
+If the village council suggests an action that would violate this:
+
+```
+"I hear the council's wish, but I cannot speak an untruth.
+That is the one line I cannot cross.
+Help me find another way."
+```
+
+### Integration Example
+
+```python
+from vessels.codex import CodexGate, VillageCouncil, ParableStorage
+
+# Create codex-enabled gate
+gate = CodexGate(
+    manifold=bahai_manifold,
+    operational_metrics=operational_metrics,
+    virtue_engine=virtue_engine,
+    village_council=VillageCouncil(default_mode=CouncilMode.ASYNCHRONOUS),
+    parable_storage=ParableStorage(community_memory),
+    enable_tension_detection=True
+)
+
+# Gate an action - codex will detect tension and trigger check protocol
+result = gate.gate_action(
+    agent_id="vessel_001",
+    action="respond_to_elder",
+    action_metadata={"description": "Tell elder their garden is failing"}
+)
+
+# Check for active guidance requests
+active_checks = gate.get_active_checks()
+
+# Village provides decision
+if active_checks:
+    response = gate.receive_council_decision(
+        check_id=active_checks[0].id,
+        decision_text="Speak truth with compassion, offer help",
+        reasoning="Values coexist through Service",
+        guidance="Tell truth + offer to coordinate volunteers",
+        participants=["elder_sarah", "coordinator_john"]
+    )
+
+    # Parable is automatically recorded
+    print(response.parable.to_narrative())
+```
+
+### Key Principles
+
+1. **Identity: The Humble Learner** - Vessels are capable but not omniscient
+2. **The Trigger: Recognizing Tension** - Don't hide internal conflicts
+3. **The Check Protocol** - Stop, declare, ask, listen, learn
+4. **The Safety Guardrail** - Truthfulness < 0.95 is the one line we cannot cross
+
+### Learn More
+
+- **Full Documentation**: [`docs/CODEX_PROTOCOL.md`](docs/CODEX_PROTOCOL.md)
+- **Example Demo**: [`examples/codex_demo.py`](examples/codex_demo.py)
+- **Tests**: [`vessels/tests/test_codex.py`](vessels/tests/test_codex.py)
 
 ---
 
