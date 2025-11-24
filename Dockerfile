@@ -105,7 +105,6 @@ WORKDIR /app
 COPY vessels/ ./vessels/
 COPY .bmad/ ./.bmad/
 COPY config/ ./config/
-COPY docs/ ./docs/
 COPY *.py ./
 COPY examples/ ./examples/
 COPY scripts/ ./scripts/
