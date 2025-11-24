@@ -12,6 +12,9 @@ from typing import Dict, Any
 # Import the NEW System
 from vessels.system import VesselsSystem
 
+# Import startup banner for detailed service status
+from vessels.core.startup_banner import run_startup_checks
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -20,7 +23,11 @@ logging.basicConfig(
 logger = logging.getLogger("VesselsCLI")
 
 class VesselsCLI:
-    def __init__(self):
+    def __init__(self, show_startup_banner=True):
+        # Show detailed startup status for all services
+        if show_startup_banner:
+            run_startup_checks()
+
         try:
             self.system = VesselsSystem()
             logger.info("✅ Connected to Vessels System")
