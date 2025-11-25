@@ -42,16 +42,16 @@ class RedisConfig:
 @dataclass
 class SecurityConfig:
     """Security configuration"""
-    jwt_secret_key: str = field(default_factory=lambda: os.environ.get('JWT_SECRET_KEY', 'CHANGE_IN_PRODUCTION'))
+    jwt_secret_key: Optional[str] = field(default_factory=lambda: os.environ.get('JWT_SECRET_KEY'))
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 60
     session_ttl_seconds: int = 3600
     max_sessions: int = 10000
     enable_cors: bool = True
-    allowed_origins: List[str] = field(default_factory=lambda: ['http://localhost:3000'])
+    allowed_origins: List[str] = field(default_factory=lambda: os.environ.get('ALLOWED_ORIGINS', 'http://localhost:3000,http://localhost:5000').split(','))
     rate_limit_per_minute: int = 60
     enable_csrf: bool = True
-    require_https: bool = False  # Set True in production
+    require_https: bool = field(default_factory=lambda: os.environ.get('ENVIRONMENT') == 'production')
 
 
 @dataclass
@@ -174,16 +174,27 @@ class VesselsConfig:
         """
         errors = []
 
-        # Security validation
-        if self.environment == 'production':
-            if self.security.jwt_secret_key == 'CHANGE_IN_PRODUCTION':
-                errors.append("JWT_SECRET_KEY must be changed in production")
+        # Security validation - JWT secret is always required
+        if not self.security.jwt_secret_key:
+            errors.append(
+                "JWT_SECRET_KEY must be set. Generate one with: "
+                "python -c \"import secrets; print(secrets.token_urlsafe(32))\""
+            )
+        elif len(self.security.jwt_secret_key) < 32:
+            errors.append("JWT_SECRET_KEY should be at least 32 characters for security")
 
+        if self.environment == 'production':
             if not self.security.require_https:
                 errors.append("HTTPS should be required in production")
 
             if self.debug:
                 errors.append("Debug mode should be disabled in production")
+
+            # Check for known insecure defaults
+            insecure_defaults = ('CHANGE_IN_PRODUCTION', 'CHANGE_THIS_IN_PRODUCTION',
+                               'change-this-in-production', 'dev-only-insecure-secret')
+            if self.security.jwt_secret_key and any(d in self.security.jwt_secret_key for d in insecure_defaults):
+                errors.append("JWT_SECRET_KEY contains insecure default value")
 
         # Performance validation
         if self.performance.max_workers < 1:

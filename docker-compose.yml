@@ -32,12 +32,12 @@ services:
       - TIGERBEETLE_CLUSTER_ID=${TIGERBEETLE_CLUSTER_ID:-0}
       - TIGERBEETLE_REPLICA_ADDRESSES=localhost:3001
 
-      # Database
-      - DATABASE_URL=postgresql://vessels:${POSTGRES_PASSWORD:-vessels_dev}@localhost:5432/vessels_payment
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-vessels_dev}
+      # Database - POSTGRES_PASSWORD must be set in .env file
+      - DATABASE_URL=postgresql://vessels:${POSTGRES_PASSWORD}@localhost:5432/vessels_payment
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env file}
 
-      # Auth
-      - JWT_SECRET=${JWT_SECRET:-change-this-in-production}
+      # Auth - JWT_SECRET must be set in .env file
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set in .env file}
 
       # Mojaloop (optional)
       - MOJALOOP_ENABLED=${MOJALOOP_ENABLED:-false}

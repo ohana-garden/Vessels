@@ -17,9 +17,22 @@ from .models import User, Role, Permission
 logger = logging.getLogger(__name__)
 
 # Configuration
-SECRET_KEY = os.environ.get('JWT_SECRET_KEY', 'CHANGE_THIS_IN_PRODUCTION')
 ALGORITHM = 'HS256'
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.environ.get('ACCESS_TOKEN_EXPIRE_MINUTES', '60'))
+
+# Security: Require JWT_SECRET_KEY to be explicitly set
+_jwt_secret = os.environ.get('JWT_SECRET_KEY')
+if not _jwt_secret or _jwt_secret in ('CHANGE_THIS_IN_PRODUCTION', 'CHANGE_IN_PRODUCTION', 'change-this-in-production'):
+    # Only allow missing secret in explicit development mode
+    if os.environ.get('ENVIRONMENT') == 'development' and os.environ.get('ALLOW_INSECURE_JWT') == 'true':
+        logger.warning("SECURITY WARNING: Using insecure JWT secret in development mode")
+        _jwt_secret = 'dev-only-insecure-secret-do-not-use-in-production'
+    else:
+        raise ValueError(
+            "JWT_SECRET_KEY environment variable must be set to a secure random string "
+            "(minimum 32 characters). Generate one with: python -c \"import secrets; print(secrets.token_urlsafe(32))\""
+        )
+SECRET_KEY = _jwt_secret
 
 
 def create_access_token(user: User, expires_delta: Optional[timedelta] = None) -> str:
