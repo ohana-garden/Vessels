@@ -28,9 +28,9 @@ services:
       - PORT=3000
       - NODE_ENV=production
 
-      # TigerBeetle
+      # TigerBeetle Cluster
       - TIGERBEETLE_CLUSTER_ID=${TIGERBEETLE_CLUSTER_ID:-0}
-      - TIGERBEETLE_REPLICA_ADDRESSES=localhost:3001
+      - TIGERBEETLE_REPLICA_ADDRESSES=tigerbeetle-0:3001,tigerbeetle-1:3001,tigerbeetle-2:3001
 
       # Database - POSTGRES_PASSWORD must be set in .env file
       - DATABASE_URL=postgresql://vessels:${POSTGRES_PASSWORD}@localhost:5432/vessels_payment
@@ -73,8 +73,55 @@ services:
       retries: 3
       start_period: 60s
 
+  # ============================================================================
+  # TIGERBEETLE CLUSTER - Financial Ledger
+  # 3-node cluster for production reliability
+  # ============================================================================
+
+  tigerbeetle-0:
+    image: ghcr.io/tigerbeetle/tigerbeetle:latest
+    container_name: tigerbeetle-0
+    command: start --addresses=0.0.0.0:3001,tigerbeetle-1:3001,tigerbeetle-2:3001 /data/0_0.tigerbeetle
+    ports:
+      - "3001:3001"
+    volumes:
+      - tigerbeetle-data-0:/data
+    networks:
+      - vessels-network
+    restart: unless-stopped
+
+  tigerbeetle-1:
+    image: ghcr.io/tigerbeetle/tigerbeetle:latest
+    container_name: tigerbeetle-1
+    command: start --addresses=tigerbeetle-0:3001,0.0.0.0:3001,tigerbeetle-2:3001 /data/0_1.tigerbeetle
+    volumes:
+      - tigerbeetle-data-1:/data
+    networks:
+      - vessels-network
+    restart: unless-stopped
+    depends_on:
+      - tigerbeetle-0
+
+  tigerbeetle-2:
+    image: ghcr.io/tigerbeetle/tigerbeetle:latest
+    container_name: tigerbeetle-2
+    command: start --addresses=tigerbeetle-0:3001,tigerbeetle-1:3001,0.0.0.0:3001 /data/0_2.tigerbeetle
+    volumes:
+      - tigerbeetle-data-2:/data
+    networks:
+      - vessels-network
+    restart: unless-stopped
+    depends_on:
+      - tigerbeetle-1
+
 volumes:
   vessels-data:
+    driver: local
+  tigerbeetle-data-0:
+    driver: local
+  tigerbeetle-data-1:
+    driver: local
+  tigerbeetle-data-2:
     driver: local
 
 networks:
