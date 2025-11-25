@@ -7,7 +7,7 @@ from typing import Dict, Any, List
 from vessels.core.registry import VesselRegistry
 from vessels.core.vessel import Vessel, PrivacyLevel
 # Import Kala directly assuming it's in the python path/root
-from kala import KalaValueSystem
+from kala import KalaValueSystem, ContributionType
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +49,7 @@ class VesselsSystem:
         # Record Economic Value (Kala)
         self.kala.record_contribution(
             contributor_id=result['agent'],
-            contribution_type="service",
+            contribution_type=ContributionType.SKILL,
             description=f"Handled {intent} request",
             kala_value=0.5
         )

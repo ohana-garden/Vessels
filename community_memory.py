@@ -129,6 +129,9 @@ class CommunityMemory:
         self.vector_dimension = 384  # Standard embedding size
         self.embedding_model = None
 
+        # Thread safety lock for memory operations
+        self._memory_lock = threading.RLock()
+
         # Kala system integration
         self.kala_system = None
         self._init_kala_system()
@@ -359,13 +362,14 @@ class CommunityMemory:
         for memory_id, similarity in similarities[:limit]:
             if memory_id in self.memories:
                 memory = self.memories[memory_id]
-                memory.access_count += 1
+                with self._memory_lock:
+                    memory.access_count += 1
                 results.append({
                     "memory": memory,
                     "similarity": similarity,
                     "relevance_score": self._calculate_relevance_score(memory, query)
                 })
-        
+
         return results
 
     def dynamic_find_similar(self, query: Dict[str, Any], agent_id: str = None,
@@ -451,7 +455,8 @@ class CommunityMemory:
         results = []
         for memory_id, base_sim, combined_score in similarities[:limit]:
             memory = self.memories[memory_id]
-            memory.access_count += 1
+            with self._memory_lock:
+                memory.access_count += 1
             results.append({
                 "memory": memory,
                 "similarity": base_sim,
@@ -476,7 +481,8 @@ class CommunityMemory:
             
             # Text search in content
             if query.lower() in json.dumps(memory.content).lower():
-                memory.access_count += 1
+                with self._memory_lock:
+                    memory.access_count += 1
                 results.append(memory)
         
         # Sort by relevance (access count and recency)
