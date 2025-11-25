@@ -54,8 +54,11 @@ RUN mkdir -p /usr/lib/redis/modules && \
     chmod 644 /usr/lib/redis/modules/falkordb.so
 
 # Configure Redis for FalkorDB
+# Security: bind to localhost only (use docker networking for external access)
+# REDIS_PASSWORD can be set at runtime for additional security
 RUN echo "loadmodule /usr/lib/redis/modules/falkordb.so" > /etc/redis/redis-falkordb.conf && \
-    echo "bind 0.0.0.0" >> /etc/redis/redis-falkordb.conf && \
+    echo "bind 127.0.0.1" >> /etc/redis/redis-falkordb.conf && \
+    echo "protected-mode yes" >> /etc/redis/redis-falkordb.conf && \
     echo "port 6379" >> /etc/redis/redis-falkordb.conf && \
     echo "dir /data/falkordb" >> /etc/redis/redis-falkordb.conf && \
     echo "dbfilename dump.rdb" >> /etc/redis/redis-falkordb.conf && \
@@ -76,7 +79,7 @@ WORKDIR /app
 # Python dependencies
 COPY requirements.txt requirements-fixed.txt ./
 RUN pip install --no-cache-dir -r requirements.txt && \
-    pip install --no-cache-dir -r requirements-fixed.txt || true
+    pip install --no-cache-dir -r requirements-fixed.txt
 
 # Payment service dependencies (Node.js/TypeScript)
 COPY payment/package*.json payment/tsconfig.json ./payment/
@@ -131,10 +134,16 @@ RUN mkdir -p \
 RUN mkdir -p /etc/supervisor/conf.d
 
 # Configure PostgreSQL
+# Security: Use md5 authentication instead of trust
+# Allow connections only from localhost by default
 RUN mkdir -p /var/run/postgresql && chown postgres:postgres /var/run/postgresql && \
     mkdir -p /data/postgres && chown postgres:postgres /data/postgres && \
-    echo "host all all 0.0.0.0/0 trust" >> /etc/postgresql/*/main/pg_hba.conf && \
-    echo "listen_addresses='*'" >> /etc/postgresql/*/main/postgresql.conf
+    echo "# Local connections" >> /etc/postgresql/*/main/pg_hba.conf && \
+    echo "host all all 127.0.0.1/32 md5" >> /etc/postgresql/*/main/pg_hba.conf && \
+    echo "host all all ::1/128 md5" >> /etc/postgresql/*/main/pg_hba.conf && \
+    echo "# Docker network (within container)" >> /etc/postgresql/*/main/pg_hba.conf && \
+    echo "host all all 172.16.0.0/12 md5" >> /etc/postgresql/*/main/pg_hba.conf && \
+    echo "listen_addresses='localhost'" >> /etc/postgresql/*/main/postgresql.conf
 
 # Download TigerBeetle binary
 RUN cd /tmp && \
@@ -186,7 +195,7 @@ directory=/app/payment\n\
 autostart=true\n\
 autorestart=true\n\
 priority=30\n\
-environment=NODE_ENV="production",PORT="3000",TIGERBEETLE_REPLICA_ADDRESSES="localhost:3001",DATABASE_URL="postgresql://vessels:vessels_dev@localhost:5432/vessels_payment"\n\
+environment=NODE_ENV="production",PORT="3000",TIGERBEETLE_REPLICA_ADDRESSES="localhost:3001",DATABASE_URL="%(ENV_DATABASE_URL)s"\n\
 stdout_logfile=/var/log/supervisor/payment.log\n\
 stderr_logfile=/var/log/supervisor/payment_err.log\n\
 \n\
