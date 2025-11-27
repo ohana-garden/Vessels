@@ -122,6 +122,7 @@ class AgentZeroCore:
 
         # Specialized agents (not spawned, but coordinated through A0)
         self.birth_agent = None  # Birth Agent for vessel creation
+        self.mcp_explorer = None  # MCP Explorer for capability discovery
         
     def initialize(self, memory_system=None, tool_system=None):
         """
@@ -142,6 +143,9 @@ class AgentZeroCore:
         # Initialize Birth Agent with A0's LLM interface
         self._initialize_birth_agent()
 
+        # Initialize MCP Explorer for capability discovery
+        self._initialize_mcp_explorer()
+
         logger.info("Agent Zero Core initialized")
 
     def _initialize_birth_agent(self):
@@ -158,6 +162,21 @@ class AgentZeroCore:
             logger.warning(f"Could not initialize Birth Agent: {e}")
             self.birth_agent = None
 
+    def _initialize_mcp_explorer(self):
+        """Initialize the MCP Explorer for capability discovery."""
+        try:
+            from vessels.agents.mcp_explorer import MCPExplorer
+            self.mcp_explorer = MCPExplorer(
+                llm_call=self.llm_call,
+                memory_backend=self.memory_system,
+            )
+            # Start background exploration
+            self.mcp_explorer.start()
+            logger.info("MCP Explorer initialized and exploring")
+        except ImportError as e:
+            logger.warning(f"Could not initialize MCP Explorer: {e}")
+            self.mcp_explorer = None
+
     def set_llm_call(self, llm_call: Callable[[str], str]) -> None:
         """
         Set or update the LLM call function.
@@ -169,6 +188,9 @@ class AgentZeroCore:
         # Update Birth Agent if it exists
         if self.birth_agent:
             self.birth_agent.llm_call = llm_call
+        # Update MCP Explorer if it exists
+        if self.mcp_explorer:
+            self.mcp_explorer.llm_call = llm_call
         logger.info("LLM call function configured for AgentZeroCore")
 
     def process_birth_message(self, user_id: str, message: str) -> Dict[str, Any]:
@@ -492,6 +514,137 @@ class AgentZeroCore:
         if project:
             return list(project.vessel_ids)
         return []
+
+    # =========================================================================
+    # MCP CAPABILITY PROVISIONING
+    # Dynamic tool provisioning from MCP servers
+    # =========================================================================
+
+    def provision_capability(
+        self,
+        vessel_id: str,
+        capability_need: str,
+        auto_connect: bool = True,
+    ) -> Dict[str, Any]:
+        """
+        Provision a capability for a vessel by connecting to appropriate MCP server.
+
+        When a vessel needs a capability (e.g., "weather forecasting"), A0:
+        1. Asks MCP Explorer to find matching servers
+        2. Selects the best match
+        3. Connects vessel to that server
+        4. Returns the tools now available
+
+        Args:
+            vessel_id: Vessel that needs the capability
+            capability_need: Natural language description of what's needed
+            auto_connect: Automatically connect to recommended server
+
+        Returns:
+            Dict with server info, tools provisioned, and status
+        """
+        if not self.mcp_explorer:
+            self._initialize_mcp_explorer()
+
+        if not self.mcp_explorer:
+            return {
+                "success": False,
+                "error": "MCP Explorer not available",
+                "tools_provisioned": []
+            }
+
+        # Get vessel type for better matching
+        vessel_type = None
+        if self.vessel_registry:
+            vessel = self.vessel_registry.get_vessel(vessel_id)
+            if vessel and vessel.connectors.get("persona"):
+                vessel_type = vessel.connectors["persona"].get("subject")
+
+        # Get recommendation from MCP Explorer
+        recommendation = self.mcp_explorer.get_recommendation(
+            capability_need=capability_need,
+            vessel_id=vessel_id,
+            vessel_type=vessel_type,
+        )
+
+        if not recommendation.get("recommended_server_id"):
+            return {
+                "success": False,
+                "error": recommendation.get("reasoning", "No matching MCP server found"),
+                "tools_provisioned": []
+            }
+
+        server_id = recommendation["recommended_server_id"]
+
+        if auto_connect:
+            # Connect vessel to server
+            connection = self.mcp_explorer.connect_vessel_to_server(vessel_id, server_id)
+
+            logger.info(
+                f"Provisioned capability '{capability_need}' for vessel {vessel_id} "
+                f"via MCP server {server_id}"
+            )
+
+            return {
+                "success": True,
+                "server_id": server_id,
+                "server_name": self.mcp_explorer.get_server(server_id).name,
+                "confidence": recommendation["confidence"],
+                "reasoning": recommendation["reasoning"],
+                "tools_provisioned": connection.tools_provisioned,
+                "alternatives": recommendation.get("alternatives", [])
+            }
+        else:
+            # Just return recommendation without connecting
+            server = self.mcp_explorer.get_server(server_id)
+            return {
+                "success": True,
+                "server_id": server_id,
+                "server_name": server.name if server else server_id,
+                "confidence": recommendation["confidence"],
+                "reasoning": recommendation["reasoning"],
+                "tools_available": server.tools_provided if server else [],
+                "auto_connect": False,
+                "alternatives": recommendation.get("alternatives", [])
+            }
+
+    def get_vessel_mcp_tools(self, vessel_id: str) -> List[str]:
+        """Get all MCP tools currently available to a vessel."""
+        if self.mcp_explorer:
+            return self.mcp_explorer.get_vessel_tools(vessel_id)
+        return []
+
+    def discover_capabilities(
+        self,
+        capability_need: str,
+        trust_minimum: str = "unknown",
+    ) -> List[Dict[str, Any]]:
+        """
+        Discover MCP servers that can provide a capability.
+
+        Args:
+            capability_need: What capability is needed
+            trust_minimum: Minimum trust level ("verified", "community", "unknown")
+
+        Returns:
+            List of matching servers with scores
+        """
+        if not self.mcp_explorer:
+            return []
+
+        from vessels.agents.mcp_explorer import TrustLevel
+        trust_level = TrustLevel(trust_minimum)
+
+        return self.mcp_explorer.find_servers_for_need(
+            capability_need=capability_need,
+            trust_minimum=trust_level,
+        )
+
+    def get_mcp_stats(self) -> Dict[str, Any]:
+        """Get statistics about the MCP ecosystem."""
+        if self.mcp_explorer:
+            return self.mcp_explorer.get_stats()
+        return {"error": "MCP Explorer not initialized"}
 
     # =========================================================================
     # END UNIVERSAL BUILDER METHODS
