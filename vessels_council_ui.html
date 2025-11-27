@@ -1,0 +1,1341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vessels Council</title>
+    <style>
+        /* === FOUNDATIONS === */
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        :root {
+            --bg-deep: #0a0e17;
+            --bg-surface: rgba(15, 20, 30, 0.95);
+            --text-primary: #e8e8e8;
+            --text-muted: rgba(255,255,255,0.6);
+            --accent-green: #4ade80;
+            --accent-gold: #fbbf24;
+            --accent-purple: #a78bfa;
+            --accent-blue: #60a5fa;
+            --accent-coral: #f472b6;
+            --virtue-high: #4ade80;
+            --virtue-mid: #fbbf24;
+            --virtue-low: #ef4444;
+            --radius: 12px;
+            --shadow: 0 8px 32px rgba(0,0,0,0.4);
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+            background: var(--bg-deep);
+            color: var(--text-primary);
+            min-height: 100vh;
+            overflow: hidden;
+            user-select: none;
+        }
+
+        /* === LAYOUT LAYERS === */
+        #field {
+            position: absolute;
+            inset: 0;
+            background: radial-gradient(ellipse at center bottom, rgba(74,222,128,0.08) 0%, transparent 60%);
+        }
+
+        #servants-ring {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+        }
+
+        #center-stage {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: min(600px, 85vw);
+            z-index: 50;
+        }
+
+        #memory-trail {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            width: 280px;
+            max-height: 40vh;
+            overflow-y: auto;
+            z-index: 100;
+        }
+
+        #voice-dock {
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 200;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 12px;
+        }
+
+        #kala-ticker {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            z-index: 100;
+        }
+
+        #gate-status {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            z-index: 100;
+        }
+
+        /* === SERVANT (AGENT) ORBS === */
+        .servant {
+            position: absolute;
+            width: 72px;
+            height: 72px;
+            border-radius: 50%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            transform: scale(0);
+            transition: transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1),
+                        box-shadow 0.3s ease;
+            cursor: pointer;
+            pointer-events: auto;
+        }
+
+        .servant.active {
+            transform: scale(1);
+        }
+
+        .servant.speaking {
+            animation: speakPulse 0.4s ease-in-out infinite alternate;
+        }
+
+        @keyframes speakPulse {
+            from { transform: scale(1); filter: brightness(1); }
+            to { transform: scale(1.08); filter: brightness(1.3); }
+        }
+
+        .servant-core {
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            background: radial-gradient(circle at 35% 35%, rgba(255,255,255,0.9), var(--color));
+            box-shadow: 0 0 30px var(--color), inset 0 0 20px rgba(255,255,255,0.2);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-weight: 700;
+            font-size: 14px;
+            letter-spacing: 1px;
+            text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+        }
+
+        .servant-virtue {
+            position: absolute;
+            bottom: -8px;
+            width: 36px;
+            height: 6px;
+            background: rgba(0,0,0,0.4);
+            border-radius: 3px;
+            overflow: hidden;
+        }
+
+        .servant-virtue-fill {
+            height: 100%;
+            border-radius: 3px;
+            transition: width 0.5s ease;
+        }
+
+        .servant-label {
+            position: absolute;
+            bottom: -28px;
+            white-space: nowrap;
+            font-size: 11px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .servant-activity {
+            position: absolute;
+            top: -24px;
+            white-space: nowrap;
+            font-size: 10px;
+            color: var(--accent-gold);
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        .servant.working .servant-activity {
+            opacity: 1;
+        }
+
+        /* === CENTER STAGE CONTENT === */
+        .work-card {
+            background: var(--bg-surface);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: var(--radius);
+            padding: 32px;
+            box-shadow: var(--shadow);
+            opacity: 0;
+            transform: translateY(20px) scale(0.95);
+            transition: all 0.5s cubic-bezier(0.2, 0.8, 0.2, 1);
+        }
+
+        .work-card.visible {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+        }
+
+        .work-card-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 20px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .work-card-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 20px;
+        }
+
+        .work-card-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .work-card-subtitle {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-top: 2px;
+        }
+
+        .work-card-body {
+            font-size: 15px;
+            line-height: 1.6;
+            color: var(--text-primary);
+        }
+
+        .work-card-body p {
+            margin-bottom: 12px;
+        }
+
+        .work-card-meta {
+            margin-top: 20px;
+            padding-top: 16px;
+            border-top: 1px solid rgba(255,255,255,0.1);
+            display: flex;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+
+        .meta-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        .meta-value {
+            color: var(--accent-gold);
+            font-weight: 600;
+        }
+
+        /* Grant card specific */
+        .grant-amount {
+            font-size: 28px;
+            font-weight: 700;
+            color: var(--accent-gold);
+            margin: 16px 0;
+        }
+
+        .grant-deadline {
+            display: inline-block;
+            background: rgba(239,68,68,0.2);
+            color: #f87171;
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        /* === DIALOGUE AREA === */
+        #dialogue {
+            position: absolute;
+            bottom: 140px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: min(700px, 90vw);
+            text-align: center;
+            z-index: 150;
+        }
+
+        .utterance {
+            display: inline-block;
+            max-width: 85%;
+            background: rgba(0,0,0,0.85);
+            backdrop-filter: blur(10px);
+            padding: 16px 24px;
+            border-radius: 20px;
+            font-size: 17px;
+            line-height: 1.5;
+            border-left: 4px solid var(--color);
+            text-align: left;
+            opacity: 0;
+            transform: translateY(16px);
+            animation: utteranceIn 0.3s ease-out forwards;
+        }
+
+        @keyframes utteranceIn {
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .utterance-speaker {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--text-muted);
+            margin-bottom: 6px;
+        }
+
+        /* === MEMORY TRAIL === */
+        .memory-panel {
+            background: var(--bg-surface);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: var(--radius);
+            padding: 16px;
+            box-shadow: var(--shadow);
+        }
+
+        .memory-header {
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--text-muted);
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .memory-header::before {
+            content: '';
+            width: 8px;
+            height: 8px;
+            background: var(--accent-purple);
+            border-radius: 50%;
+            animation: memoryPulse 2s infinite;
+        }
+
+        @keyframes memoryPulse {
+            0%, 100% { opacity: 0.5; }
+            50% { opacity: 1; }
+        }
+
+        .memory-item {
+            font-size: 13px;
+            padding: 10px;
+            background: rgba(255,255,255,0.03);
+            border-radius: 8px;
+            margin-bottom: 8px;
+            border-left: 2px solid var(--accent-purple);
+            opacity: 0;
+            animation: memoryFade 0.4s ease forwards;
+        }
+
+        @keyframes memoryFade {
+            to { opacity: 1; }
+        }
+
+        .memory-item-type {
+            font-size: 10px;
+            text-transform: uppercase;
+            color: var(--accent-purple);
+            margin-bottom: 4px;
+        }
+
+        .memory-item-content {
+            color: var(--text-muted);
+            line-height: 1.4;
+        }
+
+        /* === KALA TICKER === */
+        .kala-panel {
+            background: var(--bg-surface);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: var(--radius);
+            padding: 16px 20px;
+            box-shadow: var(--shadow);
+            min-width: 180px;
+        }
+
+        .kala-header {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--text-muted);
+            margin-bottom: 8px;
+        }
+
+        .kala-value {
+            font-size: 28px;
+            font-weight: 700;
+            color: var(--accent-gold);
+            display: flex;
+            align-items: baseline;
+            gap: 4px;
+        }
+
+        .kala-unit {
+            font-size: 14px;
+            font-weight: 400;
+            color: var(--text-muted);
+        }
+
+        .kala-change {
+            font-size: 12px;
+            color: var(--accent-green);
+            margin-top: 4px;
+        }
+
+        /* === GATE STATUS === */
+        .gate-panel {
+            background: var(--bg-surface);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: var(--radius);
+            padding: 16px;
+            box-shadow: var(--shadow);
+            min-width: 200px;
+        }
+
+        .gate-header {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--text-muted);
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .gate-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--virtue-high);
+        }
+
+        .gate-indicator.warning { background: var(--virtue-mid); }
+        .gate-indicator.blocked { background: var(--virtue-low); }
+
+        .gate-virtue {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 12px;
+            margin-bottom: 6px;
+        }
+
+        .gate-virtue-name {
+            color: var(--text-muted);
+        }
+
+        .gate-virtue-bar {
+            width: 80px;
+            height: 4px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 2px;
+            overflow: hidden;
+        }
+
+        .gate-virtue-fill {
+            height: 100%;
+            border-radius: 2px;
+            transition: width 0.4s ease;
+        }
+
+        /* === VOICE DOCK === */
+        .voice-orb {
+            width: 72px;
+            height: 72px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, var(--accent-green), var(--accent-blue));
+            border: 3px solid rgba(255,255,255,0.2);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 20px rgba(74,222,128,0.3);
+        }
+
+        .voice-orb:hover {
+            transform: scale(1.05);
+            box-shadow: 0 6px 30px rgba(74,222,128,0.4);
+        }
+
+        .voice-orb.listening {
+            animation: voiceListen 1.5s ease-in-out infinite;
+        }
+
+        @keyframes voiceListen {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(74,222,128,0.6); }
+            50% { box-shadow: 0 0 0 20px rgba(74,222,128,0); }
+        }
+
+        .voice-orb.processing {
+            background: linear-gradient(135deg, var(--accent-purple), var(--accent-blue));
+            animation: voiceProcess 1s linear infinite;
+        }
+
+        @keyframes voiceProcess {
+            to { transform: rotate(360deg); }
+        }
+
+        .voice-orb-icon {
+            font-size: 28px;
+        }
+
+        .voice-hint {
+            font-size: 13px;
+            color: var(--text-muted);
+            background: rgba(0,0,0,0.6);
+            padding: 6px 14px;
+            border-radius: 20px;
+        }
+
+        .voice-transcript {
+            max-width: 400px;
+            background: rgba(0,0,0,0.8);
+            padding: 12px 20px;
+            border-radius: 12px;
+            font-size: 15px;
+            color: var(--text-primary);
+            border: 1px solid rgba(74,222,128,0.3);
+        }
+
+        /* === WELCOME STATE === */
+        .welcome-state {
+            text-align: center;
+            padding: 40px;
+        }
+
+        .welcome-title {
+            font-size: clamp(36px, 8vw, 56px);
+            font-weight: 200;
+            letter-spacing: 8px;
+            background: linear-gradient(135deg, var(--accent-green) 0%, var(--accent-purple) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 16px;
+        }
+
+        .welcome-subtitle {
+            font-size: 16px;
+            color: var(--text-muted);
+            max-width: 400px;
+            margin: 0 auto;
+            line-height: 1.6;
+        }
+
+        /* === INTRO OVERLAY === */
+        #intro-overlay {
+            position: absolute;
+            inset: 0;
+            background: rgba(0,0,0,0.9);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            transition: opacity 0.6s ease;
+        }
+
+        #intro-overlay.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .intro-content {
+            text-align: center;
+            max-width: 500px;
+            padding: 40px;
+        }
+
+        .intro-title {
+            font-size: 48px;
+            font-weight: 200;
+            letter-spacing: 6px;
+            margin-bottom: 24px;
+            background: linear-gradient(135deg, var(--accent-green) 0%, var(--accent-gold) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .intro-text {
+            font-size: 16px;
+            color: var(--text-muted);
+            line-height: 1.7;
+            margin-bottom: 32px;
+        }
+
+        .intro-button {
+            padding: 16px 48px;
+            font-size: 16px;
+            font-weight: 600;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            background: var(--accent-green);
+            color: var(--bg-deep);
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+            box-shadow: 0 4px 20px rgba(74,222,128,0.3);
+        }
+
+        .intro-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 30px rgba(74,222,128,0.4);
+        }
+
+        .intro-button:active {
+            transform: translateY(0);
+        }
+
+        /* === UTILITIES === */
+        .hidden { display: none !important; }
+
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: 0.01ms !important;
+                transition-duration: 0.01ms !important;
+            }
+        }
+
+        @media (max-width: 768px) {
+            #memory-trail { display: none; }
+            #gate-status { top: auto; bottom: 20px; left: auto; right: 20px; }
+            #kala-ticker { bottom: auto; top: 20px; }
+            .servant { width: 56px; height: 56px; }
+            .servant-core { font-size: 12px; }
+        }
+    </style>
+</head>
+<body>
+    <div id="field"></div>
+    <div id="servants-ring"></div>
+
+    <div id="center-stage">
+        <div class="work-card visible" id="work-area">
+            <div class="welcome-state">
+                <div class="welcome-title">ALOHA</div>
+                <div class="welcome-subtitle">Your community servants are ready. Speak naturally or click a prompt below.</div>
+            </div>
+        </div>
+    </div>
+
+    <div id="memory-trail">
+        <div class="memory-panel">
+            <div class="memory-header">Shared Memory</div>
+            <div id="memory-list">
+                <div class="memory-item" style="opacity: 0.5;">
+                    <div class="memory-item-type">Ready</div>
+                    <div class="memory-item-content">Awaiting first interaction...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="kala-ticker">
+        <div class="kala-panel">
+            <div class="kala-header">Community Value</div>
+            <div class="kala-value">0 <span class="kala-unit">kala</span></div>
+            <div class="kala-change" id="kala-change"></div>
+        </div>
+    </div>
+
+    <div id="gate-status">
+        <div class="gate-panel">
+            <div class="gate-header">
+                <span class="gate-indicator"></span>
+                Action Gate
+            </div>
+            <div id="virtue-display">
+                <div class="gate-virtue">
+                    <span class="gate-virtue-name">Truthfulness</span>
+                    <div class="gate-virtue-bar"><div class="gate-virtue-fill" style="width: 85%; background: var(--virtue-high);"></div></div>
+                </div>
+                <div class="gate-virtue">
+                    <span class="gate-virtue-name">Service</span>
+                    <div class="gate-virtue-bar"><div class="gate-virtue-fill" style="width: 90%; background: var(--virtue-high);"></div></div>
+                </div>
+                <div class="gate-virtue">
+                    <span class="gate-virtue-name">Unity</span>
+                    <div class="gate-virtue-bar"><div class="gate-virtue-fill" style="width: 80%; background: var(--virtue-high);"></div></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="dialogue"></div>
+
+    <div id="voice-dock">
+        <div class="voice-orb" id="voice-orb" onclick="Council.toggleVoice()">
+            <span class="voice-orb-icon">🎤</span>
+        </div>
+        <div class="voice-hint" id="voice-hint">Click to speak</div>
+        <div class="voice-transcript hidden" id="voice-transcript"></div>
+    </div>
+
+    <div id="intro-overlay">
+        <div class="intro-content">
+            <div class="intro-title">VESSELS</div>
+            <div class="intro-text">
+                A council of servant agents, working together for your community.
+                Each agent brings specialized skills, guided by shared values.
+            </div>
+            <button class="intro-button" onclick="Council.begin()">E Komo Mai</button>
+            <div style="margin-top: 16px; font-size: 12px; color: var(--text-muted);">Enter</div>
+        </div>
+    </div>
+
+    <script>
+    // ============================================================
+    // VESSELS COUNCIL UI
+    // A service-oriented gathering space for agent collaboration
+    // ============================================================
+
+    const Council = {
+        // Configuration
+        config: {
+            apiBase: 'http://localhost:5000',
+            sessionId: 'council_' + Date.now(),
+            enableAudio: true
+        },
+
+        // State
+        state: {
+            servants: new Map(),
+            isListening: false,
+            isProcessing: false,
+            kalaTotal: 0,
+            memories: [],
+            virtues: {
+                truthfulness: 0.85,
+                service: 0.90,
+                unity: 0.80,
+                justice: 0.82,
+                trustworthiness: 0.88
+            }
+        },
+
+        // Servant (Agent) definitions
+        servantTypes: {
+            'aunty': {
+                name: 'Aunty',
+                color: '#f472b6',
+                role: 'Community Guide',
+                voice: 'nova',
+                virtue: 0.95
+            },
+            'grant_finder': {
+                name: 'Grant Finder',
+                color: '#fbbf24',
+                role: 'Resource Discovery',
+                voice: 'onyx',
+                virtue: 0.88
+            },
+            'coordinator': {
+                name: 'Keoni',
+                color: '#4ade80',
+                role: 'Coordination',
+                voice: 'echo',
+                virtue: 0.85
+            },
+            'elder_care': {
+                name: 'Malia',
+                color: '#60a5fa',
+                role: 'Kupuna Support',
+                voice: 'shimmer',
+                virtue: 0.92
+            },
+            'memory_keeper': {
+                name: 'Lono',
+                color: '#a78bfa',
+                role: 'Memory & Learning',
+                voice: 'fable',
+                virtue: 0.90
+            }
+        },
+
+        // Audio context
+        audioCtx: null,
+
+        // ========== INITIALIZATION ==========
+
+        init() {
+            this.setupSpeechRecognition();
+            this.setupKeyboardShortcuts();
+            console.log('Council initialized');
+        },
+
+        begin() {
+            // Initialize audio context (requires user interaction)
+            this.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+            // Hide intro
+            document.getElementById('intro-overlay').classList.add('hidden');
+
+            // Run demo sequence or wait for voice
+            // For now, let's show we're ready
+            this.addMemory('SESSION', 'Council session started');
+        },
+
+        // ========== SERVANT MANAGEMENT ==========
+
+        summonServant(id, angle) {
+            const type = this.servantTypes[id];
+            if (!type) return;
+
+            const el = document.createElement('div');
+            el.className = 'servant';
+            el.id = `servant-${id}`;
+            el.style.setProperty('--color', type.color);
+
+            el.innerHTML = `
+                <div class="servant-activity">Analyzing...</div>
+                <div class="servant-core">${type.name.substring(0,2).toUpperCase()}</div>
+                <div class="servant-virtue">
+                    <div class="servant-virtue-fill" style="width: ${type.virtue * 100}%; background: ${this.getVirtueColor(type.virtue)};"></div>
+                </div>
+                <div class="servant-label">${type.role}</div>
+            `;
+
+            // Position around center
+            const rad = (angle - 90) * (Math.PI / 180);
+            const cx = window.innerWidth / 2;
+            const cy = window.innerHeight / 2;
+            const r = Math.min(cx, cy) * 0.38;
+
+            el.style.left = (cx + r * Math.cos(rad) - 36) + 'px';
+            el.style.top = (cy + r * Math.sin(rad) - 36) + 'px';
+
+            document.getElementById('servants-ring').appendChild(el);
+
+            // Animate in
+            requestAnimationFrame(() => el.classList.add('active'));
+
+            this.state.servants.set(id, { el, type, angle });
+
+            return el;
+        },
+
+        dismissServant(id) {
+            const servant = this.state.servants.get(id);
+            if (servant) {
+                servant.el.classList.remove('active');
+                setTimeout(() => servant.el.remove(), 500);
+                this.state.servants.delete(id);
+            }
+        },
+
+        setServantSpeaking(id, isSpeaking) {
+            const servant = this.state.servants.get(id);
+            if (servant) {
+                if (isSpeaking) {
+                    servant.el.classList.add('speaking');
+                } else {
+                    servant.el.classList.remove('speaking');
+                }
+            }
+        },
+
+        setServantWorking(id, activity) {
+            const servant = this.state.servants.get(id);
+            if (servant) {
+                const actEl = servant.el.querySelector('.servant-activity');
+                if (activity) {
+                    actEl.textContent = activity;
+                    servant.el.classList.add('working');
+                } else {
+                    servant.el.classList.remove('working');
+                }
+            }
+        },
+
+        getVirtueColor(v) {
+            if (v >= 0.7) return 'var(--virtue-high)';
+            if (v >= 0.4) return 'var(--virtue-mid)';
+            return 'var(--virtue-low)';
+        },
+
+        // ========== DIALOGUE ==========
+
+        async speak(servantId, text, options = {}) {
+            const servant = this.servantTypes[servantId];
+            if (!servant) return;
+
+            // Show utterance
+            this.showUtterance(text, servant.name, servant.color);
+
+            // Visual feedback
+            this.setServantSpeaking(servantId, true);
+
+            // Play audio if enabled
+            if (this.config.enableAudio) {
+                await this.playAudio(text, servant.voice);
+            } else {
+                // Simulate duration
+                await this.wait(text.length * 60);
+            }
+
+            this.setServantSpeaking(servantId, false);
+            await this.wait(400);
+        },
+
+        showUtterance(text, speaker, color) {
+            const dialogue = document.getElementById('dialogue');
+            dialogue.innerHTML = '';
+
+            const el = document.createElement('div');
+            el.className = 'utterance';
+            el.style.setProperty('--color', color);
+            el.innerHTML = `
+                <div class="utterance-speaker">${speaker}</div>
+                ${text}
+            `;
+
+            dialogue.appendChild(el);
+        },
+
+        clearDialogue() {
+            document.getElementById('dialogue').innerHTML = '';
+        },
+
+        async playAudio(text, voice) {
+            // For demo, simulate audio with timeout
+            // In production, integrate with TTS API
+            const estimatedDuration = text.length * 55;
+
+            return new Promise((resolve) => {
+                setTimeout(resolve, Math.min(estimatedDuration, 5000));
+            });
+        },
+
+        // ========== WORK DISPLAY ==========
+
+        showWork(content) {
+            const area = document.getElementById('work-area');
+            area.classList.remove('visible');
+
+            setTimeout(() => {
+                area.innerHTML = content;
+                requestAnimationFrame(() => area.classList.add('visible'));
+            }, 300);
+        },
+
+        showGrant(grant) {
+            this.showWork(`
+                <div class="work-card-header">
+                    <div class="work-card-icon" style="background: rgba(251,191,36,0.2);">💰</div>
+                    <div>
+                        <div class="work-card-title">${grant.title}</div>
+                        <div class="work-card-subtitle">${grant.source || 'Federal Grant'}</div>
+                    </div>
+                </div>
+                <div class="grant-amount">${grant.amount}</div>
+                ${grant.deadline ? `<span class="grant-deadline">Deadline: ${grant.deadline}</span>` : ''}
+                <div class="work-card-body">
+                    <p>${grant.description}</p>
+                </div>
+                <div class="work-card-meta">
+                    <div class="meta-item">
+                        <span>Match Score:</span>
+                        <span class="meta-value">${grant.matchScore || 92}%</span>
+                    </div>
+                    <div class="meta-item">
+                        <span>Focus:</span>
+                        <span class="meta-value">${grant.focus || 'Elder Care'}</span>
+                    </div>
+                </div>
+            `);
+        },
+
+        showCareProtocol(protocol) {
+            const steps = protocol.steps.map((s, i) => `
+                <p><strong>${i + 1}. ${s.title}:</strong> ${s.description}</p>
+            `).join('');
+
+            this.showWork(`
+                <div class="work-card-header">
+                    <div class="work-card-icon" style="background: rgba(96,165,250,0.2);">🌺</div>
+                    <div>
+                        <div class="work-card-title">${protocol.title}</div>
+                        <div class="work-card-subtitle">Kupuna Care Protocol</div>
+                    </div>
+                </div>
+                <div class="work-card-body">
+                    ${steps}
+                </div>
+            `);
+        },
+
+        showWelcome() {
+            this.showWork(`
+                <div class="welcome-state">
+                    <div class="welcome-title">ALOHA</div>
+                    <div class="welcome-subtitle">Your community servants are ready. Speak naturally or click a prompt below.</div>
+                </div>
+            `);
+        },
+
+        // ========== MEMORY ==========
+
+        addMemory(type, content) {
+            const item = { type, content, timestamp: Date.now() };
+            this.state.memories.unshift(item);
+
+            // Keep last 10
+            if (this.state.memories.length > 10) {
+                this.state.memories.pop();
+            }
+
+            this.renderMemories();
+        },
+
+        renderMemories() {
+            const list = document.getElementById('memory-list');
+            list.innerHTML = this.state.memories.slice(0, 5).map(m => `
+                <div class="memory-item">
+                    <div class="memory-item-type">${m.type}</div>
+                    <div class="memory-item-content">${m.content}</div>
+                </div>
+            `).join('');
+        },
+
+        // ========== KALA ==========
+
+        addKala(amount, reason) {
+            this.state.kalaTotal += amount;
+
+            const valueEl = document.querySelector('.kala-value');
+            valueEl.innerHTML = `${this.state.kalaTotal} <span class="kala-unit">kala</span>`;
+
+            const changeEl = document.getElementById('kala-change');
+            changeEl.textContent = `+${amount} (${reason})`;
+            changeEl.style.opacity = '1';
+
+            setTimeout(() => {
+                changeEl.style.opacity = '0';
+            }, 3000);
+        },
+
+        // ========== VIRTUE DISPLAY ==========
+
+        updateVirtues(virtues) {
+            Object.assign(this.state.virtues, virtues);
+
+            const display = document.getElementById('virtue-display');
+            const entries = Object.entries(this.state.virtues).slice(0, 3);
+
+            display.innerHTML = entries.map(([name, value]) => `
+                <div class="gate-virtue">
+                    <span class="gate-virtue-name">${name.charAt(0).toUpperCase() + name.slice(1)}</span>
+                    <div class="gate-virtue-bar">
+                        <div class="gate-virtue-fill" style="width: ${value * 100}%; background: ${this.getVirtueColor(value)};"></div>
+                    </div>
+                </div>
+            `).join('');
+
+            // Update indicator
+            const indicator = document.querySelector('.gate-indicator');
+            const minVirtue = Math.min(...Object.values(this.state.virtues));
+            indicator.className = 'gate-indicator';
+            if (minVirtue < 0.4) indicator.classList.add('blocked');
+            else if (minVirtue < 0.7) indicator.classList.add('warning');
+        },
+
+        // ========== VOICE ==========
+
+        setupSpeechRecognition() {
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            if (!SpeechRecognition) {
+                console.warn('Speech recognition not supported');
+                return;
+            }
+
+            this.recognition = new SpeechRecognition();
+            this.recognition.continuous = false;
+            this.recognition.interimResults = true;
+            this.recognition.lang = 'en-US';
+
+            this.recognition.onstart = () => {
+                this.state.isListening = true;
+                document.getElementById('voice-orb').classList.add('listening');
+                document.getElementById('voice-hint').textContent = 'Listening...';
+            };
+
+            this.recognition.onend = () => {
+                this.state.isListening = false;
+                document.getElementById('voice-orb').classList.remove('listening');
+                document.getElementById('voice-hint').textContent = 'Click to speak';
+                document.getElementById('voice-transcript').classList.add('hidden');
+            };
+
+            this.recognition.onresult = (event) => {
+                const transcript = event.results[event.results.length - 1][0].transcript;
+                const isFinal = event.results[event.results.length - 1].isFinal;
+
+                if (!isFinal) {
+                    const el = document.getElementById('voice-transcript');
+                    el.textContent = transcript;
+                    el.classList.remove('hidden');
+                } else {
+                    document.getElementById('voice-transcript').classList.add('hidden');
+                    this.processInput(transcript);
+                }
+            };
+
+            this.recognition.onerror = (event) => {
+                console.error('Speech error:', event.error);
+                this.state.isListening = false;
+                document.getElementById('voice-orb').classList.remove('listening');
+                document.getElementById('voice-hint').textContent = 'Click to speak';
+            };
+        },
+
+        toggleVoice() {
+            if (this.state.isListening) {
+                this.recognition?.stop();
+            } else {
+                try {
+                    this.recognition?.start();
+                } catch (e) {
+                    console.log('Recognition already active');
+                }
+            }
+        },
+
+        // ========== INPUT PROCESSING ==========
+
+        async processInput(text) {
+            console.log('Processing:', text);
+
+            // Show user utterance
+            this.showUtterance(text, 'You', 'var(--accent-green)');
+            this.addMemory('REQUEST', text);
+
+            // Set processing state
+            this.state.isProcessing = true;
+            document.getElementById('voice-orb').classList.add('processing');
+            document.getElementById('voice-hint').textContent = 'Processing...';
+
+            await this.wait(500);
+
+            // Route to appropriate handler
+            const lower = text.toLowerCase();
+
+            if (lower.includes('grant') || lower.includes('funding') || lower.includes('money')) {
+                await this.handleGrantRequest(text);
+            } else if (lower.includes('elder') || lower.includes('kupuna') || lower.includes('care')) {
+                await this.handleElderCareRequest(text);
+            } else if (lower.includes('help') || lower.includes('what can')) {
+                await this.handleHelpRequest(text);
+            } else {
+                await this.handleGeneralRequest(text);
+            }
+
+            // Reset state
+            this.state.isProcessing = false;
+            document.getElementById('voice-orb').classList.remove('processing');
+            document.getElementById('voice-hint').textContent = 'Click to speak';
+        },
+
+        // ========== REQUEST HANDLERS ==========
+
+        async handleGrantRequest(text) {
+            // Summon relevant servants
+            this.summonServant('aunty', 330);
+            await this.wait(300);
+            this.summonServant('grant_finder', 210);
+            await this.wait(300);
+            this.summonServant('coordinator', 90);
+
+            await this.wait(500);
+
+            // Aunty greets
+            await this.speak('aunty', "Aloha! I heard you're looking for funding support. Let me bring in our grant finder.");
+
+            // Grant finder works
+            this.setServantWorking('grant_finder', 'Searching databases...');
+            await this.wait(1500);
+
+            // Show result
+            this.showGrant({
+                title: 'USDA Rural Community Development',
+                amount: '$15,000 - $50,000',
+                deadline: 'Dec 15, 2025',
+                description: 'Funding for rural community infrastructure including fencing for agricultural protection and invasive species control.',
+                matchScore: 94,
+                focus: 'Community Infrastructure'
+            });
+
+            this.setServantWorking('grant_finder', null);
+            await this.speak('grant_finder', "I found a strong match. USDA has funding specifically for community protection projects.");
+
+            // Keoni adds context
+            await this.speak('coordinator', "Eh, I helped with this one before. The tax map key documentation is important - I can help with that.");
+
+            // Add memory
+            this.addMemory('DISCOVERY', 'USDA grant identified: $15K-$50K for community protection');
+
+            // Add kala for the work
+            this.addKala(5, 'Grant discovery');
+
+            // Aunty summarizes
+            await this.speak('aunty', "Shall we start preparing the application? I can coordinate with Keoni on the paperwork.");
+        },
+
+        async handleElderCareRequest(text) {
+            // Summon care team
+            this.summonServant('aunty', 330);
+            await this.wait(300);
+            this.summonServant('elder_care', 210);
+            await this.wait(300);
+            this.summonServant('memory_keeper', 90);
+
+            await this.wait(500);
+
+            // Aunty introduces
+            await this.speak('aunty', "Caring for our kupuna is sacred work. Let me bring in Malia who specializes in elder care.");
+
+            // Malia provides protocol
+            this.setServantWorking('elder_care', 'Preparing care protocol...');
+            await this.wait(1000);
+
+            this.showCareProtocol({
+                title: 'Kupuna Daily Care',
+                steps: [
+                    { title: 'Morning Check', description: 'Call or visit by 9am. Verify medications, breakfast, and overnight comfort.' },
+                    { title: 'Midday Support', description: 'Lunch delivery if needed. Social interaction and talk story time.' },
+                    { title: 'Afternoon Tasks', description: 'Medical appointments, shopping assistance. Coordinate with ohana.' },
+                    { title: 'Evening Safety', description: 'Dinner check, secure home. Confirm emergency contacts available.' }
+                ]
+            });
+
+            this.setServantWorking('elder_care', null);
+            await this.speak('elder_care', "Here's a culturally-adapted care protocol. Each kupuna is different, so we adjust based on their needs.");
+
+            // Memory keeper adds
+            await this.speak('memory_keeper', "I'm recording this interaction so other caregivers can learn from it too.");
+
+            this.addMemory('KNOWLEDGE', 'Shared kupuna care protocol');
+            this.addKala(8, 'Care coordination');
+        },
+
+        async handleHelpRequest(text) {
+            this.summonServant('aunty', 0);
+            await this.wait(500);
+
+            await this.speak('aunty', "Aloha! I'm here to help connect you with our community servants. You can ask about grants and funding, elder care and kupuna support, volunteer coordination, or food distribution. Just speak naturally!");
+
+            this.showWork(`
+                <div class="work-card-header">
+                    <div class="work-card-icon" style="background: rgba(244,114,182,0.2);">🌺</div>
+                    <div>
+                        <div class="work-card-title">How Can We Help?</div>
+                        <div class="work-card-subtitle">Your Community Servants</div>
+                    </div>
+                </div>
+                <div class="work-card-body">
+                    <p><strong>Grant Discovery:</strong> Find funding opportunities for community projects</p>
+                    <p><strong>Elder Care:</strong> Support for kupuna wellbeing and daily assistance</p>
+                    <p><strong>Coordination:</strong> Connect volunteers and resources</p>
+                    <p><strong>Memory:</strong> Learn from community experiences</p>
+                </div>
+            `);
+        },
+
+        async handleGeneralRequest(text) {
+            this.summonServant('aunty', 0);
+            await this.wait(500);
+
+            await this.speak('aunty', "Mahalo for reaching out. I'll help connect you with the right servant for your needs. Can you tell me more about what you're looking for?");
+
+            this.addMemory('INTERACTION', `General request: ${text.substring(0, 50)}...`);
+        },
+
+        // ========== DEMO SEQUENCE ==========
+
+        async runDemo() {
+            this.clearAllServants();
+            this.showWelcome();
+            await this.wait(500);
+
+            // Simulate user request
+            await this.processInput("Help me find a grant for pig fence protection");
+        },
+
+        clearAllServants() {
+            for (const [id] of this.state.servants) {
+                this.dismissServant(id);
+            }
+        },
+
+        // ========== UTILITIES ==========
+
+        wait(ms) {
+            return new Promise(resolve => setTimeout(resolve, ms));
+        },
+
+        setupKeyboardShortcuts() {
+            document.addEventListener('keypress', (e) => {
+                if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+
+                const shortcuts = {
+                    '1': "Find grants for elder care",
+                    '2': "Show kupuna care protocol",
+                    '3': "What can you help with?",
+                    'd': () => this.runDemo(),
+                    'r': () => { this.clearAllServants(); this.showWelcome(); }
+                };
+
+                const action = shortcuts[e.key];
+                if (typeof action === 'string') {
+                    this.processInput(action);
+                } else if (typeof action === 'function') {
+                    action();
+                }
+            });
+        }
+    };
+
+    // Initialize on load
+    document.addEventListener('DOMContentLoaded', () => Council.init());
+
+    // Expose for console debugging
+    window.Council = Council;
+    </script>
+</body>
+</html>
