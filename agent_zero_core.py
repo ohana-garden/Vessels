@@ -88,7 +88,8 @@ class AgentZeroCore:
     """
 
     def __init__(self, vessel_registry: Optional[Any] = None, *,
-                 default_memory=None, default_tools=None):
+                 default_memory=None, default_tools=None,
+                 llm_call: Optional[Callable[[str], str]] = None):
         """
         Initialize AgentZeroCore.
 
@@ -96,6 +97,7 @@ class AgentZeroCore:
             vessel_registry: Optional VesselRegistry for vessel-native coordination
             default_memory: Fallback memory system (used if no vessel provided)
             default_tools: Fallback tool system (used if no vessel provided)
+            llm_call: Function to call LLM for agent thinking (prompt -> response)
         """
         self.vessel_registry = vessel_registry
         self.agents: Dict[str, AgentInstance] = {}
@@ -104,6 +106,9 @@ class AgentZeroCore:
         self.executor = ThreadPoolExecutor(max_workers=50)
         self.running = False
         self.coordination_thread = None
+
+        # LLM interface for agent thinking
+        self.llm_call = llm_call
 
         # Legacy fallback systems (used when no vessel is provided)
         self.system_memory = default_memory or {}
@@ -114,6 +119,9 @@ class AgentZeroCore:
         # Village consensus and interface
         self.consensus_engine = None  # Village consensus engine (optional)
         self.interface = None  # Interface for sending messages to users
+
+        # Specialized agents (not spawned, but coordinated through A0)
+        self.birth_agent = None  # Birth Agent for vessel creation
         
     def initialize(self, memory_system=None, tool_system=None):
         """
@@ -130,7 +138,90 @@ class AgentZeroCore:
         self.coordination_thread = threading.Thread(target=self._coordination_loop)
         self.coordination_thread.daemon = True
         self.coordination_thread.start()
+
+        # Initialize Birth Agent with A0's LLM interface
+        self._initialize_birth_agent()
+
         logger.info("Agent Zero Core initialized")
+
+    def _initialize_birth_agent(self):
+        """Initialize the Birth Agent for vessel creation."""
+        try:
+            from vessels.agents.birth_agent import BirthAgent
+            self.birth_agent = BirthAgent(
+                vessel_registry=self.vessel_registry,
+                memory_backend=self.memory_system,
+                llm_call=self.llm_call
+            )
+            logger.info("Birth Agent initialized through A0")
+        except ImportError as e:
+            logger.warning(f"Could not initialize Birth Agent: {e}")
+            self.birth_agent = None
+
+    def set_llm_call(self, llm_call: Callable[[str], str]) -> None:
+        """
+        Set or update the LLM call function.
+
+        Args:
+            llm_call: Function to call LLM (prompt -> response)
+        """
+        self.llm_call = llm_call
+        # Update Birth Agent if it exists
+        if self.birth_agent:
+            self.birth_agent.llm_call = llm_call
+        logger.info("LLM call function configured for AgentZeroCore")
+
+    def process_birth_message(self, user_id: str, message: str) -> Dict[str, Any]:
+        """
+        Process a message for vessel birth through A0.
+
+        Args:
+            user_id: User ID
+            message: User message
+
+        Returns:
+            Response dict with message and metadata
+        """
+        if not self.birth_agent:
+            self._initialize_birth_agent()
+
+        if self.birth_agent:
+            return self.birth_agent.process_message(user_id, message)
+        else:
+            return {
+                "response": "Birth Agent not available",
+                "phase": "error",
+                "follow_up_needed": False
+            }
+
+    def detect_creation_intent(self, message: str) -> Dict[str, Any]:
+        """
+        Detect vessel creation intent through A0.
+
+        Args:
+            message: User message
+
+        Returns:
+            Intent detection result
+        """
+        if not self.birth_agent:
+            self._initialize_birth_agent()
+
+        if self.birth_agent:
+            return self.birth_agent.detect_creation_intent(message)
+        else:
+            return {
+                "wants_to_create": False,
+                "confidence": 0.0,
+                "subject": None,
+                "reasoning": "Birth Agent not available"
+            }
+
+    def has_active_birth_session(self, user_id: str) -> bool:
+        """Check if user has an active birth session."""
+        if self.birth_agent:
+            return self.birth_agent.has_active_session(user_id)
+        return False
 
     def set_vessel_registry(self, registry: Any) -> None:
         """

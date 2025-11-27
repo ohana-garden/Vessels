@@ -25,7 +25,6 @@ from community_memory import community_memory
 from grant_coordination_system import grant_system
 from adaptive_tools import adaptive_tools
 from vessels.core import VesselContext, VesselRegistry
-from vessels.agents.birth_agent import BirthAgent
 from vessels.agents.llm_service import get_llm_callable
 
 logger = logging.getLogger(__name__)
@@ -83,11 +82,11 @@ class VesselsInterface:
                 logger.warning(f"Could not initialize LLM service: {e}")
                 self.llm_call = None
 
-        # Initialize Birth Agent for vessel creation
-        self.birth_agent = BirthAgent(
-            vessel_registry=self.vessel_registry,
-            llm_call=self.llm_call
-        )
+        # Configure Agent Zero with LLM capability (A0 is THE main core)
+        if self.llm_call:
+            agent_zero.set_llm_call(self.llm_call)
+        if self.vessel_registry:
+            agent_zero.set_vessel_registry(self.vessel_registry)
 
         self.initialize_interface()
     
@@ -183,8 +182,8 @@ class VesselsInterface:
         """Classify the type of user interaction using semantic understanding."""
         message_lower = message.lower().strip()
 
-        # First, check for vessel creation intent (semantic detection)
-        creation_intent = self.birth_agent.detect_creation_intent(message)
+        # First, check for vessel creation intent through A0 (semantic detection)
+        creation_intent = agent_zero.detect_creation_intent(message)
         if creation_intent.get("wants_to_create") and creation_intent.get("confidence", 0) > 0.5:
             logger.info(f"Detected vessel creation intent: {creation_intent.get('reasoning')}")
             return InteractionType.VESSEL_CREATION
@@ -231,8 +230,8 @@ class VesselsInterface:
     def _process_interaction(self, interaction: UserInteraction) -> Dict[str, Any]:
         """Process the user interaction and generate response"""
 
-        # First check if user has an active vessel birth session
-        if self.birth_agent.has_active_session(interaction.user_id):
+        # First check if user has an active vessel birth session (through A0)
+        if agent_zero.has_active_birth_session(interaction.user_id):
             return self._process_birth_conversation(interaction)
 
         # Check if this is a response to an active consultation
@@ -257,8 +256,8 @@ class VesselsInterface:
             return self._process_request(interaction)
 
     def _process_birth_conversation(self, interaction: UserInteraction) -> Dict[str, Any]:
-        """Process a message in the context of vessel birth."""
-        result = self.birth_agent.process_message(
+        """Process a message in the context of vessel birth through A0."""
+        result = agent_zero.process_birth_message(
             interaction.user_id,
             interaction.message
         )
