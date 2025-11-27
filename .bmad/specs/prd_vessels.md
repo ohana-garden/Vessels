@@ -265,34 +265,6 @@ The fusion of digital twin and personification. A vessel is not just data with a
 
 ---
 
-## Roadmap Phases
-
-### Phase 1: Foundation (Current)
-- Vessel abstraction as first-class object
-- Voice interface core functionality
-- Puna community use cases (grants, elder care)
-- Basic personification (voice, character)
-
-### Phase 2: Personification
-- Full personification system
-- Character and perspective configuration
-- Cultural grounding framework
-- Mobile-first creation flow
-
-### Phase 3: Collaboration
-- Vessel-to-vessel discovery
-- Communication protocols
-- Delegation and coordination
-- Federation foundations
-
-### Phase 4: Scale
-- Public vessel directory
-- Template marketplace
-- Cross-community collaboration
-- Advanced governance tools
-
----
-
 ## Appendix: The Deeper Why
 
 This isn't just another AI product. It's a new way of relating to information, to projects, to the world itself.
