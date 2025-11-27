@@ -232,7 +232,271 @@ class AgentZeroCore:
         """
         self.vessel_registry = registry
         logger.info("Vessel registry configured for AgentZeroCore")
-        
+
+    # =========================================================================
+    # UNIVERSAL BUILDER METHODS
+    # A0 is THE main core - everything is built through these methods
+    # =========================================================================
+
+    def build_project(
+        self,
+        name: str,
+        owner_id: str,
+        description: str = "",
+        privacy_level: str = "private",
+        governance: str = "solo",
+    ) -> Dict[str, Any]:
+        """
+        Build a new project (community/bounded collaborative space).
+
+        A project provides:
+        - Shared knowledge graph namespace for all vessels within
+        - Memory scope that vessels can access
+        - Privacy boundaries for external access
+        - Governance model
+
+        Args:
+            name: Project name
+            owner_id: User ID of the project owner
+            description: Project description
+            privacy_level: "private", "shared", "public", or "federated"
+            governance: "solo", "collaborative", or "federated"
+
+        Returns:
+            Dict with project details including project_id
+        """
+        from vessels.core.project import Project, GovernanceModel
+        from vessels.knowledge.schema import CommunityPrivacy
+
+        # Map string to enums
+        privacy_enum = CommunityPrivacy(privacy_level)
+        governance_enum = GovernanceModel(governance)
+
+        # Create the project
+        project = Project.create(
+            name=name,
+            owner_id=owner_id,
+            description=description,
+            privacy_level=privacy_enum,
+            governance=governance_enum,
+        )
+
+        # Wire up memory backend if available
+        if self.memory_system:
+            project.set_memory_backend(self.memory_system)
+
+        # Store in registry if we have one that supports projects
+        # (For now, projects are tracked separately - can add ProjectRegistry later)
+        if not hasattr(self, '_projects'):
+            self._projects: Dict[str, Any] = {}
+        self._projects[project.project_id] = project
+
+        logger.info(f"A0 built project '{name}' ({project.project_id}) for {owner_id}")
+
+        return {
+            "project_id": project.project_id,
+            "name": project.name,
+            "description": project.description,
+            "owner_id": project.owner_id,
+            "graph_namespace": project.graph_namespace,
+            "privacy_level": privacy_level,
+            "governance": governance,
+        }
+
+    def build_vessel(
+        self,
+        name: str,
+        project_id: str,
+        description: str = "",
+        persona: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Build a new vessel within a project.
+
+        A vessel is a personified digital twin that:
+        - Lives within a project (inherits project context)
+        - Has its own persona (voice, values, relationship mode)
+        - Can spawn agents to do work
+        - Collaborates with other vessels in the same project
+
+        Args:
+            name: Vessel name
+            project_id: ID of project this vessel belongs to
+            description: Vessel description
+            persona: Optional persona configuration (voice, values, etc.)
+
+        Returns:
+            Dict with vessel details including vessel_id
+        """
+        from vessels.core.vessel import Vessel, PrivacyLevel
+        from vessels.knowledge.schema import CommunityPrivacy
+
+        # Get the project
+        project = self._projects.get(project_id) if hasattr(self, '_projects') else None
+        if not project:
+            # Create default project if none exists
+            logger.warning(f"Project {project_id} not found, creating default")
+            project_result = self.build_project(
+                name=f"Project for {name}",
+                owner_id="system",
+                description=f"Auto-created project for vessel {name}",
+            )
+            project_id = project_result["project_id"]
+            project = self._projects[project_id]
+
+        # Create the vessel
+        vessel = Vessel.create(
+            name=name,
+            community_id=project.graph_namespace,  # Use project's namespace
+            description=description,
+            privacy_level=PrivacyLevel(project.config.privacy_level.value),
+        )
+
+        # Wire up vessel resources from project
+        if project._memory_backend:
+            vessel.set_memory_backend(project._memory_backend)
+        elif self.memory_system:
+            vessel.set_memory_backend(self.memory_system)
+
+        # Store persona if provided
+        if persona:
+            vessel.connectors["persona"] = persona
+
+        # Register vessel with project
+        project.add_vessel(vessel.vessel_id)
+
+        # Register in vessel registry if available
+        if self.vessel_registry:
+            try:
+                self.vessel_registry.register_vessel(vessel)
+            except Exception as e:
+                logger.warning(f"Could not register vessel in registry: {e}")
+
+        logger.info(f"A0 built vessel '{name}' ({vessel.vessel_id}) in project {project_id}")
+
+        return {
+            "vessel_id": vessel.vessel_id,
+            "name": vessel.name,
+            "description": vessel.description,
+            "project_id": project_id,
+            "graph_namespace": vessel.graph_namespace,
+            "persona": persona,
+        }
+
+    def build_agent(
+        self,
+        name: str,
+        vessel_id: str,
+        specialization: str = "general",
+        capabilities: Optional[List[str]] = None,
+        tools_needed: Optional[List[str]] = None,
+    ) -> str:
+        """
+        Build a new agent for a vessel.
+
+        Agents are workers that do things on behalf of vessels.
+        They inherit vessel-scoped resources (memory, tools, action gate).
+
+        Args:
+            name: Agent name
+            vessel_id: ID of vessel this agent works for
+            specialization: Agent specialization type
+            capabilities: List of agent capabilities
+            tools_needed: List of tools the agent needs
+
+        Returns:
+            Agent ID
+        """
+        spec = AgentSpecification(
+            name=name,
+            description=f"Agent for vessel {vessel_id}",
+            capabilities=capabilities or [],
+            tools_needed=tools_needed or [],
+            specialization=specialization,
+        )
+
+        # Spawn through existing method which handles vessel integration
+        agent_ids = self.spawn_agents([spec], vessel_id=vessel_id)
+
+        if agent_ids:
+            logger.info(f"A0 built agent '{name}' ({agent_ids[0]}) for vessel {vessel_id}")
+            return agent_ids[0]
+        else:
+            raise RuntimeError(f"Failed to build agent '{name}' for vessel {vessel_id}")
+
+    def build_tool(
+        self,
+        name: str,
+        description: str,
+        vessel_id: Optional[str] = None,
+        implementation: Optional[Callable] = None,
+    ) -> Dict[str, Any]:
+        """
+        Build a new tool, optionally scoped to a vessel.
+
+        Tools are capabilities that agents can use. When built through A0,
+        tools are properly integrated with the system.
+
+        Args:
+            name: Tool name
+            description: What the tool does
+            vessel_id: Optional vessel to scope tool to
+            implementation: Optional callable implementation
+
+        Returns:
+            Dict with tool details
+        """
+        tool_id = str(uuid.uuid4())
+
+        tool_spec = {
+            "tool_id": tool_id,
+            "name": name,
+            "description": description,
+            "vessel_id": vessel_id,
+            "created_at": datetime.now().isoformat(),
+        }
+
+        # If vessel specified, add tool to vessel
+        if vessel_id and self.vessel_registry:
+            vessel = self.vessel_registry.get_vessel(vessel_id)
+            if vessel and implementation:
+                vessel.add_tool(name, implementation)
+                logger.info(f"A0 built tool '{name}' for vessel {vessel_id}")
+
+        # Store in tool system if available
+        if self.tool_system and hasattr(self.tool_system, 'register_tool'):
+            self.tool_system.register_tool(tool_spec)
+
+        return tool_spec
+
+    def get_project(self, project_id: str) -> Optional[Any]:
+        """Get a project by ID."""
+        if hasattr(self, '_projects'):
+            return self._projects.get(project_id)
+        return None
+
+    def get_user_projects(self, user_id: str) -> List[Dict[str, Any]]:
+        """Get all projects owned by or accessible to a user."""
+        if not hasattr(self, '_projects'):
+            return []
+
+        results = []
+        for project in self._projects.values():
+            if project.is_member(user_id):
+                results.append(project.to_dict())
+        return results
+
+    def get_project_vessels(self, project_id: str) -> List[str]:
+        """Get all vessel IDs in a project."""
+        project = self.get_project(project_id)
+        if project:
+            return list(project.vessel_ids)
+        return []
+
+    # =========================================================================
+    # END UNIVERSAL BUILDER METHODS
+    # =========================================================================
+
     def interpret_community_needs(self, need_description: str) -> List[AgentSpecification]:
         """Interpret natural language community needs into agent specifications"""
         
