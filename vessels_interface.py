@@ -26,6 +26,7 @@ from grant_coordination_system import grant_system
 from adaptive_tools import adaptive_tools
 from vessels.core import VesselContext, VesselRegistry
 from vessels.agents.birth_agent import BirthAgent
+from vessels.agents.llm_service import get_llm_callable
 
 logger = logging.getLogger(__name__)
 
@@ -72,7 +73,15 @@ class VesselsInterface:
         self.interface_thread = None
         self.running = False
         self.vessel_registry = vessel_registry or VesselRegistry()
+
+        # Use provided llm_call or get default from LLM service
         self.llm_call = llm_call
+        if self.llm_call is None:
+            try:
+                self.llm_call = get_llm_callable()
+            except Exception as e:
+                logger.warning(f"Could not initialize LLM service: {e}")
+                self.llm_call = None
 
         # Initialize Birth Agent for vessel creation
         self.birth_agent = BirthAgent(

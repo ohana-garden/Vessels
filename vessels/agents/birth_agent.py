@@ -27,14 +27,49 @@ logger = logging.getLogger(__name__)
 
 class BirthPhase(str, Enum):
     """Phases of vessel birth."""
-    AWAKENING = "awakening"      # Initial contact - what do you want to create?
+    AWAKENING = "awakening"        # Initial contact - what do you want to create?
     INTERVIEWING = "interviewing"  # Gathering context through questions
-    RESEARCHING = "researching"   # Birth agent researches/analyzes
-    PROPOSING = "proposing"       # Nascent vessel proposes its persona
-    REFINING = "refining"         # User adjusts the proposal
-    BIRTHING = "birthing"         # Creating the vessel
-    BORN = "born"                 # Vessel is alive
-    ABANDONED = "abandoned"       # User abandoned the process
+    RESEARCHING = "researching"    # Birth agent researches/analyzes
+    PROPOSING = "proposing"        # Nascent vessel proposes its persona
+    REFINING = "refining"          # User adjusts the proposal
+    BIRTHING = "birthing"          # Creating the vessel
+    BORN = "born"                  # Vessel is alive
+    ABANDONED = "abandoned"        # User abandoned the process
+
+
+# Prompt for researching context about what user wants to create
+RESEARCH_PROMPT = """You are researching context to help birth a new vessel (personified digital twin).
+
+The user wants to create a vessel for: {subject}
+
+Here's what we know from the interview:
+- Name: {proposed_name}
+- Purpose: {purpose}
+- Audience: {audience}
+- Core truth: {core_truth}
+- Voice style: {voice_style}
+
+{knowledge_context}
+
+Based on this, provide insights that will help create a rich, authentic persona for this vessel:
+
+1. What are key characteristics of a {subject} that should inform the vessel's personality?
+2. What knowledge domains should this vessel embody?
+3. What kind of relationship should it have with its users?
+4. What voice/tone would feel authentic for representing {subject}?
+5. What values are central to {subject}?
+
+Respond with a JSON object:
+{{
+  "characteristics": ["key traits that should inform persona"],
+  "knowledge_domains": ["areas of expertise"],
+  "relationship_style": "description of how it should relate to users",
+  "authentic_voice": "description of authentic voice/tone",
+  "core_values": ["fundamental values"],
+  "insights": "any other insights for persona creation"
+}}
+
+JSON response:"""
 
 
 @dataclass
@@ -52,6 +87,18 @@ class PersonaProposal:
 
 
 @dataclass
+class ResearchFindings:
+    """Results from researching context for vessel creation."""
+    characteristics: List[str] = field(default_factory=list)
+    knowledge_domains: List[str] = field(default_factory=list)
+    relationship_style: str = ""
+    authentic_voice: str = ""
+    core_values: List[str] = field(default_factory=list)
+    insights: str = ""
+    knowledge_graph_context: List[Dict[str, Any]] = field(default_factory=list)
+
+
+@dataclass
 class BirthSession:
     """Tracks a vessel birth conversation."""
     session_id: str
@@ -62,6 +109,9 @@ class BirthSession:
     subject: str = ""  # What the vessel is for (garden, community, business, etc.)
     subject_details: Dict[str, Any] = field(default_factory=dict)
     interview_responses: Dict[str, str] = field(default_factory=dict)
+
+    # Research findings
+    research: Optional[ResearchFindings] = None
 
     # The proposal
     proposal: Optional[PersonaProposal] = None
@@ -142,7 +192,7 @@ JSON response:"""
     # Prompt for generating the vessel's persona proposal
     PERSONA_PROPOSAL_PROMPT = """You are helping birth a new vessel - a personified digital twin.
 
-Based on the interview with the creator, generate a persona proposal for the nascent vessel.
+Based on the interview with the creator and research findings, generate a persona proposal for the nascent vessel.
 
 Interview responses:
 - What it's for: {subject}
@@ -152,7 +202,11 @@ Interview responses:
 - Core truth to remember: {core_truth}
 - Voice style: {voice_style}
 
+Research findings:
+{research_context}
+
 Generate a persona that feels alive and coherent. The vessel should feel like a real entity, not a chatbot.
+Incorporate the research insights to make the persona authentic and grounded.
 
 Respond with ONLY a JSON object:
 {{
@@ -372,7 +426,7 @@ What do you want to create a vessel for?"""
         elif session.current_question_index == 4:
             session.subject_details["voice_style"] = message
 
-        # Move to next question or transition to proposal
+        # Move to next question or transition to research
         session.current_question_index += 1
 
         if session.current_question_index < len(self.CORE_QUESTIONS):
@@ -380,9 +434,140 @@ What do you want to create a vessel for?"""
                 "message": self.CORE_QUESTIONS[session.current_question_index]
             }
         else:
-            # Interview complete - generate proposal
-            session.phase = BirthPhase.PROPOSING
-            return self._generate_proposal(session)
+            # Interview complete - research then propose
+            session.phase = BirthPhase.RESEARCHING
+            return self._conduct_research(session)
+
+    def _conduct_research(self, session: BirthSession) -> Dict[str, str]:
+        """Research context to inform persona creation."""
+        details = session.subject_details
+
+        # Query knowledge graph for relevant context
+        knowledge_context = self._query_knowledge_graph(session)
+
+        # Use LLM to research and synthesize insights
+        research = self._research_with_llm(session, details, knowledge_context)
+
+        session.research = research
+
+        # Transition to proposal generation
+        session.phase = BirthPhase.PROPOSING
+
+        # Generate proposal informed by research
+        return self._generate_proposal(session)
+
+    def _query_knowledge_graph(self, session: BirthSession) -> str:
+        """Query knowledge graph for context about the subject."""
+        if not self.memory_backend:
+            return ""
+
+        try:
+            # Search for relevant memories/knowledge
+            subject = session.subject
+            details = session.subject_details
+
+            # Try to find related entities and knowledge
+            search_terms = [
+                subject,
+                details.get("purpose", ""),
+                details.get("audience", "")
+            ]
+
+            context_pieces = []
+
+            for term in search_terms:
+                if not term:
+                    continue
+
+                # Query the memory backend
+                if hasattr(self.memory_backend, 'search'):
+                    results = self.memory_backend.search(term, limit=3)
+                    for result in results:
+                        if hasattr(result, 'content'):
+                            context_pieces.append(str(result.content))
+                elif hasattr(self.memory_backend, 'graphiti'):
+                    # Direct graphiti query
+                    results = self.memory_backend.graphiti.search_nodes(term, limit=3)
+                    for result in results:
+                        context_pieces.append(str(result))
+
+            if context_pieces:
+                return "Relevant knowledge from community memory:\n" + "\n".join(
+                    f"- {piece[:200]}..." if len(piece) > 200 else f"- {piece}"
+                    for piece in context_pieces[:5]
+                )
+
+        except Exception as e:
+            logger.debug(f"Knowledge graph query failed: {e}")
+
+        return ""
+
+    def _research_with_llm(
+        self,
+        session: BirthSession,
+        details: Dict[str, Any],
+        knowledge_context: str
+    ) -> ResearchFindings:
+        """Use LLM to research and synthesize insights for persona creation."""
+        if not self.llm_call:
+            # Return empty research if no LLM
+            return ResearchFindings()
+
+        try:
+            prompt = RESEARCH_PROMPT.format(
+                subject=session.subject,
+                proposed_name=details.get("proposed_name", session.subject),
+                purpose=details.get("purpose", "to serve"),
+                audience=details.get("audience", "anyone who needs it"),
+                core_truth=details.get("core_truth", ""),
+                voice_style=details.get("voice_style", "warm and helpful"),
+                knowledge_context=knowledge_context or "No additional context available."
+            )
+
+            response = self.llm_call(prompt)
+            result = self._parse_json_response(response)
+
+            if result:
+                return ResearchFindings(
+                    characteristics=result.get("characteristics", []),
+                    knowledge_domains=result.get("knowledge_domains", []),
+                    relationship_style=result.get("relationship_style", ""),
+                    authentic_voice=result.get("authentic_voice", ""),
+                    core_values=result.get("core_values", []),
+                    insights=result.get("insights", "")
+                )
+
+        except Exception as e:
+            logger.error(f"Research with LLM failed: {e}")
+
+        return ResearchFindings()
+
+    def _format_research_context(self, research: Optional[ResearchFindings]) -> str:
+        """Format research findings into a context string for the prompt."""
+        if not research:
+            return "No research findings available."
+
+        parts = []
+
+        if research.characteristics:
+            parts.append(f"Key characteristics: {', '.join(research.characteristics)}")
+
+        if research.knowledge_domains:
+            parts.append(f"Knowledge domains: {', '.join(research.knowledge_domains)}")
+
+        if research.relationship_style:
+            parts.append(f"Relationship style: {research.relationship_style}")
+
+        if research.authentic_voice:
+            parts.append(f"Authentic voice: {research.authentic_voice}")
+
+        if research.core_values:
+            parts.append(f"Core values: {', '.join(research.core_values)}")
+
+        if research.insights:
+            parts.append(f"Additional insights: {research.insights}")
+
+        return "\n".join(parts) if parts else "No research findings available."
 
     def _generate_proposal(self, session: BirthSession) -> Dict[str, str]:
         """Generate the nascent vessel's persona proposal using LLM."""
@@ -425,13 +610,17 @@ Does this feel right? You can tell me to adjust anything - my name, how I speak,
     ) -> PersonaProposal:
         """Generate persona using LLM for richer, more coherent proposals."""
 
+        # Build research context string
+        research_context = self._format_research_context(session.research)
+
         prompt = self.PERSONA_PROPOSAL_PROMPT.format(
             subject=session.subject,
             proposed_name=details.get("proposed_name", session.subject),
             purpose=details.get("purpose", "to serve"),
             audience=details.get("audience", "anyone who needs it"),
             core_truth=details.get("core_truth", ""),
-            voice_style=details.get("voice_style", "warm and helpful")
+            voice_style=details.get("voice_style", "warm and helpful"),
+            research_context=research_context
         )
 
         try:
