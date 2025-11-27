@@ -224,6 +224,22 @@ async function processVoiceInput(text) {
             });
         }
 
+        // Handle gist artifact creation
+        if (data.gist && window.VesselsArtifacts) {
+            setTimeout(() => {
+                window.VesselsArtifacts.create({
+                    type: data.gist.type,
+                    content: data.gist.content,
+                    context: data.gist.context,
+                    source: 'server'
+                });
+            }, 800); // Slight delay for dramatic effect
+        } else if (window.VesselsArtifacts) {
+            // Client-side gist detection as fallback
+            const responseText = JSON.stringify(data.content_data || {});
+            window.VesselsArtifacts.processForGists(responseText, 'assistant');
+        }
+
         // Add to session context
         state.sessionContext.push({
             type: 'assistant',
@@ -677,7 +693,8 @@ function initializeKeyboardShortcuts() {
             '5': "When can volunteers help?",
             'h': () => toggleHelp(),
             'a': () => toggleAgentPanel(),
-            'd': () => showDashboard()
+            'd': () => showDashboard(),
+            'g': () => window.toggleArtifactGallery && toggleArtifactGallery()
         };
 
         const action = shortcuts[e.key];
@@ -804,8 +821,12 @@ function closeAllOverlays() {
     document.getElementById('onboardingOverlay').classList.remove('active');
     document.getElementById('helpOverlay').classList.remove('open');
     document.getElementById('agentPanel').classList.remove('open');
+    document.getElementById('artifactGallery')?.classList.remove('open');
     state.agentPanelOpen = false;
     state.helpOpen = false;
+    if (window.VesselsArtifacts) {
+        window.VesselsArtifacts.state.galleryOpen = false;
+    }
 }
 
 async function checkBackendConnection() {

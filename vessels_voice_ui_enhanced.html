@@ -1003,6 +1003,7 @@
             margin: 0 4px;
         }
     </style>
+    <link rel="stylesheet" href="vessels_artifacts.css">
 </head>
 <body>
     <!-- Skip Link for Accessibility -->
@@ -1057,6 +1058,7 @@
             <div class="help-item"><span class="keyboard-shortcut">1-5</span> Quick test commands</div>
             <div class="help-item"><span class="keyboard-shortcut">h</span> Toggle help</div>
             <div class="help-item"><span class="keyboard-shortcut">a</span> Toggle agent panel</div>
+            <div class="help-item"><span class="keyboard-shortcut">g</span> Toggle artifact gallery</div>
             <div class="help-item"><span class="keyboard-shortcut">Esc</span> Close overlays</div>
         </div>
 
@@ -1066,6 +1068,17 @@
             <div class="help-item">🌺 Elder care coordination</div>
             <div class="help-item">🍛 Food distribution tracking</div>
             <div class="help-item">📅 Volunteer scheduling</div>
+        </div>
+
+        <div class="help-section">
+            <h3 class="help-section-title">✨ Artifacts</h3>
+            <div class="help-item">Meaningful moments crystallize into visual artifacts</div>
+            <div class="help-item">💡 Insights - new understandings</div>
+            <div class="help-item">✓ Decisions - choices made</div>
+            <div class="help-item">→ Actions - things to do</div>
+            <div class="help-item">💎 Resources - grants & assets found</div>
+            <div class="help-item">🔗 Connections - relationships</div>
+            <div class="help-item">⭐ Milestones - achievements</div>
         </div>
     </aside>
 
@@ -1187,6 +1200,35 @@
         </button>
     </nav>
 
+    <!-- Artifact Gallery Button -->
+    <button class="artifact-gallery-btn" onclick="toggleArtifactGallery()" aria-label="View artifacts">
+        ✨
+        <span class="artifact-count" id="artifactCount" style="display: none;">0</span>
+    </button>
+
+    <!-- Artifact Gallery Panel -->
+    <aside class="artifact-gallery" id="artifactGallery" role="complementary" aria-label="Artifact gallery">
+        <div class="gallery-header">
+            <h2 class="gallery-title">
+                <span class="gallery-title-icon">✨</span>
+                Crystallized Moments
+            </h2>
+            <div class="gallery-filters">
+                <button class="gallery-filter-btn active" data-filter="all" onclick="filterArtifacts('all')">All</button>
+                <button class="gallery-filter-btn" data-filter="insight" onclick="filterArtifacts('insight')">💡</button>
+                <button class="gallery-filter-btn" data-filter="decision" onclick="filterArtifacts('decision')">✓</button>
+                <button class="gallery-filter-btn" data-filter="action" onclick="filterArtifacts('action')">→</button>
+                <button class="gallery-filter-btn" data-filter="resource" onclick="filterArtifacts('resource')">💎</button>
+                <button class="gallery-filter-btn" data-filter="connection" onclick="filterArtifacts('connection')">🔗</button>
+                <button class="gallery-filter-btn" data-filter="milestone" onclick="filterArtifacts('milestone')">⭐</button>
+            </div>
+        </div>
+        <div class="gallery-content" id="artifactGalleryContent">
+            <!-- Artifacts populated by JS -->
+        </div>
+    </aside>
+
     <script src="vessels_enhanced_ui.js"></script>
+    <script src="vessels_gist_artifacts.js"></script>
 </body>
 </html>
