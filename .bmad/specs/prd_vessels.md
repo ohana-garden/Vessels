@@ -49,9 +49,23 @@ What works for Puna — accessible, voice-first, culturally aware, relationship-
 
 ## Core Concepts
 
+### Project (Community)
+
+A **project** is a bounded collaborative space — what might traditionally be called a "community." A project provides:
+
+- **Shared Context**: Knowledge graph, memory, and resources accessible to all vessels within
+- **Privacy Boundaries**: Rules for what can be shared externally
+- **Governance**: Who can create vessels, invite members, set policies
+- **Collaboration Scope**: Vessels within a project can freely discover and coordinate with each other
+
+A project can host **N vessels**. Examples:
+- A farm project with vessels for the garden, irrigation system, and harvest tracker
+- A neighborhood project with vessels for different concerns, resources, or working groups
+- A personal project with just one vessel (community of one)
+
 ### Digital Twin
 
-A digital representation of something that exists in the world — a place, organization, body of knowledge, project, or any entity the creator cares about. The twin maintains:
+A digital representation of something that exists in the world — a place, organization, body of knowledge, system, or any entity the creator cares about. The twin maintains:
 
 - **Identity**: Who/what it represents
 - **Memory**: Accumulated knowledge, interactions, and context
@@ -76,6 +90,30 @@ The fusion of digital twin and personification. A vessel is not just data with a
 - Can act on behalf of what it represents
 - Collaborates with other vessels and humans
 - Grows and evolves through relationship
+
+Vessels live **within projects**. When you create a vessel, you're either:
+- Adding it to an existing project
+- Implicitly creating a new project to contain it
+
+### Agent Zero (A0) — The Universal Builder
+
+**A0 is THE main core.** Everything in Vessels is built through A0:
+
+```
+A0.build_project(description)  → Bounded collaborative space
+A0.build_vessel(project_id)    → Personified entity within a project
+A0.build_agent(vessel_id)      → Worker agent for a vessel
+A0.build_tool(specification)   → Capability for agents
+```
+
+Everything born through A0 inherits:
+- Connection to the knowledge graph
+- Memory backend (namespaced appropriately)
+- Action gating (moral constraints)
+- LLM capability for thinking
+- Ability to spawn children (projects spawn vessels, vessels spawn agents)
+
+This isn't assembly — it's organic growth from a single point. A0 understands what a vessel needs to function and wires it all together.
 
 ---
 
@@ -122,13 +160,15 @@ The fusion of digital twin and personification. A vessel is not just data with a
 
 ## Functional Requirements
 
-### F1: Vessel Creation (Digital Twin)
+### F1: Project & Vessel Creation
 
-1. **Quick Start Creation** — Create a basic vessel with name, description, and purpose in under 2 minutes via mobile
-2. **Guided Setup Wizard** — Step-by-step flow for defining vessel identity, memory sources, and capabilities
-3. **Import & Seed** — Populate vessel memory from documents, conversations, or existing data sources
-4. **Template Library** — Pre-configured vessel templates for common use cases (garden, business, community, project, etc.)
-5. **Clone & Fork** — Create new vessels based on existing vessel configurations
+1. **Conversational Birth** — Create vessels through natural conversation with A0. Point at something, name it, answer questions, vessel proposes its own persona, user refines.
+2. **Implicit Project Creation** — First vessel for a user creates a default project; subsequent vessels can join existing projects or spawn new ones
+3. **Project Management** — Create, configure, and manage bounded collaborative spaces with their own knowledge/memory scope
+4. **Import & Seed** — Populate vessel memory from documents, conversations, or existing data sources
+5. **Template Library** — Pre-configured vessel templates for common use cases (garden, business, community, system, etc.)
+6. **Clone & Fork** — Create new vessels based on existing vessel configurations
+7. **Multi-Vessel Projects** — Add multiple vessels to a single project; vessels inherit project context and can collaborate
 
 ### F2: Personification System
 
