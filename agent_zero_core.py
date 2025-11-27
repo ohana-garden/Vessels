@@ -396,6 +396,19 @@ class AgentZeroCore:
 
         logger.info(f"A0 built vessel '{name}' ({vessel.vessel_id}) in project {project_id}")
 
+        # Proactively inform vessel of available capabilities
+        capability_recommendations = None
+        if self.mcp_explorer and persona:
+            vessel_type = persona.get("subject", name)
+            capability_recommendations = self.mcp_explorer.recommend_capabilities_for_vessel(
+                vessel_id=vessel.vessel_id,
+                vessel_type=vessel_type,
+            )
+            logger.info(
+                f"Recommended {len(capability_recommendations.get('recommendations', {}).get('essential', []))} "
+                f"essential capabilities for vessel '{name}'"
+            )
+
         return {
             "vessel_id": vessel.vessel_id,
             "name": vessel.name,
@@ -403,6 +416,7 @@ class AgentZeroCore:
             "project_id": project_id,
             "graph_namespace": vessel.graph_namespace,
             "persona": persona,
+            "capability_recommendations": capability_recommendations,
         }
 
     def build_agent(
@@ -645,6 +659,62 @@ class AgentZeroCore:
         if self.mcp_explorer:
             return self.mcp_explorer.get_stats()
         return {"error": "MCP Explorer not initialized"}
+
+    def get_vessel_capability_options(self, vessel_id: str) -> Dict[str, Any]:
+        """
+        Let a vessel ask "what can I do?" - returns all available capabilities.
+
+        Vessels don't know what they don't know. This lets them (or their users)
+        discover what capabilities are available to connect to.
+
+        Args:
+            vessel_id: The vessel asking
+
+        Returns:
+            Dict with connected and available capabilities
+        """
+        if self.mcp_explorer:
+            return self.mcp_explorer.get_capability_options(vessel_id)
+        return {
+            "vessel_id": vessel_id,
+            "currently_connected": [],
+            "available_to_add": [],
+            "message": "MCP Explorer not available"
+        }
+
+    def recommend_capabilities(
+        self,
+        vessel_id: str,
+        vessel_type: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Get proactive capability recommendations for a vessel.
+
+        Can be called at any time to get updated recommendations based on
+        what the vessel is and what's available.
+
+        Args:
+            vessel_id: The vessel to recommend for
+            vessel_type: Optional vessel type (will lookup from registry if not provided)
+
+        Returns:
+            Dict with categorized recommendations and human-readable message
+        """
+        if not self.mcp_explorer:
+            return {"error": "MCP Explorer not available", "recommendations": {}}
+
+        # Try to get vessel type from registry if not provided
+        if not vessel_type and self.vessel_registry:
+            vessel = self.vessel_registry.get_vessel(vessel_id)
+            if vessel and vessel.connectors.get("persona"):
+                vessel_type = vessel.connectors["persona"].get("subject", "general")
+
+        vessel_type = vessel_type or "general"
+
+        return self.mcp_explorer.recommend_capabilities_for_vessel(
+            vessel_id=vessel_id,
+            vessel_type=vessel_type,
+        )
 
     # =========================================================================
     # END UNIVERSAL BUILDER METHODS

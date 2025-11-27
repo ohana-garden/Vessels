@@ -723,6 +723,185 @@ class MCPExplorer:
             "last_health_check": self.last_health_check.isoformat() if self.last_health_check else None,
         }
 
+    # =========================================================================
+    # PROACTIVE CAPABILITY AWARENESS
+    # Vessels don't know what they don't know - we inform them of options
+    # =========================================================================
+
+    def recommend_capabilities_for_vessel(
+        self,
+        vessel_id: str,
+        vessel_type: str,
+        vessel_domains: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Proactively recommend capabilities for a newly born vessel.
+
+        Vessels don't know what's available to them. When a vessel is born,
+        we analyze its type/domain and recommend relevant MCP servers
+        it might want to use.
+
+        Args:
+            vessel_id: The vessel's ID
+            vessel_type: What the vessel is for (garden, community, business, etc.)
+            vessel_domains: Optional additional domains of interest
+
+        Returns:
+            Dict with categorized recommendations
+        """
+        vessel_type_lower = vessel_type.lower() if vessel_type else ""
+        domains = [d.lower() for d in (vessel_domains or [])]
+
+        # Categorize recommendations
+        essential = []      # Highly recommended for this vessel type
+        useful = []         # Might be useful
+        available = []      # Available if needed
+
+        for server in self.servers.values():
+            # Check if this server is recommended for this vessel type
+            recommended_for = [r.lower() for r in server.recommended_for]
+            server_domains = [d.lower() for d in server.domains]
+
+            # Score relevance
+            relevance = 0
+
+            # Direct vessel type match
+            if vessel_type_lower in recommended_for:
+                relevance += 3
+
+            # Partial vessel type match
+            for rec in recommended_for:
+                if rec in vessel_type_lower or vessel_type_lower in rec:
+                    relevance += 2
+
+            # Domain match
+            for domain in domains:
+                if domain in server_domains:
+                    relevance += 1
+
+            # Check server capabilities against vessel type keywords
+            vessel_keywords = self._extract_keywords(vessel_type_lower)
+            for cap in server.capabilities:
+                if any(kw in cap.lower() for kw in vessel_keywords):
+                    relevance += 1
+
+            if relevance >= 3:
+                essential.append(self._format_recommendation(server, relevance))
+            elif relevance >= 1:
+                useful.append(self._format_recommendation(server, relevance))
+            elif server.trust_level == TrustLevel.VERIFIED:
+                available.append(self._format_recommendation(server, 0))
+
+        # Sort by relevance
+        essential.sort(key=lambda x: x["relevance"], reverse=True)
+        useful.sort(key=lambda x: x["relevance"], reverse=True)
+
+        return {
+            "vessel_id": vessel_id,
+            "vessel_type": vessel_type,
+            "recommendations": {
+                "essential": essential[:5],   # Top 5 highly recommended
+                "useful": useful[:5],         # Top 5 potentially useful
+                "available": available[:10],  # Up to 10 others available
+            },
+            "message": self._generate_recommendation_message(vessel_type, essential, useful),
+        }
+
+    def _extract_keywords(self, vessel_type: str) -> List[str]:
+        """Extract relevant keywords from vessel type for matching."""
+        # Common mappings
+        keyword_map = {
+            "garden": ["weather", "climate", "plants", "soil", "water", "irrigation"],
+            "farm": ["weather", "climate", "agriculture", "crops", "irrigation", "soil"],
+            "community": ["communication", "scheduling", "coordination", "local", "events"],
+            "business": ["email", "calendar", "scheduling", "communication", "crm"],
+            "elder": ["sms", "alerts", "emergency", "communication", "scheduling"],
+            "care": ["sms", "alerts", "scheduling", "communication", "reminders"],
+            "coordinator": ["calendar", "scheduling", "email", "communication"],
+            "project": ["calendar", "scheduling", "communication", "coordination"],
+        }
+
+        keywords = []
+        for key, words in keyword_map.items():
+            if key in vessel_type:
+                keywords.extend(words)
+
+        return list(set(keywords))
+
+    def _format_recommendation(self, server: MCPServerInfo, relevance: int) -> Dict[str, Any]:
+        """Format a server as a recommendation."""
+        return {
+            "server_id": server.server_id,
+            "name": server.name,
+            "description": server.description,
+            "capabilities": server.capabilities[:3],  # Top 3 capabilities
+            "tools": server.tools_provided,
+            "why": server.problems_it_solves[:2],     # Top 2 problems it solves
+            "cost": server.cost_model.value,
+            "auth_required": server.auth_required,
+            "relevance": relevance,
+        }
+
+    def _generate_recommendation_message(
+        self,
+        vessel_type: str,
+        essential: List[Dict],
+        useful: List[Dict],
+    ) -> str:
+        """Generate a human-readable recommendation message."""
+        if not essential and not useful:
+            return f"I'm a {vessel_type} vessel. I can explore available capabilities as needs arise."
+
+        parts = [f"As a {vessel_type} vessel, here are capabilities that might help me:"]
+
+        if essential:
+            parts.append("\n**Recommended:**")
+            for rec in essential[:3]:
+                parts.append(f"- {rec['name']}: {rec['description']}")
+
+        if useful:
+            parts.append("\n**Also available:**")
+            for rec in useful[:3]:
+                parts.append(f"- {rec['name']}: {rec['why'][0] if rec['why'] else rec['description']}")
+
+        parts.append("\nWould you like me to connect to any of these?")
+
+        return "\n".join(parts)
+
+    def get_capability_options(self, vessel_id: str) -> Dict[str, Any]:
+        """
+        Let a vessel ask "what can I do?" - returns all available capabilities.
+
+        Called when vessel or user wants to know what's possible.
+        """
+        connected = self.get_vessel_connections(vessel_id)
+        connected_ids = {c.server_id for c in connected}
+
+        connected_caps = []
+        available_caps = []
+
+        for server in self.servers.values():
+            info = {
+                "server_id": server.server_id,
+                "name": server.name,
+                "description": server.description,
+                "tools": server.tools_provided,
+                "cost": server.cost_model.value,
+            }
+
+            if server.server_id in connected_ids:
+                connected_caps.append(info)
+            else:
+                available_caps.append(info)
+
+        return {
+            "vessel_id": vessel_id,
+            "currently_connected": connected_caps,
+            "available_to_add": available_caps,
+            "message": f"You have {len(connected_caps)} capabilities connected. "
+                       f"{len(available_caps)} more are available to add."
+        }
+
 
 # Singleton instance
 mcp_explorer = MCPExplorer()
