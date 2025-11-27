@@ -12,6 +12,7 @@ import threading
 
 # Import the NEW Clean System
 from vessels.system import VesselsSystem
+from vessels_gist_extractor import get_best_gist
 
 # Configuration constants
 MAX_REQUEST_SIZE = 1024 * 1024  # 1MB
@@ -104,6 +105,13 @@ def process_voice():
                 'delay': 500
             }]
         }
+
+        # Extract gist from response if present
+        response_text = result.get('response', '') or str(result.get('data', ''))
+        gist = get_best_gist(response_text, text)
+        if gist and gist.get('confidence', 0) >= 0.7:
+            response['gist'] = gist
+
         return jsonify(response)
 
     except ValueError as e:
