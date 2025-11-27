@@ -758,40 +758,43 @@ How's that? Tell me what else to adjust, or say "that's you" when I've got it ri
         }
 
     def _complete_birth(self, session: BirthSession) -> Dict[str, str]:
-        """Complete the vessel birth - create it in the registry."""
+        """Complete the vessel birth - create through A0 within a project."""
 
         proposal = session.proposal
 
         try:
-            if self.vessel_registry:
-                from vessels.core.vessel import Vessel, PrivacyLevel
+            # Import A0 - the universal builder
+            from agent_zero_core import agent_zero
 
-                # Create the vessel
-                vessel = Vessel.create(
-                    name=proposal.name,
-                    community_id=f"user_{session.user_id}",
-                    description=proposal.purpose,
-                    privacy_level=PrivacyLevel.PRIVATE
-                )
+            # Get or create project for this user
+            project_id = self._get_or_create_user_project(session.user_id, agent_zero)
 
-                # Store persona in vessel metadata
-                vessel.connectors["persona"] = {
-                    "voice_style": proposal.voice_style,
-                    "perspective": proposal.perspective,
-                    "values": proposal.values,
-                    "relationship_mode": proposal.relationship_mode,
-                    "greeting": proposal.greeting
-                }
+            # Build persona configuration
+            persona = {
+                "voice_style": proposal.voice_style,
+                "perspective": proposal.perspective,
+                "values": proposal.values,
+                "relationship_mode": proposal.relationship_mode,
+                "greeting": proposal.greeting,
+                "subject": session.subject,
+            }
 
-                # Save to registry
-                self.vessel_registry.save_vessel(vessel)
-                session.created_vessel_id = vessel.vessel_id
-            else:
-                # No registry - just generate an ID
-                session.created_vessel_id = str(uuid.uuid4())
+            # Use A0 to build the vessel within the project
+            vessel_result = agent_zero.build_vessel(
+                name=proposal.name,
+                project_id=project_id,
+                description=proposal.description,
+                persona=persona,
+            )
 
+            session.created_vessel_id = vessel_result["vessel_id"]
             session.phase = BirthPhase.BORN
             session.born_at = datetime.utcnow()
+
+            logger.info(
+                f"Vessel '{proposal.name}' born in project {project_id} "
+                f"(vessel_id: {session.created_vessel_id})"
+            )
 
             # The vessel speaks its first words
             return {
@@ -807,6 +810,28 @@ What would you like to explore together?"""
             return {
                 "message": f"I encountered an issue during birth: {e}. Let's try again - tell me about yourself once more."
             }
+
+    def _get_or_create_user_project(self, user_id: str, agent_zero) -> str:
+        """Get user's default project or create one."""
+
+        # Check if user has any projects
+        user_projects = agent_zero.get_user_projects(user_id)
+
+        if user_projects:
+            # Use their first (default) project
+            return user_projects[0]["project_id"]
+
+        # Create a default project for this user
+        project_result = agent_zero.build_project(
+            name=f"My Vessels",
+            owner_id=user_id,
+            description="Your personal space for vessels",
+            privacy_level="private",
+            governance="solo",
+        )
+
+        logger.info(f"Created default project for user {user_id}: {project_result['project_id']}")
+        return project_result["project_id"]
 
     def _handle_default(self, session: BirthSession, message: str) -> Dict[str, str]:
         """Handle unexpected states."""
