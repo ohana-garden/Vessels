@@ -25,6 +25,7 @@ from community_memory import community_memory
 from grant_coordination_system import grant_system
 from adaptive_tools import adaptive_tools
 from vessels.core import VesselContext, VesselRegistry
+from vessels.agents.birth_agent import BirthAgent
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +35,7 @@ class InteractionType(Enum):
     REQUEST = "request"
     FEEDBACK = "feedback"
     STATUS = "status"
+    VESSEL_CREATION = "vessel_creation"  # Creating a new vessel
 
 @dataclass
 class UserInteraction:
@@ -50,13 +52,19 @@ class UserInteraction:
 class VesselsInterface:
     """Natural language interface for Vessels platform"""
 
-    def __init__(self, vessel_registry: Optional[VesselRegistry] = None):
+    def __init__(
+        self,
+        vessel_registry: Optional[VesselRegistry] = None,
+        llm_call: Optional[callable] = None
+    ):
         """
         Initialize Vessels Interface.
 
         Args:
             vessel_registry: Optional vessel registry for vessel context resolution.
                            If not provided, vessel features will be disabled.
+            llm_call: Optional function to call LLM for semantic understanding.
+                     Signature: llm_call(prompt: str) -> str
         """
         self.interactions: Dict[str, UserInteraction] = {}
         self.user_contexts: Dict[str, Dict[str, Any]] = {}
@@ -64,6 +72,13 @@ class VesselsInterface:
         self.interface_thread = None
         self.running = False
         self.vessel_registry = vessel_registry or VesselRegistry()
+        self.llm_call = llm_call
+
+        # Initialize Birth Agent for vessel creation
+        self.birth_agent = BirthAgent(
+            vessel_registry=self.vessel_registry,
+            llm_call=self.llm_call
+        )
 
         self.initialize_interface()
     
@@ -156,9 +171,15 @@ class VesselsInterface:
             return context
     
     def _classify_interaction(self, message: str) -> InteractionType:
-        """Classify the type of user interaction"""
+        """Classify the type of user interaction using semantic understanding."""
         message_lower = message.lower().strip()
-        
+
+        # First, check for vessel creation intent (semantic detection)
+        creation_intent = self.birth_agent.detect_creation_intent(message)
+        if creation_intent.get("wants_to_create") and creation_intent.get("confidence", 0) > 0.5:
+            logger.info(f"Detected vessel creation intent: {creation_intent.get('reasoning')}")
+            return InteractionType.VESSEL_CREATION
+
         # Command patterns
         command_patterns = [
             r'vessels\s+(start|begin|initiate|launch|deploy)',
@@ -166,7 +187,7 @@ class VesselsInterface:
             r'run\s+(grant|coordination|management)',
             r'activate\s+(system|platform|agents)'
         ]
-        
+
         # Question patterns
         question_patterns = [
             r'what\s+(is|are|can|do|does)',
@@ -175,7 +196,7 @@ class VesselsInterface:
             r'where\s+(can|do|is)',
             r'why\s+(is|are|do|does)'
         ]
-        
+
         # Status patterns
         status_patterns = [
             r'status\s+(of|on|for)',
@@ -183,10 +204,10 @@ class VesselsInterface:
             r'what\'s\s+the\s+(status|progress|update)',
             r'show\s+(status|progress|results)'
         ]
-        
+
         # Check patterns
         import re
-        
+
         if any(re.search(pattern, message_lower) for pattern in command_patterns):
             return InteractionType.COMMAND
         elif any(re.search(pattern, message_lower) for pattern in question_patterns):
@@ -201,13 +222,21 @@ class VesselsInterface:
     def _process_interaction(self, interaction: UserInteraction) -> Dict[str, Any]:
         """Process the user interaction and generate response"""
 
-        # First check if this is a response to an active consultation
+        # First check if user has an active vessel birth session
+        if self.birth_agent.has_active_session(interaction.user_id):
+            return self._process_birth_conversation(interaction)
+
+        # Check if this is a response to an active consultation
         consultation_response = self._check_for_consultation(
             interaction.user_id,
             interaction.message
         )
         if consultation_response:
             return consultation_response
+
+        # Check for vessel creation intent (semantic detection)
+        if interaction.interaction_type == InteractionType.VESSEL_CREATION:
+            return self._process_birth_conversation(interaction)
 
         if interaction.interaction_type == InteractionType.COMMAND:
             return self._process_command(interaction)
@@ -217,6 +246,20 @@ class VesselsInterface:
             return self._process_status_request(interaction)
         else:
             return self._process_request(interaction)
+
+    def _process_birth_conversation(self, interaction: UserInteraction) -> Dict[str, Any]:
+        """Process a message in the context of vessel birth."""
+        result = self.birth_agent.process_message(
+            interaction.user_id,
+            interaction.message
+        )
+
+        return {
+            "response": result["response"],
+            "birth_phase": result.get("phase"),
+            "vessel_id": result.get("vessel_id"),
+            "follow_up_needed": result.get("follow_up_needed", False)
+        }
     
     def _process_command(self, interaction: UserInteraction) -> Dict[str, Any]:
         """Process command-type interaction"""
