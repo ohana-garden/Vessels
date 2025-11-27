@@ -250,71 +250,130 @@ class MCPExplorer:
         self._seed_known_servers()
 
     def _seed_known_servers(self):
-        """Seed the catalog with well-known MCP servers."""
-        # These would be real MCP servers in production
+        """Seed the catalog with well-known MCP servers that EXTEND vessel capabilities.
+
+        Note: We don't include servers that replace our tech stack (postgres, storage, etc.)
+        Only servers that give vessels new capabilities they couldn't have otherwise.
+        """
         known_servers = [
+            # Weather - critical for garden/agriculture vessels
             MCPServerInfo(
-                server_id="filesystem-mcp",
-                name="Filesystem MCP",
-                description="Access to local filesystem for reading and writing files",
-                endpoint="npx @modelcontextprotocol/server-filesystem",
-                capabilities=["file_access", "file_management", "directory_operations"],
-                tools_provided=["read_file", "write_file", "list_directory", "create_directory"],
-                problems_it_solves=["need to read files", "need to write files", "file management"],
-                domains=["general", "development", "data"],
+                server_id="weather-mcp",
+                name="Weather MCP",
+                description="Weather forecasts, current conditions, and climate data",
+                endpoint="npx @mcp/weather",
+                capabilities=["weather", "forecasting", "climate", "temperature", "precipitation"],
+                tools_provided=["get_forecast", "get_current_weather", "get_historical", "get_alerts"],
+                problems_it_solves=["need weather data", "forecast planning", "climate information", "weather alerts"],
+                domains=["agriculture", "gardening", "outdoor_activities", "planning", "events"],
                 trust_level=TrustLevel.VERIFIED,
-                cost_model=CostModel.FREE,
-                source="official",
+                cost_model=CostModel.FREE_TIER,
+                recommended_for=["garden", "farm", "outdoor", "events"],
+                source="community",
             ),
+            # Maps/Geocoding - location awareness for community vessels
             MCPServerInfo(
-                server_id="github-mcp",
-                name="GitHub MCP",
-                description="GitHub API access for repositories, issues, PRs",
-                endpoint="npx @modelcontextprotocol/server-github",
-                capabilities=["github", "version_control", "code_hosting", "issues", "pull_requests"],
-                tools_provided=["search_repos", "get_file_contents", "create_issue", "list_prs"],
-                problems_it_solves=["need to access github", "code management", "issue tracking"],
-                domains=["development", "project_management"],
+                server_id="maps-mcp",
+                name="Maps & Geocoding MCP",
+                description="Location services, geocoding, directions, and place information",
+                endpoint="npx @mcp/maps",
+                capabilities=["maps", "geocoding", "directions", "places", "location"],
+                tools_provided=["geocode", "reverse_geocode", "get_directions", "search_places", "get_distance"],
+                problems_it_solves=["need location data", "find places", "get directions", "distance calculation"],
+                domains=["community", "logistics", "local_services", "navigation"],
+                trust_level=TrustLevel.VERIFIED,
+                cost_model=CostModel.FREE_TIER,
+                recommended_for=["community", "local", "logistics", "delivery"],
+                source="community",
+            ),
+            # Calendar/Scheduling - coordination for any vessel
+            MCPServerInfo(
+                server_id="calendar-mcp",
+                name="Calendar MCP",
+                description="Calendar integration for scheduling, events, and availability",
+                endpoint="npx @mcp/google-calendar",
+                capabilities=["calendar", "scheduling", "events", "availability", "reminders"],
+                tools_provided=["list_events", "create_event", "check_availability", "set_reminder"],
+                problems_it_solves=["need to schedule", "check calendar", "coordinate timing", "event management"],
+                domains=["coordination", "scheduling", "community", "business"],
                 trust_level=TrustLevel.VERIFIED,
                 cost_model=CostModel.FREE,
                 auth_required=True,
-                auth_type="api_key",
+                auth_type="oauth",
+                recommended_for=["coordinator", "community", "business", "project"],
                 source="official",
             ),
+            # Email/Communication - outreach for any vessel
+            MCPServerInfo(
+                server_id="email-mcp",
+                name="Email MCP",
+                description="Send and manage email communications",
+                endpoint="npx @mcp/email",
+                capabilities=["email", "communication", "notifications", "outreach"],
+                tools_provided=["send_email", "list_emails", "search_emails", "create_draft"],
+                problems_it_solves=["need to send email", "email notifications", "communication", "outreach"],
+                domains=["communication", "business", "community", "coordination"],
+                trust_level=TrustLevel.VERIFIED,
+                cost_model=CostModel.FREE,
+                auth_required=True,
+                auth_type="oauth",
+                recommended_for=["business", "community", "coordinator"],
+                source="official",
+            ),
+            # Web fetch - research capability for any vessel
             MCPServerInfo(
                 server_id="fetch-mcp",
-                name="Fetch MCP",
-                description="HTTP fetch capabilities for web requests",
+                name="Web Fetch MCP",
+                description="Fetch and parse web content for research and monitoring",
                 endpoint="npx @anthropics/mcp-server-fetch",
-                capabilities=["http", "web_requests", "api_calls", "fetch"],
-                tools_provided=["fetch"],
-                problems_it_solves=["need to make web requests", "call external APIs", "fetch web content"],
-                domains=["general", "web", "integration"],
+                capabilities=["http", "web_requests", "web_scraping", "research", "monitoring"],
+                tools_provided=["fetch", "fetch_and_parse", "check_url"],
+                problems_it_solves=["need web data", "research", "monitor websites", "fetch content"],
+                domains=["research", "monitoring", "general"],
                 trust_level=TrustLevel.VERIFIED,
                 cost_model=CostModel.FREE,
+                recommended_for=["research", "monitoring", "general"],
                 source="official",
             ),
+            # SMS/Messaging - direct communication for urgent matters
             MCPServerInfo(
-                server_id="postgres-mcp",
-                name="PostgreSQL MCP",
-                description="PostgreSQL database access and queries",
-                endpoint="npx @modelcontextprotocol/server-postgres",
-                capabilities=["database", "sql", "postgresql", "data_storage"],
-                tools_provided=["query", "list_tables", "describe_table"],
-                problems_it_solves=["need to query database", "data storage", "sql access"],
-                domains=["data", "backend", "analytics"],
+                server_id="sms-mcp",
+                name="SMS MCP",
+                description="Send SMS messages for alerts and direct communication",
+                endpoint="npx @mcp/twilio-sms",
+                capabilities=["sms", "messaging", "alerts", "notifications"],
+                tools_provided=["send_sms", "check_status"],
+                problems_it_solves=["need to text", "send alerts", "urgent notification", "direct contact"],
+                domains=["communication", "alerts", "elder_care", "emergency"],
                 trust_level=TrustLevel.VERIFIED,
-                cost_model=CostModel.FREE,
+                cost_model=CostModel.PER_CALL,
+                cost_details="~$0.01 per SMS",
                 auth_required=True,
-                auth_type="connection_string",
-                source="official",
+                auth_type="api_key",
+                recommended_for=["elder_care", "emergency", "coordinator", "alerts"],
+                source="community",
+            ),
+            # Translation - accessibility for diverse communities
+            MCPServerInfo(
+                server_id="translate-mcp",
+                name="Translation MCP",
+                description="Language translation for multilingual communication",
+                endpoint="npx @mcp/translate",
+                capabilities=["translation", "language", "multilingual", "localization"],
+                tools_provided=["translate", "detect_language", "list_languages"],
+                problems_it_solves=["need translation", "multilingual support", "language barrier"],
+                domains=["communication", "accessibility", "community", "international"],
+                trust_level=TrustLevel.VERIFIED,
+                cost_model=CostModel.FREE_TIER,
+                recommended_for=["community", "international", "accessibility"],
+                source="community",
             ),
         ]
 
         for server in known_servers:
             self.servers[server.server_id] = server
 
-        logger.info(f"MCP Explorer seeded with {len(known_servers)} known servers")
+        logger.info(f"MCP Explorer seeded with {len(known_servers)} capability-extending servers")
 
     def start(self):
         """Start the background exploration process."""
