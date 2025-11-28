@@ -40,7 +40,8 @@ class ImageStyle(str, Enum):
 
 class GenerationType(str, Enum):
     """NanoBanana generation types."""
-    TEXT_TO_IMAGE = "TEXTTOIMAGE"
+    # Note: API uses "TEXTTOIAMGE" (typo in their API)
+    TEXT_TO_IMAGE = "TEXTTOIAMGE"
     IMAGE_TO_IMAGE = "IMAGETOIMAGE"
 
 
@@ -124,7 +125,9 @@ class NanoBananaClient:
         prompt: str,
         generation_type: str = GenerationType.TEXT_TO_IMAGE,
         num_images: int = 1,
+        image_size: str = "1:1",
         image_urls: Optional[List[str]] = None,
+        callback_url: Optional[str] = None,
     ) -> Optional[str]:
         """
         Submit image generation request.
@@ -135,10 +138,14 @@ class NanoBananaClient:
             "prompt": prompt,
             "type": generation_type,
             "numImages": min(num_images, 4),
+            "image_size": image_size,
         }
 
         if image_urls:
             payload["imageUrls"] = image_urls
+
+        if callback_url:
+            payload["callBackUrl"] = callback_url
 
         try:
             response = requests.post(
@@ -244,6 +251,7 @@ class NanoBananaClient:
             prompt=full_prompt,
             generation_type=GenerationType.TEXT_TO_IMAGE,
             num_images=num_images,
+            image_size=aspect_ratio,  # API uses "image_size" for aspect ratio
         )
 
         if result is None:
