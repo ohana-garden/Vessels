@@ -130,6 +130,11 @@ class AgentZeroCore:
 
         # Tool Registry - graph-based tool management (no hardcoding!)
         self.tool_registry = None
+
+        # A2A (Agent-to-Agent) Protocol - vessel-to-vessel communication
+        self.a2a_service = None
+        self.a2a_registry = None
+        self.a2a_discovery = None
         
     def initialize(self, memory_system=None, tool_system=None):
         """
@@ -158,6 +163,9 @@ class AgentZeroCore:
 
         # Initialize Ambassador Factory for MCP server personification
         self._initialize_ambassador_factory()
+
+        # Initialize A2A Protocol for vessel-to-vessel communication
+        self._initialize_a2a()
 
         logger.info("Agent Zero Core initialized")
 
@@ -251,6 +259,76 @@ class AgentZeroCore:
         if self.ambassador_factory:
             self.ambassador_factory.llm_call = llm_call
         logger.info("LLM call function configured for AgentZeroCore")
+
+    def _initialize_a2a(self):
+        """Initialize A2A Protocol components for agent-to-agent communication."""
+        try:
+            from vessels.a2a import A2AService, AgentRegistry, A2ADiscovery, AgentCard, AgentSkill
+
+            # Create agent registry for tracking known agents
+            self.a2a_registry = AgentRegistry(
+                graphiti_client=self.memory_system
+            )
+
+            # Create A0's own agent card
+            a0_skills = [
+                AgentSkill(
+                    skill_id="vessel-orchestration",
+                    name="Vessel Orchestration",
+                    description="Spawn, manage, and coordinate vessels and agents",
+                    tags=["orchestration", "coordination", "management"],
+                    examples=["Create a vessel for my garden", "Spawn an agent to help with grants"],
+                ),
+                AgentSkill(
+                    skill_id="capability-discovery",
+                    name="Capability Discovery",
+                    description="Discover and provision capabilities from MCP servers",
+                    tags=["mcp", "discovery", "tools"],
+                    examples=["Find tools for weather forecasting", "Connect to a calendar service"],
+                ),
+                AgentSkill(
+                    skill_id="task-delegation",
+                    name="Task Delegation",
+                    description="Delegate tasks to appropriate agents or vessels",
+                    tags=["delegation", "coordination", "routing"],
+                    examples=["Route this request to a specialist agent", "Find help for grant writing"],
+                ),
+            ]
+
+            a0_card = AgentCard(
+                agent_id="agent-zero",
+                name="Agent Zero",
+                description="The universal builder and coordinator for the Vessels ecosystem",
+                skills=a0_skills,
+                provider_name="Vessels",
+                domains=["orchestration", "coordination", "meta-agent"],
+            )
+
+            # Get Nostr adapter if available
+            nostr_adapter = None
+            # (Will be connected when Nostr is configured)
+
+            # Create A2A service
+            self.a2a_service = A2AService(
+                agent_card=a0_card,
+                nostr_adapter=nostr_adapter,
+                graphiti_client=self.memory_system,
+            )
+
+            # Create discovery service
+            self.a2a_discovery = A2ADiscovery(
+                registry=self.a2a_registry,
+                nostr_adapter=nostr_adapter,
+                graphiti_client=self.memory_system,
+            )
+
+            logger.info("A2A Protocol initialized - vessels can now communicate!")
+
+        except ImportError as e:
+            logger.warning(f"Could not initialize A2A Protocol: {e}")
+            self.a2a_service = None
+            self.a2a_registry = None
+            self.a2a_discovery = None
 
     def process_birth_message(self, user_id: str, message: str) -> Dict[str, Any]:
         """
@@ -1226,6 +1304,364 @@ class AgentZeroCore:
                 for s in scores[1:3]  # Top 2 alternatives
             ],
         }
+
+    # =========================================================================
+    # A2A PROTOCOL - Agent-to-Agent Communication
+    # Implements Google's A2A protocol for vessel interoperability
+    # =========================================================================
+
+    def delegate_to_vessel(
+        self,
+        target_vessel_id: str,
+        request: str,
+        context: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Delegate a task to another vessel using A2A protocol.
+
+        This enables vessel-to-vessel collaboration where one vessel
+        can ask another for help.
+
+        Args:
+            target_vessel_id: ID of the vessel to delegate to
+            request: Natural language task request
+            context: Optional context data
+
+        Returns:
+            Dict with task info and status
+        """
+        if not self.a2a_service:
+            self._initialize_a2a()
+
+        if not self.a2a_service:
+            return {
+                "success": False,
+                "error": "A2A Protocol not available",
+            }
+
+        # Create task
+        task = self.a2a_service.delegate_task(
+            target_agent_id=target_vessel_id,
+            request=request,
+            context=context,
+        )
+
+        logger.info(f"Delegated task to vessel {target_vessel_id}: {task.task_id[:8]}...")
+
+        return {
+            "success": True,
+            "task_id": task.task_id,
+            "target_vessel_id": target_vessel_id,
+            "state": task.state.value,
+            "request": request,
+        }
+
+    def find_vessel_for_task(
+        self,
+        task_description: str,
+        domains: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Find a vessel that can handle a specific task.
+
+        Uses A2A discovery to find vessels with matching capabilities.
+
+        Args:
+            task_description: What needs to be done
+            domains: Optional domain filters
+
+        Returns:
+            Dict with recommended vessel and alternatives
+        """
+        if not self.a2a_discovery:
+            return {
+                "success": False,
+                "error": "A2A Discovery not available",
+                "recommendations": [],
+            }
+
+        # Find matching agents
+        matches = self.a2a_discovery.find_for_need(
+            need=task_description,
+            domains=domains,
+            limit=5,
+        )
+
+        if not matches:
+            return {
+                "success": False,
+                "error": f"No vessels found for: {task_description}",
+                "recommendations": [],
+            }
+
+        # Format results
+        recommendations = []
+        for card in matches:
+            recommendations.append({
+                "vessel_id": card.vessel_id,
+                "name": card.name,
+                "description": card.description,
+                "skills": [s.name for s in card.skills[:3]],
+                "domains": card.domains,
+            })
+
+        return {
+            "success": True,
+            "best_match": recommendations[0] if recommendations else None,
+            "recommendations": recommendations,
+            "query": task_description,
+        }
+
+    def open_vessel_channel(
+        self,
+        from_vessel_id: str,
+        to_vessel_id: str,
+    ) -> Dict[str, Any]:
+        """
+        Open a direct communication channel between two vessels.
+
+        Channels enable ongoing conversations without creating
+        new tasks for each message.
+
+        Args:
+            from_vessel_id: Source vessel
+            to_vessel_id: Target vessel
+
+        Returns:
+            Dict with channel info
+        """
+        if not self.a2a_service:
+            return {
+                "success": False,
+                "error": "A2A Protocol not available",
+            }
+
+        # Get target's agent card if known
+        target_card = None
+        if self.a2a_registry:
+            entry = self.a2a_registry.get(to_vessel_id)
+            if entry:
+                target_card = entry.agent_card
+
+        channel = self.a2a_service.open_channel(
+            remote_agent_id=to_vessel_id,
+            remote_agent_card=target_card,
+        )
+
+        logger.info(f"Opened A2A channel {channel.channel_id[:8]}... between vessels")
+
+        return {
+            "success": True,
+            "channel_id": channel.channel_id,
+            "from_vessel_id": from_vessel_id,
+            "to_vessel_id": to_vessel_id,
+        }
+
+    def send_vessel_message(
+        self,
+        channel_id: str,
+        message: str,
+        data: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Send a message on a vessel communication channel.
+
+        Args:
+            channel_id: ID of the channel
+            message: Message text
+            data: Optional structured data
+
+        Returns:
+            Dict with message status
+        """
+        if not self.a2a_service:
+            return {
+                "success": False,
+                "error": "A2A Protocol not available",
+            }
+
+        msg = self.a2a_service.send_message(channel_id, message, data)
+
+        if msg:
+            return {
+                "success": True,
+                "message_id": msg.message_id,
+                "channel_id": channel_id,
+            }
+        else:
+            return {
+                "success": False,
+                "error": f"Failed to send message on channel {channel_id}",
+            }
+
+    def get_vessel_agent_card(self, vessel_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Get the A2A Agent Card for a vessel.
+
+        Agent Cards describe a vessel's identity and capabilities
+        in a standard format for interoperability.
+
+        Args:
+            vessel_id: ID of the vessel
+
+        Returns:
+            Agent Card as dictionary, or None if not found
+        """
+        if not self.vessel_registry:
+            return None
+
+        vessel = self.vessel_registry.get_vessel(vessel_id)
+        if not vessel:
+            return None
+
+        # Generate Agent Card from vessel
+        from vessels.a2a.discovery import vessel_to_agent_card
+        card = vessel_to_agent_card(vessel)
+
+        return card.to_dict()
+
+    def register_vessel_for_discovery(self, vessel_id: str) -> Dict[str, Any]:
+        """
+        Register a vessel in the A2A discovery system.
+
+        Makes the vessel discoverable by other vessels that need
+        its capabilities.
+
+        Args:
+            vessel_id: ID of the vessel to register
+
+        Returns:
+            Registration status
+        """
+        if not self.vessel_registry:
+            return {
+                "success": False,
+                "error": "Vessel registry not available",
+            }
+
+        if not self.a2a_registry:
+            return {
+                "success": False,
+                "error": "A2A registry not available",
+            }
+
+        vessel = self.vessel_registry.get_vessel(vessel_id)
+        if not vessel:
+            return {
+                "success": False,
+                "error": f"Vessel {vessel_id} not found",
+            }
+
+        # Generate Agent Card
+        from vessels.a2a.discovery import vessel_to_agent_card
+        card = vessel_to_agent_card(vessel)
+
+        # Register in A2A registry
+        entry = self.a2a_registry.register(card)
+
+        # Also register in A2A service for coordination
+        if self.a2a_service:
+            self.a2a_service.register_known_agent(card)
+
+        logger.info(f"Registered vessel {vessel.name} for A2A discovery")
+
+        return {
+            "success": True,
+            "vessel_id": vessel_id,
+            "agent_id": card.agent_id,
+            "skills": [s.name for s in card.skills],
+            "discoverable": True,
+        }
+
+    def discover_external_agents(
+        self,
+        domains: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Discover external A2A-compatible agents.
+
+        Searches via Nostr network and known URIs for agents
+        that can collaborate with Vessels.
+
+        Args:
+            domains: Optional domain filters
+
+        Returns:
+            Dict with discovered agents
+        """
+        if not self.a2a_discovery:
+            return {
+                "success": False,
+                "error": "A2A Discovery not available",
+                "agents": [],
+            }
+
+        # Trigger Nostr discovery
+        self.a2a_discovery.discover_from_nostr(domains=domains)
+
+        # Return currently known agents
+        known = self.a2a_discovery.get_all_known()
+
+        return {
+            "success": True,
+            "agents": [
+                {
+                    "agent_id": card.agent_id,
+                    "name": card.name,
+                    "description": card.description,
+                    "vessel_id": card.vessel_id,
+                    "domains": card.domains,
+                    "external": card.vessel_id is None,
+                }
+                for card in known
+            ],
+            "total": len(known),
+        }
+
+    def get_a2a_task(self, task_id: str) -> Optional[Dict[str, Any]]:
+        """Get status of an A2A task."""
+        if not self.a2a_service:
+            return None
+
+        task = self.a2a_service.get_task(task_id)
+        if task:
+            return task.to_dict()
+        return None
+
+    def list_a2a_tasks(
+        self,
+        vessel_id: Optional[str] = None,
+        state: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """List A2A tasks, optionally filtered by vessel or state."""
+        if not self.a2a_service:
+            return []
+
+        from vessels.a2a import TaskState
+
+        task_state = TaskState(state) if state else None
+        tasks = self.a2a_service.list_tasks(state=task_state, agent_id=vessel_id)
+
+        return [t.to_dict() for t in tasks]
+
+    def get_a2a_stats(self) -> Dict[str, Any]:
+        """Get A2A protocol statistics."""
+        stats = {
+            "enabled": self.a2a_service is not None,
+            "registered_agents": 0,
+            "active_tasks": 0,
+            "open_channels": 0,
+        }
+
+        if self.a2a_registry:
+            stats["registered_agents"] = self.a2a_registry.count()
+
+        if self.a2a_service:
+            service_stats = self.a2a_service.to_dict()
+            stats["active_tasks"] = service_stats.get("activeTasks", 0)
+            stats["open_channels"] = service_stats.get("openChannels", 0)
+
+        return stats
 
     # =========================================================================
     # TOOL REGISTRY - Graph-based tool management

@@ -37,6 +37,12 @@ class NodeType(str, Enum):
     VESSEL = "Vessel"              # Personified digital twin
     MCP_AMBASSADOR = "MCPAmbassador"  # Personified agent for MCP server
 
+    # A2A Protocol (Agent-to-Agent)
+    A2A_AGENT = "A2AAgent"         # External or internal A2A-compatible agent
+    A2A_TASK = "A2ATask"           # Task delegated between agents
+    A2A_CHANNEL = "A2AChannel"     # Communication channel between agents
+    A2A_MESSAGE = "A2AMessage"     # Message in an A2A conversation
+
 
 class RelationType(str, Enum):
     """Relationship types in the Vessels knowledge graph"""
@@ -73,6 +79,15 @@ class RelationType(str, Enum):
     # Ambassador relationships
     REPRESENTS_SERVER = "REPRESENTS_SERVER"  # MCPAmbassador -[REPRESENTS_SERVER]-> MCPServer
     SPEAKS_FOR = "SPEAKS_FOR"               # MCPAmbassador -[SPEAKS_FOR]-> Tool (can explain/invoke)
+
+    # A2A Protocol relationships
+    DELEGATES_TO = "DELEGATES_TO"           # Agent -[DELEGATES_TO]-> A2ATask -> Agent
+    ASSIGNED_TO = "ASSIGNED_TO"             # A2ATask -[ASSIGNED_TO]-> Agent (executor)
+    REQUESTED_BY = "REQUESTED_BY"           # A2ATask -[REQUESTED_BY]-> Agent (requester)
+    CHANNEL_BETWEEN = "CHANNEL_BETWEEN"     # A2AChannel -[CHANNEL_BETWEEN]-> Agent (bidirectional)
+    SENT_MESSAGE = "SENT_MESSAGE"           # Agent -[SENT_MESSAGE]-> A2AMessage
+    MESSAGE_IN = "MESSAGE_IN"               # A2AMessage -[MESSAGE_IN]-> A2AChannel
+    KNOWS_AGENT = "KNOWS_AGENT"             # Agent -[KNOWS_AGENT]-> A2AAgent (discovery)
 
 
 class PropertyName(str, Enum):
@@ -220,6 +235,50 @@ class VesselsGraphSchema:
             "emoji",                    # Representative emoji
             "capabilities",             # What it can help with
             "tools_provided",           # Tools it can explain/invoke
+            PropertyName.CREATED_AT,
+        ],
+        # A2A Protocol entities
+        NodeType.A2A_AGENT: [
+            PropertyName.NAME,
+            PropertyName.DESCRIPTION,
+            "agent_id",                 # A2A agent ID
+            "vessel_id",                # If this is a Vessels vessel
+            "nostr_pubkey",             # Nostr public key for messaging
+            "url",                      # Base URL for A2A operations
+            "protocol_version",         # A2A protocol version
+            "skills",                   # JSON list of AgentSkill
+            "domains",                  # List of domains
+            "trust_score",              # 0-1 trust score
+            "verified",                 # Whether agent is verified
+            PropertyName.CREATED_AT,
+        ],
+        NodeType.A2A_TASK: [
+            "task_id",
+            "context_id",
+            "state",                    # pending, working, completed, failed, etc.
+            "requester_agent_id",
+            "executor_agent_id",
+            "request_text",             # Task request
+            "response_text",            # Task response
+            "error_message",            # If failed
+            PropertyName.CREATED_AT,
+            "updated_at",
+        ],
+        NodeType.A2A_CHANNEL: [
+            "channel_id",
+            "local_agent_id",
+            "remote_agent_id",
+            "is_open",
+            "message_count",
+            PropertyName.CREATED_AT,
+            "last_message_at",
+        ],
+        NodeType.A2A_MESSAGE: [
+            "message_id",
+            "channel_id",
+            "task_id",                  # Optional task reference
+            "role",                     # user or agent
+            "content",                  # Message text
             PropertyName.CREATED_AT,
         ],
     }
