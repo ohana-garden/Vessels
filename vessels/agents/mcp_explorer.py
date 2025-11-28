@@ -237,6 +237,14 @@ class MCPExplorer:
         # Active connections (vessel_id -> server_id -> connection)
         self.connections: Dict[str, Dict[str, MCPConnection]] = {}
 
+        # Vessel interests - for ongoing notifications when new MCPs emerge
+        # vessel_id -> {type, domains, keywords} for matching new discoveries
+        self.vessel_interests: Dict[str, Dict[str, Any]] = {}
+
+        # Pending notifications - new capabilities relevant to specific vessels
+        # vessel_id -> [list of new capability notifications]
+        self.pending_notifications: Dict[str, List[Dict[str, Any]]] = {}
+
         # Background exploration
         self.running = False
         self.exploration_thread: Optional[threading.Thread] = None
@@ -418,14 +426,71 @@ class MCPExplorer:
     def _discover_servers(self):
         """Discover new MCP servers from known sources."""
         # In production, this would crawl npm, github, registries
-        # For now, just log that we're exploring
         logger.debug("MCP Explorer: scanning for new servers...")
 
         # This is where we'd implement actual discovery:
         # - Query npm for packages matching @mcp/ or mcp-server
         # - Search GitHub for repos with mcp-server topic
         # - Check community registries
-        # - For each found, call _understand_server() to build semantic model
+
+        # Placeholder for actual discovery implementation
+        discovered = self._fetch_from_sources()
+
+        for server_info in discovered:
+            if server_info.server_id not in self.servers:
+                # New server! Understand it and add to catalog
+                server = self._understand_server(server_info)
+                self.servers[server.server_id] = server
+
+                logger.info(f"Discovered new MCP server: {server.name}")
+
+                # Notify interested vessels about this new capability
+                self._notify_vessels_of_new_server(server)
+
+    def _fetch_from_sources(self) -> List[MCPServerInfo]:
+        """
+        Fetch MCP servers from discovery sources.
+
+        In production, this would:
+        - Query npm registry for @mcp/* packages
+        - Search GitHub for mcp-server topics
+        - Check community MCP registries
+
+        Returns:
+            List of newly discovered servers (not yet in catalog)
+        """
+        # Placeholder - in production this would actually fetch
+        # For now, returns empty list (seeded servers are added in __init__)
+        return []
+
+    def add_discovered_server(self, server: MCPServerInfo) -> bool:
+        """
+        Add a newly discovered server to the catalog and notify interested vessels.
+
+        Called externally when a new MCP server is found (e.g., by community,
+        user request, or automated discovery).
+
+        Args:
+            server: The server to add
+
+        Returns:
+            True if added (new), False if already exists
+        """
+        if server.server_id in self.servers:
+            return False
+
+        # Understand it if we have LLM
+        server = self._understand_server(server)
+        self.servers[server.server_id] = server
+
+        logger.info(f"Added new MCP server: {server.name}")
+
+        # Notify all interested vessels
+        notified = self._notify_vessels_of_new_server(server)
+        if notified > 0:
+            logger.info(f"Notified {notified} vessels about new server '{server.name}'")
+
+        return True
 
     def _check_server_health(self):
         """Check health of all known servers."""
@@ -901,6 +966,318 @@ class MCPExplorer:
             "message": f"You have {len(connected_caps)} capabilities connected. "
                        f"{len(available_caps)} more are available to add."
         }
+
+    # =========================================================================
+    # ONGOING NOTIFICATION SYSTEM
+    # As new MCP servers emerge, vessels need to be informed of relevant ones
+    # =========================================================================
+
+    def register_vessel_interest(
+        self,
+        vessel_id: str,
+        vessel_type: str,
+        domains: Optional[List[str]] = None,
+        keywords: Optional[List[str]] = None,
+    ) -> None:
+        """
+        Register a vessel's interests for ongoing capability notifications.
+
+        Called when a vessel is born - tracks what types of MCP servers
+        would be relevant so we can notify when new ones are discovered.
+
+        Args:
+            vessel_id: The vessel's ID
+            vessel_type: What kind of vessel (garden, community, etc.)
+            domains: Domains of interest (agriculture, communication, etc.)
+            keywords: Specific capability keywords to watch for
+        """
+        # Build interest profile
+        interest = {
+            "vessel_type": vessel_type.lower() if vessel_type else "",
+            "domains": [d.lower() for d in (domains or [])],
+            "keywords": [k.lower() for k in (keywords or [])],
+            "registered_at": datetime.utcnow().isoformat(),
+            # Track which servers vessel already knows about (to avoid re-notifying)
+            "known_servers": set(self.servers.keys()),
+        }
+
+        # Add auto-generated keywords based on vessel type
+        interest["keywords"].extend(self._extract_keywords(interest["vessel_type"]))
+        interest["keywords"] = list(set(interest["keywords"]))  # Dedupe
+
+        self.vessel_interests[vessel_id] = interest
+
+        # Initialize empty notification queue
+        if vessel_id not in self.pending_notifications:
+            self.pending_notifications[vessel_id] = []
+
+        logger.info(
+            f"Registered vessel {vessel_id} ({vessel_type}) for ongoing "
+            f"capability notifications. Watching: {interest['keywords'][:5]}..."
+        )
+
+    def unregister_vessel_interest(self, vessel_id: str) -> bool:
+        """Unregister a vessel from notifications (e.g., when vessel is archived)."""
+        removed = False
+        if vessel_id in self.vessel_interests:
+            del self.vessel_interests[vessel_id]
+            removed = True
+        if vessel_id in self.pending_notifications:
+            del self.pending_notifications[vessel_id]
+        if removed:
+            logger.info(f"Unregistered vessel {vessel_id} from capability notifications")
+        return removed
+
+    def _notify_vessels_of_new_server(self, server: MCPServerInfo) -> int:
+        """
+        Check if any registered vessels would be interested in a newly discovered server.
+
+        Called when a new MCP server is discovered. Checks against all registered
+        vessel interests and queues notifications for relevant vessels.
+
+        Args:
+            server: The newly discovered server
+
+        Returns:
+            Number of vessels notified
+        """
+        notified_count = 0
+
+        for vessel_id, interest in self.vessel_interests.items():
+            # Skip if vessel already knows about this server
+            if server.server_id in interest.get("known_servers", set()):
+                continue
+
+            # Calculate relevance score
+            relevance = self._calculate_server_relevance(server, interest)
+
+            if relevance >= 2:  # Threshold for notification
+                notification = {
+                    "type": "new_capability",
+                    "server_id": server.server_id,
+                    "server_name": server.name,
+                    "description": server.description,
+                    "capabilities": server.capabilities[:3],
+                    "why_relevant": self._explain_relevance(server, interest),
+                    "relevance_score": relevance,
+                    "discovered_at": datetime.utcnow().isoformat(),
+                    "read": False,
+                }
+
+                self.pending_notifications[vessel_id].append(notification)
+
+                # Mark this server as known to avoid re-notifying
+                interest.setdefault("known_servers", set()).add(server.server_id)
+
+                notified_count += 1
+                logger.debug(
+                    f"Queued notification for vessel {vessel_id}: "
+                    f"new MCP server '{server.name}' (relevance: {relevance})"
+                )
+
+        if notified_count > 0:
+            logger.info(
+                f"New MCP server '{server.name}' relevant to {notified_count} vessels"
+            )
+
+        return notified_count
+
+    def _calculate_server_relevance(
+        self,
+        server: MCPServerInfo,
+        interest: Dict[str, Any],
+    ) -> int:
+        """Calculate how relevant a server is to a vessel's interests."""
+        relevance = 0
+        vessel_type = interest.get("vessel_type", "")
+        domains = interest.get("domains", [])
+        keywords = interest.get("keywords", [])
+
+        # Check if server is recommended for this vessel type
+        recommended_for = [r.lower() for r in server.recommended_for]
+        if vessel_type in recommended_for:
+            relevance += 3
+
+        # Partial vessel type match
+        for rec in recommended_for:
+            if rec in vessel_type or vessel_type in rec:
+                relevance += 2
+                break
+
+        # Domain match
+        server_domains = [d.lower() for d in server.domains]
+        for domain in domains:
+            if domain in server_domains:
+                relevance += 1
+
+        # Keyword match against capabilities
+        server_caps = [c.lower() for c in server.capabilities]
+        for keyword in keywords:
+            for cap in server_caps:
+                if keyword in cap or cap in keyword:
+                    relevance += 1
+                    break
+
+        # Keyword match against problems it solves
+        for problem in server.problems_it_solves:
+            problem_lower = problem.lower()
+            for keyword in keywords:
+                if keyword in problem_lower:
+                    relevance += 1
+                    break
+
+        return relevance
+
+    def _explain_relevance(
+        self,
+        server: MCPServerInfo,
+        interest: Dict[str, Any],
+    ) -> str:
+        """Generate a human-readable explanation of why a server is relevant."""
+        reasons = []
+        vessel_type = interest.get("vessel_type", "")
+
+        # Check recommendation match
+        recommended_for = [r.lower() for r in server.recommended_for]
+        if vessel_type in recommended_for:
+            reasons.append(f"recommended for {vessel_type} vessels")
+
+        # Check domain match
+        domains = interest.get("domains", [])
+        server_domains = [d.lower() for d in server.domains]
+        matching_domains = [d for d in domains if d in server_domains]
+        if matching_domains:
+            reasons.append(f"matches your domains: {', '.join(matching_domains[:2])}")
+
+        # Check capability match
+        keywords = interest.get("keywords", [])
+        server_caps = [c.lower() for c in server.capabilities]
+        matching_caps = [k for k in keywords if any(k in c for c in server_caps)]
+        if matching_caps:
+            reasons.append(f"provides: {', '.join(matching_caps[:2])}")
+
+        if reasons:
+            return "This is " + " and ".join(reasons)
+        return "May be useful for your work"
+
+    def get_pending_notifications(
+        self,
+        vessel_id: str,
+        mark_as_read: bool = True,
+    ) -> List[Dict[str, Any]]:
+        """
+        Get pending capability notifications for a vessel.
+
+        Called when a vessel checks for new capabilities or during
+        regular vessel activity.
+
+        Args:
+            vessel_id: The vessel's ID
+            mark_as_read: Whether to mark notifications as read
+
+        Returns:
+            List of pending notifications
+        """
+        if vessel_id not in self.pending_notifications:
+            return []
+
+        notifications = self.pending_notifications[vessel_id]
+
+        if mark_as_read:
+            for n in notifications:
+                n["read"] = True
+
+        # Return unread or recently read notifications
+        return [n for n in notifications if not n.get("dismissed", False)]
+
+    def dismiss_notification(
+        self,
+        vessel_id: str,
+        server_id: str,
+    ) -> bool:
+        """Dismiss a notification (vessel chose not to use this capability)."""
+        if vessel_id not in self.pending_notifications:
+            return False
+
+        for notification in self.pending_notifications[vessel_id]:
+            if notification.get("server_id") == server_id:
+                notification["dismissed"] = True
+                notification["dismissed_at"] = datetime.utcnow().isoformat()
+                return True
+        return False
+
+    def clear_notifications(self, vessel_id: str) -> int:
+        """Clear all notifications for a vessel."""
+        if vessel_id not in self.pending_notifications:
+            return 0
+
+        count = len(self.pending_notifications[vessel_id])
+        self.pending_notifications[vessel_id] = []
+        return count
+
+    def get_notification_summary(self, vessel_id: str) -> Dict[str, Any]:
+        """Get a summary of notification status for a vessel."""
+        if vessel_id not in self.pending_notifications:
+            return {
+                "vessel_id": vessel_id,
+                "registered": vessel_id in self.vessel_interests,
+                "total_notifications": 0,
+                "unread": 0,
+                "message": "No notifications"
+            }
+
+        notifications = self.pending_notifications[vessel_id]
+        unread = [n for n in notifications if not n.get("read", False)]
+        undismissed = [n for n in notifications if not n.get("dismissed", False)]
+
+        message = ""
+        if unread:
+            message = f"You have {len(unread)} new capability notification(s)!"
+        elif undismissed:
+            message = f"{len(undismissed)} capability notification(s) pending review"
+        else:
+            message = "All caught up! No new capabilities to review."
+
+        return {
+            "vessel_id": vessel_id,
+            "registered": vessel_id in self.vessel_interests,
+            "total_notifications": len(notifications),
+            "unread": len(unread),
+            "pending_review": len(undismissed),
+            "message": message,
+        }
+
+    def check_for_new_capabilities(self) -> Dict[str, int]:
+        """
+        Manually trigger a check for new capabilities against all registered vessels.
+
+        Used by A0 or scheduled tasks to ensure vessels are informed of
+        new MCP servers that have been added since they last checked.
+
+        Returns:
+            Dict mapping vessel_id to number of new notifications
+        """
+        results = {}
+
+        for vessel_id, interest in self.vessel_interests.items():
+            known_servers = interest.get("known_servers", set())
+            new_count = 0
+
+            for server_id, server in self.servers.items():
+                if server_id not in known_servers:
+                    # This is a server the vessel doesn't know about
+                    relevance = self._calculate_server_relevance(server, interest)
+                    if relevance >= 2:
+                        self._notify_vessels_of_new_server(server)
+                        new_count += 1
+
+                    # Mark as known even if not relevant (to avoid re-checking)
+                    interest.setdefault("known_servers", set()).add(server_id)
+
+            if new_count > 0:
+                results[vessel_id] = new_count
+
+        return results
 
 
 # Singleton instance

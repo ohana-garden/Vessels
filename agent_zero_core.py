@@ -398,6 +398,7 @@ class AgentZeroCore:
 
         # Proactively inform vessel of available capabilities
         capability_recommendations = None
+        vessel_type = None
         if self.mcp_explorer and persona:
             vessel_type = persona.get("subject", name)
             capability_recommendations = self.mcp_explorer.recommend_capabilities_for_vessel(
@@ -408,6 +409,16 @@ class AgentZeroCore:
                 f"Recommended {len(capability_recommendations.get('recommendations', {}).get('essential', []))} "
                 f"essential capabilities for vessel '{name}'"
             )
+
+            # Register vessel interests for ongoing capability notifications
+            # As new MCP servers emerge, this vessel will be informed of relevant ones
+            vessel_domains = persona.get("domains", [])
+            self.mcp_explorer.register_vessel_interest(
+                vessel_id=vessel.vessel_id,
+                vessel_type=vessel_type,
+                domains=vessel_domains,
+            )
+            logger.info(f"Registered vessel '{name}' for ongoing capability notifications")
 
         return {
             "vessel_id": vessel.vessel_id,
@@ -715,6 +726,121 @@ class AgentZeroCore:
             vessel_id=vessel_id,
             vessel_type=vessel_type,
         )
+
+    # =========================================================================
+    # ONGOING CAPABILITY NOTIFICATIONS
+    # Vessels are informed when new relevant MCP servers emerge
+    # =========================================================================
+
+    def get_vessel_notifications(
+        self,
+        vessel_id: str,
+        mark_as_read: bool = True,
+    ) -> List[Dict[str, Any]]:
+        """
+        Get pending capability notifications for a vessel.
+
+        Called when a vessel checks in or when user asks about new capabilities.
+
+        Args:
+            vessel_id: The vessel to check
+            mark_as_read: Mark notifications as read
+
+        Returns:
+            List of pending notifications about new MCP servers
+        """
+        if not self.mcp_explorer:
+            return []
+        return self.mcp_explorer.get_pending_notifications(vessel_id, mark_as_read)
+
+    def get_vessel_notification_summary(self, vessel_id: str) -> Dict[str, Any]:
+        """
+        Get a summary of notification status for a vessel.
+
+        Args:
+            vessel_id: The vessel to check
+
+        Returns:
+            Summary with counts and human-readable message
+        """
+        if not self.mcp_explorer:
+            return {
+                "vessel_id": vessel_id,
+                "registered": False,
+                "total_notifications": 0,
+                "unread": 0,
+                "message": "MCP Explorer not available"
+            }
+        return self.mcp_explorer.get_notification_summary(vessel_id)
+
+    def check_all_vessels_for_new_capabilities(self) -> Dict[str, int]:
+        """
+        Trigger a sweep to notify all vessels of new capabilities.
+
+        Called periodically or when new MCP servers are added to ensure
+        all vessels are informed of relevant new capabilities.
+
+        Returns:
+            Dict mapping vessel_id to number of new notifications
+        """
+        if not self.mcp_explorer:
+            return {}
+        return self.mcp_explorer.check_for_new_capabilities()
+
+    def dismiss_vessel_notification(
+        self,
+        vessel_id: str,
+        server_id: str,
+    ) -> bool:
+        """
+        Dismiss a capability notification (vessel chose not to use it).
+
+        Args:
+            vessel_id: The vessel
+            server_id: The server to dismiss
+
+        Returns:
+            True if dismissed
+        """
+        if not self.mcp_explorer:
+            return False
+        return self.mcp_explorer.dismiss_notification(vessel_id, server_id)
+
+    def add_mcp_server(self, server_info: Dict[str, Any]) -> bool:
+        """
+        Add a new MCP server to the ecosystem and notify interested vessels.
+
+        Called when a new MCP server is discovered or submitted by the community.
+
+        Args:
+            server_info: Dictionary with server details (server_id, name, description, etc.)
+
+        Returns:
+            True if server was added (new), False if already exists
+        """
+        if not self.mcp_explorer:
+            return False
+
+        from vessels.agents.mcp_explorer import MCPServerInfo, TrustLevel, CostModel
+
+        # Build MCPServerInfo from dict
+        server = MCPServerInfo(
+            server_id=server_info.get("server_id", str(uuid.uuid4())),
+            name=server_info.get("name", "Unknown Server"),
+            description=server_info.get("description", ""),
+            endpoint=server_info.get("endpoint", ""),
+            capabilities=server_info.get("capabilities", []),
+            tools_provided=server_info.get("tools_provided", []),
+            problems_it_solves=server_info.get("problems_it_solves", []),
+            domains=server_info.get("domains", []),
+            trust_level=TrustLevel(server_info.get("trust_level", "unknown")),
+            cost_model=CostModel(server_info.get("cost_model", "unknown")),
+            recommended_for=server_info.get("recommended_for", []),
+            source=server_info.get("source", "manual"),
+        )
+
+        # Add to catalog - this will automatically notify interested vessels
+        return self.mcp_explorer.add_discovered_server(server)
 
     # =========================================================================
     # END UNIVERSAL BUILDER METHODS
