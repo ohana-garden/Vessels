@@ -9,6 +9,11 @@ Key principles:
 - Service/extraction ratios vary by class
 - Radical transparency about agent class is mandatory
 - Community servants control commercial agent access
+
+Also includes specialized agents:
+- Birth Agent: Conversational vessel creation
+- MCP Explorer: Proactive capability discovery
+- MCP Ambassador: Personified agents for MCP servers
 """
 
 from .taxonomy import AgentClass, AgentRole
@@ -23,8 +28,15 @@ from .disclosure import (
     DisclosureProtocol
 )
 from .gateway import CommercialAgentGateway
+from .mcp_ambassador import (
+    MCPAmbassador,
+    MCPAmbassadorPersona,
+    MCPAmbassadorFactory,
+    ambassador_factory,
+)
 
 __all__ = [
+    # Agent taxonomy
     'AgentClass',
     'AgentRole',
     'ServantConstraints',
@@ -34,4 +46,9 @@ __all__ = [
     'CommercialAgentIntroduction',
     'DisclosureProtocol',
     'CommercialAgentGateway',
+    # MCP Ambassadors
+    'MCPAmbassador',
+    'MCPAmbassadorPersona',
+    'MCPAmbassadorFactory',
+    'ambassador_factory',
 ]

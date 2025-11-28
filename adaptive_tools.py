@@ -2,17 +2,30 @@
 """
 Adaptive Tools – production‑ready implementation.
 
-This module provides a safe and extensible tool management system for the Vessels
-platform.  The previous version dynamically generated code using ``exec``, which
-posed significant security risks and made debugging difficult.  The rewritten
-version defines explicit tool implementations for each ``ToolType`` and
-performs strict parameter validation and error handling.  Additional tool
-types can be implemented by adding new functions to the ``_TOOL_IMPLEMENTATIONS``
-mapping.  Unsupported tool types return a clear error message rather than
-executing arbitrary code.
+DEPRECATED: This module is superseded by the graph-based Tool Registry
+(vessels/core/tool_registry.py).
+
+The new Tool Registry:
+- Stores tools as nodes in the knowledge graph (not module-level state)
+- Provides semantic search for tools based on capabilities
+- Supports MCP tools, native tools, and custom tools
+- Is vessel-scoped with proper permission controls
+
+Migration path:
+    Old: adaptive_tools.tool_manager.execute_tool(tool_type, params)
+    New: agent_zero.tool_registry.find_tools_for_need("capability")
+
+See: vessels/core/tool_registry.py and agent_zero_core.py
 """
 
 from __future__ import annotations
+
+import warnings
+warnings.warn(
+    "adaptive_tools is deprecated. Use graph-based Tool Registry via agent_zero.tool_registry instead.",
+    DeprecationWarning,
+    stacklevel=2
+)
 
 import logging
 import requests
@@ -22,7 +35,7 @@ from typing import Callable, Dict, List, Any, Optional
 
 
 # Configure a module‑level logger.  In production code this should be hooked
-# into the application’s logging configuration.
+# into the application's logging configuration.
 logger = logging.getLogger(__name__)
 
 

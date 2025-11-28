@@ -25,6 +25,7 @@ from community_memory import community_memory
 from grant_coordination_system import grant_system
 from adaptive_tools import adaptive_tools
 from vessels.core import VesselContext, VesselRegistry
+from vessels.agents.llm_service import get_llm_callable
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +35,7 @@ class InteractionType(Enum):
     REQUEST = "request"
     FEEDBACK = "feedback"
     STATUS = "status"
+    VESSEL_CREATION = "vessel_creation"  # Creating a new vessel
 
 @dataclass
 class UserInteraction:
@@ -50,13 +52,19 @@ class UserInteraction:
 class VesselsInterface:
     """Natural language interface for Vessels platform"""
 
-    def __init__(self, vessel_registry: Optional[VesselRegistry] = None):
+    def __init__(
+        self,
+        vessel_registry: Optional[VesselRegistry] = None,
+        llm_call: Optional[callable] = None
+    ):
         """
         Initialize Vessels Interface.
 
         Args:
             vessel_registry: Optional vessel registry for vessel context resolution.
                            If not provided, vessel features will be disabled.
+            llm_call: Optional function to call LLM for semantic understanding.
+                     Signature: llm_call(prompt: str) -> str
         """
         self.interactions: Dict[str, UserInteraction] = {}
         self.user_contexts: Dict[str, Dict[str, Any]] = {}
@@ -64,6 +72,21 @@ class VesselsInterface:
         self.interface_thread = None
         self.running = False
         self.vessel_registry = vessel_registry or VesselRegistry()
+
+        # Use provided llm_call or get default from LLM service
+        self.llm_call = llm_call
+        if self.llm_call is None:
+            try:
+                self.llm_call = get_llm_callable()
+            except Exception as e:
+                logger.warning(f"Could not initialize LLM service: {e}")
+                self.llm_call = None
+
+        # Configure Agent Zero with LLM capability (A0 is THE main core)
+        if self.llm_call:
+            agent_zero.set_llm_call(self.llm_call)
+        if self.vessel_registry:
+            agent_zero.set_vessel_registry(self.vessel_registry)
 
         self.initialize_interface()
     
@@ -156,9 +179,15 @@ class VesselsInterface:
             return context
     
     def _classify_interaction(self, message: str) -> InteractionType:
-        """Classify the type of user interaction"""
+        """Classify the type of user interaction using semantic understanding."""
         message_lower = message.lower().strip()
-        
+
+        # First, check for vessel creation intent through A0 (semantic detection)
+        creation_intent = agent_zero.detect_creation_intent(message)
+        if creation_intent.get("wants_to_create") and creation_intent.get("confidence", 0) > 0.5:
+            logger.info(f"Detected vessel creation intent: {creation_intent.get('reasoning')}")
+            return InteractionType.VESSEL_CREATION
+
         # Command patterns
         command_patterns = [
             r'vessels\s+(start|begin|initiate|launch|deploy)',
@@ -166,7 +195,7 @@ class VesselsInterface:
             r'run\s+(grant|coordination|management)',
             r'activate\s+(system|platform|agents)'
         ]
-        
+
         # Question patterns
         question_patterns = [
             r'what\s+(is|are|can|do|does)',
@@ -175,7 +204,7 @@ class VesselsInterface:
             r'where\s+(can|do|is)',
             r'why\s+(is|are|do|does)'
         ]
-        
+
         # Status patterns
         status_patterns = [
             r'status\s+(of|on|for)',
@@ -183,10 +212,10 @@ class VesselsInterface:
             r'what\'s\s+the\s+(status|progress|update)',
             r'show\s+(status|progress|results)'
         ]
-        
+
         # Check patterns
         import re
-        
+
         if any(re.search(pattern, message_lower) for pattern in command_patterns):
             return InteractionType.COMMAND
         elif any(re.search(pattern, message_lower) for pattern in question_patterns):
@@ -201,13 +230,21 @@ class VesselsInterface:
     def _process_interaction(self, interaction: UserInteraction) -> Dict[str, Any]:
         """Process the user interaction and generate response"""
 
-        # First check if this is a response to an active consultation
+        # First check if user has an active vessel birth session (through A0)
+        if agent_zero.has_active_birth_session(interaction.user_id):
+            return self._process_birth_conversation(interaction)
+
+        # Check if this is a response to an active consultation
         consultation_response = self._check_for_consultation(
             interaction.user_id,
             interaction.message
         )
         if consultation_response:
             return consultation_response
+
+        # Check for vessel creation intent (semantic detection)
+        if interaction.interaction_type == InteractionType.VESSEL_CREATION:
+            return self._process_birth_conversation(interaction)
 
         if interaction.interaction_type == InteractionType.COMMAND:
             return self._process_command(interaction)
@@ -217,6 +254,20 @@ class VesselsInterface:
             return self._process_status_request(interaction)
         else:
             return self._process_request(interaction)
+
+    def _process_birth_conversation(self, interaction: UserInteraction) -> Dict[str, Any]:
+        """Process a message in the context of vessel birth through A0."""
+        result = agent_zero.process_birth_message(
+            interaction.user_id,
+            interaction.message
+        )
+
+        return {
+            "response": result["response"],
+            "birth_phase": result.get("phase"),
+            "vessel_id": result.get("vessel_id"),
+            "follow_up_needed": result.get("follow_up_needed", False)
+        }
     
     def _process_command(self, interaction: UserInteraction) -> Dict[str, Any]:
         """Process command-type interaction"""
@@ -758,12 +809,13 @@ All core systems are operational and ready to coordinate community needs.
                 "interaction_history": [],
                 "preferences": {},
                 "active_interests": [],
-                "last_activity": datetime.now()
+                "last_activity": datetime.now(),
+                "conversation_id": None,  # Track active conversation
             }
-        
+
         context = self.user_contexts[user_id]
-        
-        # Add interaction to history
+
+        # Add interaction to history (in-memory cache)
         context["interaction_history"].append({
             "id": interaction.id,
             "message": interaction.message,
@@ -771,25 +823,81 @@ All core systems are operational and ready to coordinate community needs.
             "timestamp": interaction.timestamp,
             "type": interaction.interaction_type.value
         })
-        
-        # Keep only last 20 interactions
+
+        # Keep only last 20 interactions in memory
         if len(context["interaction_history"]) > 20:
             context["interaction_history"] = context["interaction_history"][-20:]
-        
+
+        # CORE FEATURE: Persist to ConversationStore via Agent Zero
+        # All conversations are recorded to the knowledge graph
+        self._persist_conversation_turn(
+            user_id=user_id,
+            interaction=interaction,
+            response=response,
+            context=context,
+        )
+
         # Update active interests based on interaction
         if "grant" in interaction.message.lower():
             if "grant_management" not in context["active_interests"]:
                 context["active_interests"].append("grant_management")
-        
+
         if "volunteer" in interaction.message.lower() or "coordinate" in interaction.message.lower():
             if "volunteer_coordination" not in context["active_interests"]:
                 context["active_interests"].append("volunteer_coordination")
-        
+
         if "elder" in interaction.message.lower() or "care" in interaction.message.lower():
             if "elder_care" not in context["active_interests"]:
                 context["active_interests"].append("elder_care")
-        
+
         context["last_activity"] = datetime.now()
+
+    def _persist_conversation_turn(
+        self,
+        user_id: str,
+        interaction: UserInteraction,
+        response: Dict[str, Any],
+        context: Dict[str, Any],
+    ):
+        """
+        Persist conversation turn to the knowledge graph via Agent Zero.
+
+        This is a CORE FEATURE - all conversations are recorded.
+        """
+        try:
+            # Get vessel_id from interaction or response
+            vessel_id = (
+                getattr(interaction, 'vessel_id', None) or
+                response.get('vessel_id') or
+                response.get('servant_id') or
+                'default-vessel'
+            )
+
+            # Get project_id if available
+            project_id = response.get('project_id')
+
+            # Extract tool calls if any
+            tool_calls = response.get('tool_calls') or response.get('actions_taken')
+
+            # Record via Agent Zero
+            result = self.agent_zero.record_conversation_turn(
+                user_id=user_id,
+                vessel_id=vessel_id,
+                message=interaction.message,
+                response=response.get("response", ""),
+                conversation_id=context.get("conversation_id"),
+                project_id=project_id,
+                intent=response.get("intent"),
+                entities=response.get("entities"),
+                tool_calls=tool_calls,
+            )
+
+            # Store conversation_id for continuity
+            if result.get("success") and result.get("conversation_id"):
+                context["conversation_id"] = result["conversation_id"]
+
+        except Exception as e:
+            logger.error(f"Failed to persist conversation turn: {e}")
     
     def get_user_context(self, user_id: str) -> Optional[Dict[str, Any]]:
         """Get user context"""
