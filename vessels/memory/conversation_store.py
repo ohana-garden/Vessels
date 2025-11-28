@@ -36,6 +36,7 @@ class ConversationType(str, Enum):
     VESSEL_AMBASSADOR = "vessel_ambassador"  # Vessel consulting ambassador
     USER_A0 = "user_a0"                   # User talking to Agent Zero directly
     SYSTEM = "system"                     # System-initiated conversations
+    MULTI_PARTY = "multi_party"           # Multi-agent group conversation
 
 
 class SpeakerType(str, Enum):
@@ -46,6 +47,16 @@ class SpeakerType(str, Enum):
     AGENT = "agent"
     A0 = "a0"
     SYSTEM = "system"
+    OBSERVER = "observer"                 # User observing but not participating
+
+
+class ImageViewpoint(str, Enum):
+    """Viewpoint for image generation in multi-party conversations."""
+    SPEAKER = "speaker"           # From current speaker's perspective
+    OBSERVER = "observer"         # From the observing user's perspective
+    SCENE = "scene"               # God's eye view of entire scene
+    FOCUS_ENTITY = "focus"        # Focus on the entity being discussed
+    CAMERA = "camera"             # From a designated camera entity (e.g., game cam)
 
 
 class ConversationStatus(str, Enum):
@@ -60,6 +71,83 @@ class ConversationStatus(str, Enum):
 # =============================================================================
 
 @dataclass
+class SceneParticipant:
+    """A participant in a multi-party conversation scene."""
+    entity_id: str                          # Unique ID
+    name: str                               # Display name (e.g., "Koa the Pig")
+    role: str                               # Role in scene (e.g., "pig", "hunter", "tracker")
+    visual_description: str                 # How to render this entity
+    is_camera: bool = False                 # Can this entity provide a camera viewpoint?
+    is_observer: bool = False               # Is this entity observing (not in scene)?
+    location: Optional[str] = None          # Where in the scene (e.g., "forest clearing")
+    state: Optional[str] = None             # Current state (e.g., "running", "hiding")
+    metadata: Optional[Dict[str, Any]] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "entity_id": self.entity_id,
+            "name": self.name,
+            "role": self.role,
+            "visual_description": self.visual_description,
+            "is_camera": self.is_camera,
+            "is_observer": self.is_observer,
+            "location": self.location,
+            "state": self.state,
+            "metadata": self.metadata,
+        }
+
+
+@dataclass
+class SceneContext:
+    """Scene context for multi-party conversations."""
+    scene_id: str
+    location: str                           # Overall scene location
+    setting: str                            # Scene description
+    participants: List[SceneParticipant]    # All entities in scene
+    observer_id: Optional[str] = None       # User observing the scene
+    camera_entity_id: Optional[str] = None  # Designated camera entity
+    default_viewpoint: ImageViewpoint = ImageViewpoint.SCENE
+    time_of_day: Optional[str] = None       # For lighting/mood
+    weather: Optional[str] = None
+    metadata: Optional[Dict[str, Any]] = None
+
+    def get_participant(self, entity_id: str) -> Optional[SceneParticipant]:
+        """Get a participant by ID."""
+        for p in self.participants:
+            if p.entity_id == entity_id:
+                return p
+        return None
+
+    def get_camera_entity(self) -> Optional[SceneParticipant]:
+        """Get the designated camera entity."""
+        if self.camera_entity_id:
+            return self.get_participant(self.camera_entity_id)
+        # Fallback: find any camera-capable entity
+        for p in self.participants:
+            if p.is_camera:
+                return p
+        return None
+
+    def get_active_participants(self) -> List[SceneParticipant]:
+        """Get non-observer participants (entities in the scene)."""
+        return [p for p in self.participants if not p.is_observer]
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "scene_id": self.scene_id,
+            "location": self.location,
+            "setting": self.setting,
+            "participants": [p.to_dict() for p in self.participants],
+            "observer_id": self.observer_id,
+            "camera_entity_id": self.camera_entity_id,
+            "default_viewpoint": self.default_viewpoint.value,
+            "time_of_day": self.time_of_day,
+            "weather": self.weather,
+            "metadata": self.metadata,
+        }
+
+
+@dataclass
 class ImageContext:
     """Image generation context for a turn."""
     prompt: str                              # The prompt used to generate
@@ -69,6 +157,10 @@ class ImageContext:
     quality: str = "standard"                # Transport optimization
     output_format: str = "webp"              # Best compression
     entities_used: Optional[List[str]] = None  # Entities that informed the prompt
+    # Viewpoint for multi-party conversations
+    viewpoint: str = "scene"                 # speaker/observer/scene/focus/camera
+    viewpoint_entity_id: Optional[str] = None  # Entity providing viewpoint
+    focus_entity_id: Optional[str] = None    # Entity being focused on (for focus viewpoint)
     generated_at: Optional[datetime] = None
     metadata: Optional[Dict[str, Any]] = None
 
@@ -81,6 +173,9 @@ class ImageContext:
             "quality": self.quality,
             "output_format": self.output_format,
             "entities_used": self.entities_used,
+            "viewpoint": self.viewpoint,
+            "viewpoint_entity_id": self.viewpoint_entity_id,
+            "focus_entity_id": self.focus_entity_id,
             "generated_at": self.generated_at.isoformat() if self.generated_at else None,
             "metadata": self.metadata,
         }
@@ -142,6 +237,9 @@ class Conversation:
     last_activity_at: datetime = field(default_factory=datetime.utcnow)
     status: ConversationStatus = ConversationStatus.ACTIVE
     turns: List[Turn] = field(default_factory=list)
+    # Multi-party scene support
+    scene: Optional[SceneContext] = None
+    observer_id: Optional[str] = None       # User observing (not participating)
     metadata: Dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
@@ -158,6 +256,8 @@ class Conversation:
             "started_at": self.started_at.isoformat(),
             "last_activity_at": self.last_activity_at.isoformat(),
             "status": self.status.value,
+            "scene": self.scene.to_dict() if self.scene else None,
+            "observer_id": self.observer_id,
             "metadata": self.metadata,
         }
 
@@ -533,6 +633,155 @@ class ConversationStore:
                 found.append(keyword)
 
         return found[:5]  # Limit to 5 most relevant
+
+    def generate_multiparty_image_prompt(
+        self,
+        turn: Turn,
+        conversation: Conversation,
+        viewpoint: Optional[ImageViewpoint] = None,
+        style: str = "dynamic, cinematic",
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Generate an image prompt for multi-party conversations.
+
+        Considers the scene context, all participants, and selects
+        an appropriate viewpoint for the image.
+
+        Args:
+            turn: The current turn
+            conversation: Conversation with scene context
+            viewpoint: Override viewpoint selection (auto-selects if None)
+            style: Visual style guidance
+
+        Returns:
+            Dict with prompt, viewpoint info, and metadata
+        """
+        scene = conversation.scene
+        if not scene:
+            # Fall back to basic prompt generation
+            return self.generate_image_prompt(turn, conversation, style)
+
+        # Auto-select viewpoint if not specified
+        if viewpoint is None:
+            viewpoint = self._select_viewpoint(turn, scene)
+
+        # Get viewpoint entity
+        viewpoint_entity = None
+        if viewpoint == ImageViewpoint.SPEAKER:
+            viewpoint_entity = scene.get_participant(turn.speaker_id)
+        elif viewpoint == ImageViewpoint.CAMERA:
+            viewpoint_entity = scene.get_camera_entity()
+        elif viewpoint == ImageViewpoint.OBSERVER and scene.observer_id:
+            viewpoint_entity = scene.get_participant(scene.observer_id)
+
+        # Determine focus entity (who/what is being discussed)
+        focus_entity = self._determine_focus_entity(turn, scene)
+
+        # Build the prompt
+        prompt_parts = []
+
+        # 1. Scene setting
+        prompt_parts.append(f"Scene: {scene.setting}")
+        if scene.location:
+            prompt_parts.append(f"Location: {scene.location}")
+        if scene.time_of_day:
+            prompt_parts.append(f"Time: {scene.time_of_day}")
+        if scene.weather:
+            prompt_parts.append(f"Weather: {scene.weather}")
+
+        # 2. Viewpoint framing
+        if viewpoint == ImageViewpoint.SPEAKER and viewpoint_entity:
+            prompt_parts.append(f"POV: From {viewpoint_entity.name}'s perspective")
+            prompt_parts.append(f"({viewpoint_entity.visual_description})")
+        elif viewpoint == ImageViewpoint.CAMERA and viewpoint_entity:
+            prompt_parts.append(f"Camera view: {viewpoint_entity.name}")
+            if viewpoint_entity.location:
+                prompt_parts.append(f"mounted at {viewpoint_entity.location}")
+        elif viewpoint == ImageViewpoint.OBSERVER:
+            prompt_parts.append("Observer POV: watching the scene unfold")
+        elif viewpoint == ImageViewpoint.FOCUS_ENTITY and focus_entity:
+            prompt_parts.append(f"Focus on: {focus_entity.name}")
+            prompt_parts.append(f"({focus_entity.visual_description})")
+        else:  # SCENE - wide shot
+            prompt_parts.append("Wide establishing shot showing all participants")
+
+        # 3. Active participants in scene
+        active = scene.get_active_participants()
+        if active:
+            participant_descs = []
+            for p in active:
+                desc = f"{p.name} ({p.role})"
+                if p.state:
+                    desc += f" - {p.state}"
+                participant_descs.append(desc)
+            prompt_parts.append(f"Showing: {', '.join(participant_descs)}")
+
+        # 4. Action from current turn
+        prompt_parts.append(f"Action: {turn.message[:100]}")
+
+        # 5. Style
+        prompt_parts.append(f"Style: {style}")
+
+        image_prompt = ". ".join(prompt_parts)
+
+        return {
+            "prompt": image_prompt,
+            "viewpoint": viewpoint.value,
+            "viewpoint_entity_id": viewpoint_entity.entity_id if viewpoint_entity else None,
+            "focus_entity_id": focus_entity.entity_id if focus_entity else None,
+            "scene_id": scene.scene_id,
+            "participants": [p.entity_id for p in active],
+            "turn_id": turn.turn_id,
+            "conversation_id": turn.conversation_id,
+            "style": style,
+        }
+
+    def _select_viewpoint(self, turn: Turn, scene: SceneContext) -> ImageViewpoint:
+        """
+        Auto-select the best viewpoint for a turn.
+
+        Logic:
+        - If speaker is a camera, use CAMERA viewpoint
+        - If message references another entity by name, use FOCUS_ENTITY
+        - If it's an action message, use SPEAKER viewpoint
+        - Otherwise, use scene default or SCENE
+        """
+        speaker = scene.get_participant(turn.speaker_id)
+
+        # Camera entity speaking = show camera view
+        if speaker and speaker.is_camera:
+            return ImageViewpoint.CAMERA
+
+        # Check if message references another participant
+        message_lower = turn.message.lower()
+        for p in scene.participants:
+            if p.entity_id != turn.speaker_id:
+                if p.name.lower() in message_lower or p.role.lower() in message_lower:
+                    return ImageViewpoint.FOCUS_ENTITY
+
+        # Action words suggest speaker viewpoint
+        action_words = ['see', 'look', 'watch', 'notice', 'spot', 'find', 'chase', 'run', 'hide']
+        if any(word in message_lower for word in action_words):
+            return ImageViewpoint.SPEAKER
+
+        # Use scene default
+        return scene.default_viewpoint
+
+    def _determine_focus_entity(
+        self,
+        turn: Turn,
+        scene: SceneContext,
+    ) -> Optional[SceneParticipant]:
+        """Determine which entity is being focused on in the turn."""
+        message_lower = turn.message.lower()
+
+        # Check for direct mentions of participants
+        for p in scene.participants:
+            if p.entity_id != turn.speaker_id:
+                if p.name.lower() in message_lower or p.role.lower() in message_lower:
+                    return p
+
+        return None
 
     # =========================================================================
     # Conversation Lifecycle
