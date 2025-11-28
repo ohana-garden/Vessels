@@ -157,6 +157,98 @@ class A2AService:
         logger.info(f"A2A Service initialized for agent: {agent_card.name} ({agent_card.agent_id})")
 
     # =========================================================================
+    # Graph Persistence Helpers
+    # =========================================================================
+
+    def _get_graphiti_client(self) -> Optional[Any]:
+        """Get the underlying Graphiti client for persistence."""
+        if not self.graphiti:
+            return None
+        # Direct VesselsGraphitiClient
+        if hasattr(self.graphiti, 'create_node'):
+            return self.graphiti
+        # Wrapped in GraphitiMemoryBackend
+        if hasattr(self.graphiti, 'graphiti') and hasattr(self.graphiti.graphiti, 'create_node'):
+            return self.graphiti.graphiti
+        return None
+
+    def _persist_task(self, task: Task) -> None:
+        """Persist a task to the knowledge graph."""
+        client = self._get_graphiti_client()
+        if not client:
+            return
+
+        try:
+            from vessels.knowledge.schema import NodeType, PropertyName
+
+            client.create_node(
+                node_type=NodeType.A2A_TASK,
+                properties={
+                    "task_id": task.task_id,
+                    "context_id": task.context_id,
+                    "state": task.state.value,
+                    "requester_agent_id": task.requester_agent_id,
+                    "executor_agent_id": task.executor_agent_id,
+                    "request_text": task.request_message.get_text() if task.request_message else "",
+                    "error_message": task.error_message,
+                    PropertyName.CREATED_AT: task.created_at.isoformat(),
+                    "updated_at": task.updated_at.isoformat(),
+                },
+                node_id=task.task_id,
+            )
+        except Exception as e:
+            logger.error(f"Failed to persist task to graph: {e}")
+
+    def _persist_channel(self, channel: A2AChannel) -> None:
+        """Persist a channel to the knowledge graph."""
+        client = self._get_graphiti_client()
+        if not client:
+            return
+
+        try:
+            from vessels.knowledge.schema import NodeType, PropertyName
+
+            client.create_node(
+                node_type=NodeType.A2A_CHANNEL,
+                properties={
+                    "channel_id": channel.channel_id,
+                    "local_agent_id": channel.local_agent_id,
+                    "remote_agent_id": channel.remote_agent_id,
+                    "is_open": channel.is_open,
+                    "message_count": len(channel.messages),
+                    PropertyName.CREATED_AT: channel.created_at.isoformat(),
+                    "last_message_at": channel.last_message_at.isoformat() if channel.last_message_at else None,
+                },
+                node_id=channel.channel_id,
+            )
+        except Exception as e:
+            logger.error(f"Failed to persist channel to graph: {e}")
+
+    def _persist_message(self, message: Message, channel_id: str) -> None:
+        """Persist a message to the knowledge graph."""
+        client = self._get_graphiti_client()
+        if not client:
+            return
+
+        try:
+            from vessels.knowledge.schema import NodeType, PropertyName
+
+            client.create_node(
+                node_type=NodeType.A2A_MESSAGE,
+                properties={
+                    "message_id": message.message_id,
+                    "channel_id": channel_id,
+                    "task_id": message.task_id,
+                    "role": message.role.value,
+                    "content": message.get_text(),
+                    PropertyName.CREATED_AT: message.created_at.isoformat(),
+                },
+                node_id=message.message_id,
+            )
+        except Exception as e:
+            logger.error(f"Failed to persist message to graph: {e}")
+
+    # =========================================================================
     # Agent Card Management
     # =========================================================================
 
@@ -238,6 +330,9 @@ class A2AService:
 
         self.tasks[task.task_id] = task
 
+        # Persist to graph
+        self._persist_task(task)
+
         # Send via Nostr
         self._send_task_event(task, A2AEventKind.TASK_REQUEST)
 
@@ -252,6 +347,7 @@ class A2AService:
             return None
 
         task.transition_to(TaskState.WORKING)
+        self._persist_task(task)  # Update state in graph
         self._send_task_event(task, A2AEventKind.TASK_UPDATE)
 
         return task
@@ -299,6 +395,7 @@ class A2AService:
                 ))
 
         task.transition_to(TaskState.COMPLETED)
+        self._persist_task(task)  # Update state in graph
         self._send_task_event(task, A2AEventKind.TASK_RESPONSE)
 
         logger.info(f"Completed task {task_id[:8]}...")
@@ -311,6 +408,7 @@ class A2AService:
             return None
 
         task.transition_to(TaskState.FAILED, error=error)
+        self._persist_task(task)  # Update state in graph
         self._send_task_event(task, A2AEventKind.TASK_RESPONSE)
 
         logger.warning(f"Task {task_id[:8]}... failed: {error}")
@@ -323,6 +421,7 @@ class A2AService:
             return None
 
         task.transition_to(TaskState.CANCELLED)
+        self._persist_task(task)  # Update state in graph
         self._send_task_event(task, A2AEventKind.TASK_UPDATE)
 
         logger.info(f"Cancelled task {task_id[:8]}...")
@@ -403,6 +502,9 @@ class A2AService:
 
         self.channels[channel_id] = channel
 
+        # Persist to graph
+        self._persist_channel(channel)
+
         # Announce channel opening
         self._send_channel_event(channel, A2AEventKind.CHANNEL_OPEN)
 
@@ -442,6 +544,9 @@ class A2AService:
         )
 
         channel.add_message(message)
+
+        # Persist to graph
+        self._persist_message(message, channel_id)
 
         # Send via Nostr
         self._send_message_event(channel, message)
@@ -661,6 +766,9 @@ class A2AService:
         )
 
         channel.add_message(message)
+
+        # Persist incoming message to graph
+        self._persist_message(message, channel_id)
 
         # Notify handler
         if channel_id in self._message_handlers:

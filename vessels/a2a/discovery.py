@@ -258,22 +258,46 @@ class AgentRegistry:
             return
 
         try:
-            # Create A2AAgent node
-            self.graphiti.create_node(
-                node_type="A2AAgent",
-                properties={
-                    "agent_id": entry.agent_card.agent_id,
-                    "name": entry.agent_card.name,
-                    "description": entry.agent_card.description,
-                    "nostr_pubkey": entry.nostr_pubkey,
-                    "trust_score": entry.trust_score,
-                    "verified": entry.verified,
-                    "domains": entry.agent_card.domains,
-                    "protocol_version": entry.agent_card.protocol_version,
-                    "vessel_id": entry.agent_card.vessel_id,
-                    "registered_at": datetime.utcnow().isoformat(),
-                }
-            )
+            # Import schema for node types
+            from vessels.knowledge.schema import NodeType, PropertyName
+
+            # Check if graphiti has create_node (VesselsGraphitiClient or mock)
+            if hasattr(self.graphiti, 'create_node'):
+                self.graphiti.create_node(
+                    node_type=NodeType.A2A_AGENT,
+                    properties={
+                        PropertyName.NAME: entry.agent_card.name,
+                        PropertyName.DESCRIPTION: entry.agent_card.description,
+                        "agent_id": entry.agent_card.agent_id,
+                        "vessel_id": entry.agent_card.vessel_id,
+                        "nostr_pubkey": entry.nostr_pubkey,
+                        "url": entry.agent_card.url,
+                        "protocol_version": entry.agent_card.protocol_version,
+                        "domains": entry.agent_card.domains,
+                        "trust_score": entry.trust_score,
+                        "verified": entry.verified,
+                        PropertyName.CREATED_AT: datetime.utcnow().isoformat(),
+                    },
+                    node_id=entry.agent_card.agent_id,
+                )
+            # Check if graphiti is a GraphitiMemoryBackend with a nested client
+            elif hasattr(self.graphiti, 'graphiti') and hasattr(self.graphiti.graphiti, 'create_node'):
+                self.graphiti.graphiti.create_node(
+                    node_type=NodeType.A2A_AGENT,
+                    properties={
+                        PropertyName.NAME: entry.agent_card.name,
+                        PropertyName.DESCRIPTION: entry.agent_card.description,
+                        "agent_id": entry.agent_card.agent_id,
+                        "vessel_id": entry.agent_card.vessel_id,
+                        "nostr_pubkey": entry.nostr_pubkey,
+                        "trust_score": entry.trust_score,
+                        "verified": entry.verified,
+                        PropertyName.CREATED_AT: datetime.utcnow().isoformat(),
+                    },
+                    node_id=entry.agent_card.agent_id,
+                )
+            else:
+                logger.debug("Graphiti client does not support create_node, skipping persistence")
         except Exception as e:
             logger.error(f"Failed to persist agent to graph: {e}")
 
