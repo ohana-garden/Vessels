@@ -1,9 +1,26 @@
 #!/usr/bin/env python3
 """
 DYNAMIC AGENT FACTORY
-Input: "I need help finding grants for elder care in Puna"
-Output: Fully configured, running agents that handle the entire process
+
+DEPRECATED: This module is superseded by the Birth Agent (vessels/agents/birth_agent.py).
+
+The Birth Agent provides conversational vessel creation through A0 (Agent Zero),
+which is THE main core for all Vessels operations. Instead of regex-based intent
+matching, the Birth Agent uses natural conversation to understand and create vessels.
+
+Migration path:
+    Old: DynamicAgentFactory().create_from_request("I need help with grants")
+    New: agent_zero.process_birth_message(user_id, "I need help with grants")
+
+See: vessels/agents/birth_agent.py and agent_zero_core.py
 """
+
+import warnings
+warnings.warn(
+    "dynamic_agent_factory is deprecated. Use Birth Agent via agent_zero.process_birth_message() instead.",
+    DeprecationWarning,
+    stacklevel=2
+)
 
 import json
 import logging
@@ -13,32 +30,21 @@ from pathlib import Path
 import re
 from agent_zero_core import AgentZeroCore, AgentSpecification, agent_zero
 import os
-import bmad_loader  # BMAD loader from the project root; resolves based on current working dir
 
 logger = logging.getLogger(__name__)
 
 class DynamicAgentFactory:
-    """Factory that creates agents from natural language requests"""
-    
+    """Factory that creates agents from natural language requests
+
+    DEPRECATED: Use Birth Agent via agent_zero.process_birth_message() instead.
+    """
+
     def __init__(self):
         self.intent_patterns = self._load_intent_patterns()
         self.capability_matrix = self._build_capability_matrix()
         self.tool_requirements = self._build_tool_requirements()
-        # Load BMAD agent specifications from the `.bmad/agents` directory. We
-        # compute the path relative to this file to ensure correctness even
-        # when called from other working directories. If no BMAD agents are
-        # found, this list will be empty.
-        bmad_path = os.path.join(os.path.dirname(__file__), ".bmad")
-        try:
-            self.bmad_agents = bmad_loader.load_agents(bmad_path)
-        except (OSError, IOError) as e:
-            # If loading fails due to file system issues, log and continue with an empty list
-            logger.warning(f"Failed to load BMAD agents due to file system error: {e}")
-            self.bmad_agents = []
-        except Exception as e:
-            # Unexpected error - log with more detail
-            logger.error(f"Unexpected error loading BMAD agents: {e}", exc_info=True)
-            self.bmad_agents = []
+        # BMAD agents removed - BMAD is deprecated
+        self.bmad_agents = []
         
     def _load_intent_patterns(self) -> Dict[str, List[str]]:
         """Load patterns for recognizing user intents"""

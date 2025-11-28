@@ -2,15 +2,30 @@
 """
 Universal Connector – production‑ready implementation.
 
-This module defines a safe and extensible connector system for interacting
-with external APIs and services.  The improved design focuses on robust error
-handling, configurable rate limiting based on connector specifications, and
-secure handling of credentials through environment variables.  It avoids
-automatically generating connectors for unknown systems and encourages
-explicit configuration instead.
+DEPRECATED: This module is superseded by the MCP Explorer and MCP Ambassadors.
+
+The new architecture:
+- MCP Explorer (vessels/agents/mcp_explorer.py) discovers external capabilities
+- MCP Ambassadors (vessels/agents/mcp_ambassador.py) personify MCP servers
+- Vessels have vessel-scoped connector_configs (vessels/core/vessel.py)
+- External capabilities are MCP servers, not hardcoded connector types
+
+Migration path:
+    Old: universal_connector.connector_manager.execute(connector_type, action, params)
+    New: agent_zero.mcp_explorer.find_servers_for_need("capability")
+         agent_zero.talk_to_ambassador(server_id, "how do I use this?")
+
+See: vessels/agents/mcp_explorer.py, vessels/agents/mcp_ambassador.py
 """
 
 from __future__ import annotations
+
+import warnings
+warnings.warn(
+    "universal_connector is deprecated. Use MCP Explorer via agent_zero.mcp_explorer instead.",
+    DeprecationWarning,
+    stacklevel=2
+)
 
 import os
 import json

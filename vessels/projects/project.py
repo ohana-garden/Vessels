@@ -19,7 +19,6 @@ import logging
 
 from vessels.knowledge import VesselsGraphitiClient, ProjectVectorStore
 from vessels.knowledge.schema import ServantType, CommunityPrivacy
-from vessels.hive_mind import hive_mind
 
 logger = logging.getLogger(__name__)
 
@@ -65,7 +64,6 @@ class ServantProject:
     # Lazy-loaded components
     _graphiti_client: Optional[VesselsGraphitiClient] = field(default=None, repr=False)
     _vector_store: Optional[ProjectVectorStore] = field(default=None, repr=False)
-    _hive_mind = field(default=hive_mind, init=False, repr=False)
 
     def __post_init__(self):
         """Ensure work directory exists"""
@@ -111,11 +109,6 @@ class ServantProject:
     def get_config_file(self) -> Path:
         """Get path to project config file"""
         return self.work_dir / "project.json"
-
-    @property
-    def hive(self):
-        """Expose the shared hive mind interface for the servant."""
-        return self._hive_mind
 
     def save_config(self):
         """Save project configuration to disk"""
