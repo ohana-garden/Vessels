@@ -31,6 +31,14 @@ class AspectRatio(str, Enum):
     PHOTO_PORTRAIT = "3:4"
 
 
+class ImageQuality(str, Enum):
+    """Image quality/compression levels for transport optimization."""
+    HIGH = "high"              # Best quality, larger files (~500KB)
+    STANDARD = "standard"      # Balanced quality/size (~200KB)
+    LOW = "low"                # Fast loading, smaller files (~100KB)
+    THUMBNAIL = "thumbnail"    # Preview/placeholder (~30KB)
+
+
 class ImageStyle(str, Enum):
     """Visual styles for generation."""
     PHOTOREALISTIC = "photorealistic"
@@ -130,6 +138,8 @@ class NanoBananaClient:
         image_size: str = "1:1",
         image_urls: Optional[List[str]] = None,
         callback_url: Optional[str] = None,
+        quality: str = ImageQuality.STANDARD,
+        output_format: str = "webp",  # WebP for best compression
     ) -> Optional[str]:
         """
         Submit image generation request.
@@ -141,6 +151,9 @@ class NanoBananaClient:
             "type": generation_type,
             "numImages": min(num_images, 4),
             "image_size": image_size,
+            # Transport optimization
+            "quality": quality,
+            "output_format": output_format,  # webp, jpeg, png
         }
 
         if image_urls:
@@ -221,6 +234,8 @@ class NanoBananaClient:
         num_images: int = 1,
         negative_prompt: Optional[str] = None,
         wait_for_result: bool = True,
+        quality: str = ImageQuality.STANDARD,
+        output_format: str = "webp",
     ) -> List[GeneratedImage]:
         """
         Generate images from a text prompt.
@@ -232,6 +247,8 @@ class NanoBananaClient:
             num_images: Number of images to generate (1-4)
             negative_prompt: What to avoid in the image
             wait_for_result: If True, poll until complete
+            quality: Image quality level (high/standard/low/thumbnail)
+            output_format: Output format (webp/jpeg/png) - webp recommended for mobile
 
         Returns:
             List of GeneratedImage results
@@ -248,12 +265,14 @@ class NanoBananaClient:
         if negative_prompt:
             full_prompt += f". Avoid: {negative_prompt}"
 
-        # Submit generation request
+        # Submit generation request (transport-optimized)
         result = self._submit_generation(
             prompt=full_prompt,
             generation_type=GenerationType.TEXT_TO_IMAGE,
             num_images=num_images,
-            image_size=aspect_ratio,  # API uses "image_size" for aspect ratio
+            image_size=aspect_ratio,
+            quality=quality,
+            output_format=output_format,
         )
 
         if result is None:

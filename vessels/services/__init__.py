@@ -10,6 +10,7 @@ from vessels.services.nanobanana_client import (
     GeneratedImage,
     AspectRatio,
     ImageStyle,
+    ImageQuality,
     get_nanobanana_client,
 )
 
@@ -18,5 +19,6 @@ __all__ = [
     "GeneratedImage",
     "AspectRatio",
     "ImageStyle",
+    "ImageQuality",
     "get_nanobanana_client",
 ]
