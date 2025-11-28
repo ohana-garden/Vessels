@@ -27,6 +27,15 @@ class NodeType(str, Enum):
     COMMERCIAL_TRANSACTION = "CommercialTransaction"  # Referral fee transactions
     FUND_ALLOCATION = "FundAllocation"  # Community fund allocations
 
+    # Tools and Capabilities (A0 tool registry)
+    TOOL = "Tool"                  # Capability that agents can use
+    MCP_SERVER = "MCPServer"       # MCP server providing tools
+    CAPABILITY = "Capability"      # High-level capability (weather, scheduling, etc.)
+
+    # Vessels core
+    PROJECT = "Project"            # Bounded collaborative space (community)
+    VESSEL = "Vessel"              # Personified digital twin
+
 
 class RelationType(str, Enum):
     """Relationship types in the Vessels knowledge graph"""
@@ -46,6 +55,19 @@ class RelationType(str, Enum):
     PAID_BY = "PAID_BY"                 # Transaction -[PAID_BY]-> Organization
     PAID_TO = "PAID_TO"                 # Transaction -[PAID_TO]-> FundAllocation
     ALLOCATED_FOR = "ALLOCATED_FOR"     # FundAllocation -[ALLOCATED_FOR]-> Category
+
+    # Tool relationships
+    PROVIDES_TOOL = "PROVIDES_TOOL"     # MCPServer -[PROVIDES_TOOL]-> Tool
+    HAS_CAPABILITY = "HAS_CAPABILITY"   # Tool -[HAS_CAPABILITY]-> Capability
+    SOLVES_PROBLEM = "SOLVES_PROBLEM"   # Tool -[SOLVES_PROBLEM]-> description
+    USES_TOOL = "USES_TOOL"             # Agent/Vessel -[USES_TOOL]-> Tool
+    CONNECTED_TO = "CONNECTED_TO"       # Vessel -[CONNECTED_TO]-> MCPServer
+    RECOMMENDED_FOR = "RECOMMENDED_FOR" # Tool -[RECOMMENDED_FOR]-> vessel_type
+
+    # Vessel relationships
+    HOSTS = "HOSTS"                     # Project -[HOSTS]-> Vessel
+    MEMBER_OF = "MEMBER_OF"             # Person -[MEMBER_OF]-> Project
+    OWNS = "OWNS"                       # Person -[OWNS]-> Project
 
 
 class PropertyName(str, Enum):
@@ -124,6 +146,65 @@ class VesselsGraphSchema:
             "detachment",
             "understanding",
         ],
+        # Tool registry
+        NodeType.TOOL: [
+            PropertyName.NAME,
+            PropertyName.DESCRIPTION,
+            "tool_id",
+            "capabilities",          # List of high-level capabilities
+            "problems_it_solves",    # Natural language problems
+            "parameters_schema",     # JSON schema for tool parameters
+            "provider_type",         # "mcp", "native", "custom"
+            "provider_id",           # MCP server ID or "native"
+            "trust_level",           # "verified", "community", "unknown"
+            "cost_model",            # "free", "free_tier", "per_call", "subscription"
+            "recommended_for",       # List of vessel types
+            "domains",               # List of domains (agriculture, scheduling, etc.)
+        ],
+        NodeType.MCP_SERVER: [
+            PropertyName.NAME,
+            PropertyName.DESCRIPTION,
+            "server_id",
+            "endpoint",              # npx command or URL
+            "auth_required",
+            "auth_type",             # "api_key", "oauth", None
+            "trust_level",
+            "status",                # "online", "offline", "degraded"
+            "reliability_score",     # 0-1 based on history
+            "cost_model",
+            "source",                # "npm", "github", "community", "manual"
+            "discovered_at",
+        ],
+        NodeType.CAPABILITY: [
+            PropertyName.NAME,
+            PropertyName.DESCRIPTION,
+            "capability_id",
+            "category",              # "communication", "data", "scheduling", etc.
+            "keywords",              # Search keywords
+        ],
+        # Vessels core entities
+        NodeType.PROJECT: [
+            PropertyName.NAME,
+            PropertyName.DESCRIPTION,
+            "project_id",
+            "owner_id",
+            "graph_namespace",
+            "privacy_level",
+            "governance",
+            PropertyName.STATUS,
+            PropertyName.CREATED_AT,
+        ],
+        NodeType.VESSEL: [
+            PropertyName.NAME,
+            PropertyName.DESCRIPTION,
+            "vessel_id",
+            "project_id",
+            "graph_namespace",
+            "privacy_level",
+            "persona",               # JSON persona configuration
+            PropertyName.STATUS,
+            PropertyName.CREATED_AT,
+        ],
     }
 
     @staticmethod
@@ -175,3 +256,43 @@ class CommunityPrivacy(str, Enum):
     SHARED = "shared"          # Read-only to trusted communities
     PUBLIC = "public"          # Read-only to all servants
     FEDERATED = "federated"    # Read/write coordination space
+
+
+# Tool trust levels
+class ToolTrustLevel(str, Enum):
+    """Trust levels for tools and MCP servers"""
+    VERIFIED = "verified"      # Officially verified, high trust
+    COMMUNITY = "community"    # Community-vetted, moderate trust
+    UNKNOWN = "unknown"        # Not yet evaluated
+    UNTRUSTED = "untrusted"    # Known issues or suspicious
+
+
+# Tool cost models
+class ToolCostModel(str, Enum):
+    """Cost models for tool usage"""
+    FREE = "free"              # Always free
+    FREE_TIER = "free_tier"    # Free up to limits
+    PER_CALL = "per_call"      # Pay per use
+    SUBSCRIPTION = "subscription"  # Requires subscription
+    UNKNOWN = "unknown"        # Cost not determined
+
+
+# Tool provider types
+class ToolProviderType(str, Enum):
+    """How a tool is provided/accessed"""
+    NATIVE = "native"          # Built into A0/Claude
+    MCP = "mcp"                # Via MCP server
+    CUSTOM = "custom"          # Custom implementation
+    VESSEL = "vessel"          # Provided by another vessel
+
+
+# Capability categories
+class CapabilityCategory(str, Enum):
+    """High-level capability categories"""
+    COMMUNICATION = "communication"  # Email, SMS, messaging
+    SCHEDULING = "scheduling"        # Calendar, reminders, timing
+    DATA = "data"                    # Weather, maps, research
+    STORAGE = "storage"              # Files, memory
+    INTEGRATION = "integration"      # External services
+    COORDINATION = "coordination"    # Multi-agent coordination
+    KNOWLEDGE = "knowledge"          # Search, lookup, learning

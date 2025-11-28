@@ -23,6 +23,7 @@ from .context import (
     clear_user_vessel_mappings,
 )
 from .tier_router import TierRouter, TierSelection, RequestType, get_tier_router
+from .tool_registry import ToolRegistry, ToolDefinition, tool_registry
 
 # Default to FalkorDB registry - use SQLiteVesselRegistry for testing/fallback
 VesselRegistry = FalkorDBVesselRegistry
@@ -54,5 +55,9 @@ __all__ = [
     "TierSelection",
     "RequestType",
     "get_tier_router",
+    # Tool registry
+    "ToolRegistry",
+    "ToolDefinition",
+    "tool_registry",
 ]
 

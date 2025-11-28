@@ -123,6 +123,9 @@ class AgentZeroCore:
         # Specialized agents (not spawned, but coordinated through A0)
         self.birth_agent = None  # Birth Agent for vessel creation
         self.mcp_explorer = None  # MCP Explorer for capability discovery
+
+        # Tool Registry - graph-based tool management (no hardcoding!)
+        self.tool_registry = None
         
     def initialize(self, memory_system=None, tool_system=None):
         """
@@ -140,6 +143,9 @@ class AgentZeroCore:
         self.coordination_thread.daemon = True
         self.coordination_thread.start()
 
+        # Initialize Tool Registry - graph-based tool management
+        self._initialize_tool_registry()
+
         # Initialize Birth Agent with A0's LLM interface
         self._initialize_birth_agent()
 
@@ -147,6 +153,19 @@ class AgentZeroCore:
         self._initialize_mcp_explorer()
 
         logger.info("Agent Zero Core initialized")
+
+    def _initialize_tool_registry(self):
+        """Initialize the Tool Registry for graph-based tool management."""
+        try:
+            from vessels.core.tool_registry import ToolRegistry
+            self.tool_registry = ToolRegistry(
+                graph_client=self.memory_system,  # Use memory system as graph client
+                llm_call=self.llm_call,
+            )
+            logger.info("Tool Registry initialized - no more hardcoded tool mappings!")
+        except ImportError as e:
+            logger.warning(f"Could not initialize Tool Registry: {e}")
+            self.tool_registry = None
 
     def _initialize_birth_agent(self):
         """Initialize the Birth Agent for vessel creation."""
@@ -172,6 +191,12 @@ class AgentZeroCore:
             )
             # Start background exploration
             self.mcp_explorer.start()
+
+            # Register seeded MCP server tools in tool registry
+            if self.tool_registry:
+                for server in self.mcp_explorer.servers.values():
+                    self._register_mcp_server_tools(server)
+
             logger.info("MCP Explorer initialized and exploring")
         except ImportError as e:
             logger.warning(f"Could not initialize MCP Explorer: {e}")
@@ -191,6 +216,9 @@ class AgentZeroCore:
         # Update MCP Explorer if it exists
         if self.mcp_explorer:
             self.mcp_explorer.llm_call = llm_call
+        # Update Tool Registry if it exists
+        if self.tool_registry:
+            self.tool_registry.llm_call = llm_call
         logger.info("LLM call function configured for AgentZeroCore")
 
     def process_birth_message(self, user_id: str, message: str) -> Dict[str, Any]:
@@ -811,6 +839,7 @@ class AgentZeroCore:
         Add a new MCP server to the ecosystem and notify interested vessels.
 
         Called when a new MCP server is discovered or submitted by the community.
+        Also registers the server's tools in A0's tool registry.
 
         Args:
             server_info: Dictionary with server details (server_id, name, description, etc.)
@@ -839,8 +868,197 @@ class AgentZeroCore:
             source=server_info.get("source", "manual"),
         )
 
-        # Add to catalog - this will automatically notify interested vessels
-        return self.mcp_explorer.add_discovered_server(server)
+        # Add to MCP catalog - this will automatically notify interested vessels
+        added = self.mcp_explorer.add_discovered_server(server)
+
+        # Also register tools in A0's tool registry for unified tool management
+        if added and self.tool_registry:
+            self._register_mcp_server_tools(server)
+
+        return added
+
+    def _register_mcp_server_tools(self, server) -> None:
+        """Register an MCP server's tools in the tool registry."""
+        if not self.tool_registry:
+            return
+
+        from vessels.knowledge.schema import ToolTrustLevel, ToolCostModel
+
+        # Map MCP trust/cost to tool registry enums
+        trust_map = {
+            "verified": ToolTrustLevel.VERIFIED,
+            "community": ToolTrustLevel.COMMUNITY,
+            "unknown": ToolTrustLevel.UNKNOWN,
+            "untrusted": ToolTrustLevel.UNTRUSTED,
+        }
+        cost_map = {
+            "free": ToolCostModel.FREE,
+            "free_tier": ToolCostModel.FREE_TIER,
+            "per_call": ToolCostModel.PER_CALL,
+            "subscription": ToolCostModel.SUBSCRIPTION,
+            "unknown": ToolCostModel.UNKNOWN,
+        }
+
+        trust_level = trust_map.get(server.trust_level.value, ToolTrustLevel.UNKNOWN)
+        cost_model = cost_map.get(server.cost_model.value, ToolCostModel.UNKNOWN)
+
+        # Create tool definitions for each tool the server provides
+        tools_to_register = []
+        for tool_name in server.tools_provided:
+            tools_to_register.append({
+                "name": tool_name,
+                "description": f"{tool_name} from {server.name}",
+                "capabilities": server.capabilities,
+                "problems_it_solves": server.problems_it_solves,
+                "domains": server.domains,
+                "recommended_for": server.recommended_for,
+            })
+
+        # Register via tool registry
+        self.tool_registry.register_mcp_tools(
+            server_id=server.server_id,
+            server_name=server.name,
+            tools=tools_to_register,
+            trust_level=trust_level,
+            cost_model=cost_model,
+        )
+
+        logger.info(
+            f"Registered {len(tools_to_register)} tools from MCP server "
+            f"'{server.name}' in tool registry"
+        )
+
+    # =========================================================================
+    # TOOL REGISTRY - Graph-based tool management
+    # All tools are data in the knowledge graph, not hardcoded
+    # =========================================================================
+
+    def register_tool(
+        self,
+        name: str,
+        description: str,
+        capabilities: List[str],
+        problems_it_solves: Optional[List[str]] = None,
+        domains: Optional[List[str]] = None,
+        recommended_for: Optional[List[str]] = None,
+        provider_type: str = "custom",
+        implementation: Optional[Callable] = None,
+    ) -> str:
+        """
+        Register a tool in A0's tool registry.
+
+        Tools become queryable in the knowledge graph - A0 finds them
+        semantically when agents need capabilities.
+
+        Args:
+            name: Tool name
+            description: What the tool does
+            capabilities: High-level capabilities ["scheduling", "communication"]
+            problems_it_solves: Natural language problems ["need to send email"]
+            domains: Relevant domains ["business", "agriculture"]
+            recommended_for: Vessel types this is good for
+            provider_type: "native", "mcp", "custom", "vessel"
+            implementation: Optional callable for custom tools
+
+        Returns:
+            Tool ID
+        """
+        if not self.tool_registry:
+            self._initialize_tool_registry()
+
+        if not self.tool_registry:
+            raise RuntimeError("Tool Registry not available")
+
+        from vessels.core.tool_registry import ToolDefinition
+        from vessels.knowledge.schema import ToolProviderType, ToolTrustLevel, ToolCostModel
+
+        tool = ToolDefinition(
+            tool_id=f"{provider_type}_{name.lower().replace(' ', '_')}",
+            name=name,
+            description=description,
+            capabilities=capabilities,
+            problems_it_solves=problems_it_solves or [],
+            domains=domains or [],
+            recommended_for=recommended_for or [],
+            provider_type=ToolProviderType(provider_type),
+            trust_level=ToolTrustLevel.COMMUNITY,
+            cost_model=ToolCostModel.FREE,
+            implementation=implementation,
+        )
+
+        tool_id = self.tool_registry.register_tool(tool)
+
+        if implementation:
+            self.tool_registry.register_implementation(tool_id, implementation)
+
+        logger.info(f"A0 registered tool: {name} ({tool_id})")
+        return tool_id
+
+    def find_tools_for_purpose(
+        self,
+        purpose: str,
+        vessel_type: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        Find tools that would help with a purpose.
+
+        Uses semantic search through the tool registry - no hardcoded mappings.
+
+        Args:
+            purpose: What the agent/vessel needs to do
+            vessel_type: Type of vessel for better matching
+
+        Returns:
+            List of matching tools with scores
+        """
+        if not self.tool_registry:
+            return []
+
+        return self.tool_registry.find_tools_for_need(
+            capability_need=purpose,
+            vessel_type=vessel_type,
+            max_results=10,
+        )
+
+    def get_vessel_tools(self, vessel_id: str) -> List[str]:
+        """
+        Get all tools available to a vessel.
+
+        Combines:
+        - Tools bound directly to vessel
+        - Tools from connected MCP servers
+        - Native tools
+
+        Args:
+            vessel_id: Vessel to get tools for
+
+        Returns:
+            List of tool IDs
+        """
+        tools = set()
+
+        # Tools from registry binding
+        if self.tool_registry:
+            tools.update(self.tool_registry.get_vessel_tool_ids(vessel_id))
+
+        # MCP tools
+        if self.mcp_explorer:
+            mcp_tools = self.mcp_explorer.get_vessel_tools(vessel_id)
+            tools.update(mcp_tools)
+
+        return list(tools)
+
+    def bind_tool_to_vessel(self, vessel_id: str, tool_id: str) -> bool:
+        """Bind a tool to a vessel."""
+        if not self.tool_registry:
+            return False
+        return self.tool_registry.bind_tool_to_vessel(vessel_id, tool_id)
+
+    def get_tool_registry_stats(self) -> Dict[str, Any]:
+        """Get statistics about the tool registry."""
+        if self.tool_registry:
+            return self.tool_registry.get_stats()
+        return {"error": "Tool Registry not initialized"}
 
     # =========================================================================
     # END UNIVERSAL BUILDER METHODS
@@ -1114,36 +1332,38 @@ class AgentZeroCore:
         return resolved
     
     def _assign_tools(self, tools_needed: List[str]) -> List[str]:
-        """Assign available tools to agent"""
-        available_tools = []
-        
-        # Map tool names to actual implementations
-        tool_mapping = {
-            "web_scraper": "web_scraping_tool",
-            "search_engine": "search_tool",
-            "document_generator": "document_generation_tool",
-            "database_query": "database_tool",
-            "calendar_system": "calendar_tool",
-            "notification_system": "notification_tool",
-            "compliance_checker": "compliance_tool",
-            "template_system": "template_tool",
-            "messaging_system": "messaging_tool",
-            "resource_tracker": "resource_tool",
-            "volunteer_database": "volunteer_tool",
-            "task_manager": "task_tool",
-            "assessment_tools": "assessment_tool",
-            "program_templates": "program_tool",
-            "care_tracker": "care_tool",
-            "resource_database": "resource_db_tool",
-            "benefits_calculator": "benefits_tool",
-            "service_directory": "service_tool"
-        }
-        
-        for tool in tools_needed:
-            if tool in tool_mapping:
-                available_tools.append(tool_mapping[tool])
-                
-        return available_tools
+        """
+        Assign tools to an agent using the Tool Registry.
+
+        Queries the knowledge graph semantically - no hardcoded mappings!
+        """
+        if not self.tool_registry:
+            # Fallback if registry not initialized
+            logger.warning("Tool Registry not available, returning empty tool list")
+            return []
+
+        assigned_tools = []
+
+        for tool_need in tools_needed:
+            # Query registry for tools matching this need
+            matches = self.tool_registry.find_tools_for_need(
+                capability_need=tool_need,
+                max_results=1,
+            )
+
+            if matches:
+                best_match = matches[0]
+                assigned_tools.append(best_match["tool_id"])
+                logger.debug(f"Assigned tool '{best_match['tool_id']}' for need '{tool_need}'")
+            else:
+                # No exact match - try semantic search with the tool need as description
+                semantic_matches = self.tool_registry.find_tools_for_purpose(tool_need)
+                if semantic_matches:
+                    assigned_tools.extend(semantic_matches[:2])  # Top 2 semantic matches
+                else:
+                    logger.warning(f"No tools found for need: {tool_need}")
+
+        return list(set(assigned_tools))  # Dedupe
     
     def _agent_processing_loop(self, agent_id: str):
         """
