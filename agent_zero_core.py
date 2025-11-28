@@ -135,6 +135,9 @@ class AgentZeroCore:
         self.a2a_service = None
         self.a2a_registry = None
         self.a2a_discovery = None
+
+        # Conversation Store - ALL conversations persisted (CORE FEATURE)
+        self.conversation_store = None
         
     def initialize(self, memory_system=None, tool_system=None):
         """
@@ -166,6 +169,9 @@ class AgentZeroCore:
 
         # Initialize A2A Protocol for vessel-to-vessel communication
         self._initialize_a2a()
+
+        # Initialize Conversation Store for ALL conversation persistence
+        self._initialize_conversation_store()
 
         logger.info("Agent Zero Core initialized")
 
@@ -329,6 +335,23 @@ class AgentZeroCore:
             self.a2a_service = None
             self.a2a_registry = None
             self.a2a_discovery = None
+
+    def _initialize_conversation_store(self):
+        """Initialize ConversationStore for ALL conversation persistence."""
+        try:
+            from vessels.memory import ConversationStore
+
+            self.conversation_store = ConversationStore(
+                graphiti_client=self.memory_system,
+                enable_caching=True,
+                max_cache_size=1000,
+            )
+
+            logger.info("ConversationStore initialized - ALL conversations will be persisted")
+
+        except ImportError as e:
+            logger.warning(f"Could not initialize ConversationStore: {e}")
+            self.conversation_store = None
 
     def process_birth_message(self, user_id: str, message: str) -> Dict[str, Any]:
         """
@@ -1661,6 +1684,216 @@ class AgentZeroCore:
             stats["active_tasks"] = service_stats.get("activeTasks", 0)
             stats["open_channels"] = service_stats.get("openChannels", 0)
 
+        return stats
+
+    # =========================================================================
+    # CONVERSATION STORE - ALL conversations persisted (CORE FEATURE)
+    # Every interaction flows through here for memory continuity
+    # =========================================================================
+
+    def record_conversation_turn(
+        self,
+        user_id: str,
+        vessel_id: str,
+        message: str,
+        response: str,
+        conversation_id: Optional[str] = None,
+        project_id: Optional[str] = None,
+        intent: Optional[str] = None,
+        entities: Optional[List[str]] = None,
+        tool_calls: Optional[List[Dict[str, Any]]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Record a conversation turn (message + response) to the knowledge graph.
+
+        This is the primary entry point for persisting user-vessel interactions.
+        Should be called after every message exchange.
+
+        Args:
+            user_id: User who sent the message
+            vessel_id: Vessel that responded
+            message: User's message
+            response: Vessel's response
+            conversation_id: Existing conversation ID (creates new if None)
+            project_id: Project context
+            intent: Detected intent
+            entities: Extracted entities
+            tool_calls: Tools that were called
+
+        Returns:
+            Dict with conversation and turn info
+        """
+        if not self.conversation_store:
+            self._initialize_conversation_store()
+
+        if not self.conversation_store:
+            return {"success": False, "error": "ConversationStore not available"}
+
+        from vessels.memory import ConversationType, SpeakerType
+
+        # Get or create conversation
+        if conversation_id:
+            conversation = self.conversation_store.get_conversation(conversation_id)
+            if not conversation:
+                # Create new with provided ID
+                conversation = self.conversation_store.start_conversation(
+                    conversation_type=ConversationType.USER_VESSEL,
+                    participant_ids=[user_id, vessel_id],
+                    vessel_id=vessel_id,
+                    user_id=user_id,
+                    project_id=project_id,
+                )
+        else:
+            conversation = self.conversation_store.get_or_create_conversation(
+                user_id=user_id,
+                vessel_id=vessel_id,
+                conversation_type=ConversationType.USER_VESSEL,
+                project_id=project_id,
+            )
+
+        # Record the turn
+        turn = self.conversation_store.record_complete_turn(
+            conversation_id=conversation.conversation_id,
+            speaker_id=user_id,
+            speaker_type=SpeakerType.USER,
+            message=message,
+            response=response,
+            intent=intent,
+            entities=entities,
+            tool_calls=tool_calls,
+        )
+
+        return {
+            "success": True,
+            "conversation_id": conversation.conversation_id,
+            "turn_id": turn.turn_id,
+            "turn_count": conversation.turn_count,
+        }
+
+    def start_conversation(
+        self,
+        user_id: str,
+        vessel_id: str,
+        project_id: Optional[str] = None,
+        topic: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Explicitly start a new conversation.
+
+        Usually conversations are auto-created, but this allows
+        explicit session management.
+        """
+        if not self.conversation_store:
+            return {"success": False, "error": "ConversationStore not available"}
+
+        from vessels.memory import ConversationType
+
+        conversation = self.conversation_store.start_conversation(
+            conversation_type=ConversationType.USER_VESSEL,
+            participant_ids=[user_id, vessel_id],
+            vessel_id=vessel_id,
+            user_id=user_id,
+            project_id=project_id,
+            topic=topic,
+        )
+
+        return {
+            "success": True,
+            "conversation_id": conversation.conversation_id,
+            "vessel_id": vessel_id,
+            "user_id": user_id,
+        }
+
+    def end_conversation(
+        self,
+        conversation_id: str,
+        summary: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """End a conversation."""
+        if not self.conversation_store:
+            return {"success": False, "error": "ConversationStore not available"}
+
+        success = self.conversation_store.end_conversation(conversation_id, summary)
+        return {"success": success, "conversation_id": conversation_id}
+
+    def get_conversation_history(
+        self,
+        conversation_id: str,
+        limit: int = 50,
+    ) -> List[Dict[str, str]]:
+        """
+        Get conversation history in chat format.
+
+        Returns list of {"role": "user/assistant", "content": "..."}
+        """
+        if not self.conversation_store:
+            return []
+
+        return self.conversation_store.get_conversation_history(conversation_id, limit)
+
+    def get_user_conversations(
+        self,
+        user_id: str,
+        vessel_id: Optional[str] = None,
+        limit: int = 20,
+    ) -> List[Dict[str, Any]]:
+        """Get conversations for a user."""
+        if not self.conversation_store:
+            return []
+
+        conversations = self.conversation_store.get_user_conversations(
+            user_id, limit=limit
+        )
+
+        # Filter by vessel if specified
+        if vessel_id:
+            conversations = [c for c in conversations if c.vessel_id == vessel_id]
+
+        return [c.to_dict() for c in conversations]
+
+    def get_vessel_conversations(
+        self,
+        vessel_id: str,
+        limit: int = 20,
+    ) -> List[Dict[str, Any]]:
+        """Get all conversations for a vessel."""
+        if not self.conversation_store:
+            return []
+
+        conversations = self.conversation_store.get_vessel_conversations(
+            vessel_id, limit=limit
+        )
+        return [c.to_dict() for c in conversations]
+
+    def search_conversations(
+        self,
+        query: str,
+        user_id: Optional[str] = None,
+        vessel_id: Optional[str] = None,
+        limit: int = 20,
+    ) -> List[Dict[str, Any]]:
+        """
+        Search across all conversations.
+
+        Searches message content, responses, and metadata.
+        """
+        if not self.conversation_store:
+            return []
+
+        return self.conversation_store.search(
+            query=query,
+            user_id=user_id,
+            vessel_id=vessel_id,
+            limit=limit,
+        )
+
+    def get_conversation_stats(self) -> Dict[str, Any]:
+        """Get conversation store statistics."""
+        if not self.conversation_store:
+            return {"enabled": False}
+
+        stats = self.conversation_store.get_stats()
+        stats["enabled"] = True
         return stats
 
     # =========================================================================

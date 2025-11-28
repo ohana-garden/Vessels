@@ -809,12 +809,13 @@ All core systems are operational and ready to coordinate community needs.
                 "interaction_history": [],
                 "preferences": {},
                 "active_interests": [],
-                "last_activity": datetime.now()
+                "last_activity": datetime.now(),
+                "conversation_id": None,  # Track active conversation
             }
-        
+
         context = self.user_contexts[user_id]
-        
-        # Add interaction to history
+
+        # Add interaction to history (in-memory cache)
         context["interaction_history"].append({
             "id": interaction.id,
             "message": interaction.message,
@@ -822,25 +823,81 @@ All core systems are operational and ready to coordinate community needs.
             "timestamp": interaction.timestamp,
             "type": interaction.interaction_type.value
         })
-        
-        # Keep only last 20 interactions
+
+        # Keep only last 20 interactions in memory
         if len(context["interaction_history"]) > 20:
             context["interaction_history"] = context["interaction_history"][-20:]
-        
+
+        # CORE FEATURE: Persist to ConversationStore via Agent Zero
+        # All conversations are recorded to the knowledge graph
+        self._persist_conversation_turn(
+            user_id=user_id,
+            interaction=interaction,
+            response=response,
+            context=context,
+        )
+
         # Update active interests based on interaction
         if "grant" in interaction.message.lower():
             if "grant_management" not in context["active_interests"]:
                 context["active_interests"].append("grant_management")
-        
+
         if "volunteer" in interaction.message.lower() or "coordinate" in interaction.message.lower():
             if "volunteer_coordination" not in context["active_interests"]:
                 context["active_interests"].append("volunteer_coordination")
-        
+
         if "elder" in interaction.message.lower() or "care" in interaction.message.lower():
             if "elder_care" not in context["active_interests"]:
                 context["active_interests"].append("elder_care")
-        
+
         context["last_activity"] = datetime.now()
+
+    def _persist_conversation_turn(
+        self,
+        user_id: str,
+        interaction: UserInteraction,
+        response: Dict[str, Any],
+        context: Dict[str, Any],
+    ):
+        """
+        Persist conversation turn to the knowledge graph via Agent Zero.
+
+        This is a CORE FEATURE - all conversations are recorded.
+        """
+        try:
+            # Get vessel_id from interaction or response
+            vessel_id = (
+                getattr(interaction, 'vessel_id', None) or
+                response.get('vessel_id') or
+                response.get('servant_id') or
+                'default-vessel'
+            )
+
+            # Get project_id if available
+            project_id = response.get('project_id')
+
+            # Extract tool calls if any
+            tool_calls = response.get('tool_calls') or response.get('actions_taken')
+
+            # Record via Agent Zero
+            result = self.agent_zero.record_conversation_turn(
+                user_id=user_id,
+                vessel_id=vessel_id,
+                message=interaction.message,
+                response=response.get("response", ""),
+                conversation_id=context.get("conversation_id"),
+                project_id=project_id,
+                intent=response.get("intent"),
+                entities=response.get("entities"),
+                tool_calls=tool_calls,
+            )
+
+            # Store conversation_id for continuity
+            if result.get("success") and result.get("conversation_id"):
+                context["conversation_id"] = result["conversation_id"]
+
+        except Exception as e:
+            logger.error(f"Failed to persist conversation turn: {e}")
     
     def get_user_context(self, user_id: str) -> Optional[Dict[str, Any]]:
         """Get user context"""

@@ -43,6 +43,10 @@ class NodeType(str, Enum):
     A2A_CHANNEL = "A2AChannel"     # Communication channel between agents
     A2A_MESSAGE = "A2AMessage"     # Message in an A2A conversation
 
+    # Conversations (ALL interactions are persisted)
+    CONVERSATION = "Conversation"  # A conversation session (user-vessel, vessel-vessel, etc.)
+    TURN = "Turn"                  # A single turn in a conversation (message + response)
+
 
 class RelationType(str, Enum):
     """Relationship types in the Vessels knowledge graph"""
@@ -88,6 +92,14 @@ class RelationType(str, Enum):
     SENT_MESSAGE = "SENT_MESSAGE"           # Agent -[SENT_MESSAGE]-> A2AMessage
     MESSAGE_IN = "MESSAGE_IN"               # A2AMessage -[MESSAGE_IN]-> A2AChannel
     KNOWS_AGENT = "KNOWS_AGENT"             # Agent -[KNOWS_AGENT]-> A2AAgent (discovery)
+
+    # Conversation relationships
+    HAS_CONVERSATION = "HAS_CONVERSATION"   # Vessel/User -[HAS_CONVERSATION]-> Conversation
+    PARTICIPATED_IN = "PARTICIPATED_IN"     # User/Vessel -[PARTICIPATED_IN]-> Conversation
+    HAS_TURN = "HAS_TURN"                   # Conversation -[HAS_TURN]-> Turn
+    NEXT_TURN = "NEXT_TURN"                 # Turn -[NEXT_TURN]-> Turn (linked list)
+    ABOUT_TOPIC = "ABOUT_TOPIC"             # Conversation -[ABOUT_TOPIC]-> topic string
+    REFERENCES = "REFERENCES"               # Turn -[REFERENCES]-> any entity mentioned
 
 
 class PropertyName(str, Enum):
@@ -280,6 +292,37 @@ class VesselsGraphSchema:
             "role",                     # user or agent
             "content",                  # Message text
             PropertyName.CREATED_AT,
+        ],
+        # Conversation entities (ALL interactions persisted)
+        NodeType.CONVERSATION: [
+            "conversation_id",
+            "participant_ids",          # List of user/vessel IDs
+            "participant_type",         # "user_vessel", "vessel_vessel", "user_ambassador"
+            "vessel_id",                # Primary vessel in conversation
+            "user_id",                  # User if user-vessel conversation
+            "project_id",               # Project context
+            "topic",                    # Inferred or explicit topic
+            "summary",                  # Auto-generated summary
+            "turn_count",               # Number of turns
+            "started_at",
+            "last_activity_at",
+            PropertyName.STATUS,        # "active", "ended", "archived"
+        ],
+        NodeType.TURN: [
+            "turn_id",
+            "conversation_id",
+            "sequence_number",          # Order in conversation
+            "speaker_id",               # Who sent this message
+            "speaker_type",             # "user", "vessel", "ambassador", "agent"
+            "message",                  # The message content
+            "response",                 # The response content (if applicable)
+            "intent",                   # Detected intent (optional)
+            "entities",                 # Extracted entities (JSON)
+            "tool_calls",               # Tools invoked (JSON)
+            "sentiment",                # Detected sentiment (optional)
+            PropertyName.CREATED_AT,
+            "response_at",              # When response was generated
+            "latency_ms",               # Response latency
         ],
     }
 
