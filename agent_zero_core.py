@@ -2051,6 +2051,106 @@ class AgentZeroCore:
         else:
             return {"success": False, "error": "No visual content to generate"}
 
+    def generate_image(
+        self,
+        prompt: Optional[str] = None,
+        message: Optional[str] = None,
+        entities: Optional[List[str]] = None,
+        topic: Optional[str] = None,
+        turn_id: Optional[str] = None,
+        style: str = "warm, Hawaiian, community-focused",
+        aspect_ratio: str = "1:1",
+        api_key: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Generate an image using NanoBanana API.
+
+        Can generate from:
+        - A direct prompt
+        - A message (will extract entities)
+        - Pre-extracted entities
+        - A recorded turn_id
+
+        Args:
+            prompt: Direct image generation prompt
+            message: Message to extract entities from
+            entities: Pre-extracted entities
+            topic: Topic context
+            turn_id: Generate from a recorded turn
+            style: Visual style
+            aspect_ratio: Image aspect ratio
+            api_key: NanoBanana API key (or uses env var)
+
+        Returns:
+            Dict with generated image URL/data or error
+        """
+        try:
+            from vessels.services import get_nanobanana_client
+        except ImportError:
+            return {"success": False, "error": "NanoBanana client not available"}
+
+        client = get_nanobanana_client(api_key=api_key)
+
+        # Determine what to generate from
+        if prompt:
+            # Direct prompt
+            images = client.generate_image(
+                prompt=prompt,
+                style=style,
+                aspect_ratio=aspect_ratio,
+            )
+        elif turn_id:
+            # Generate from recorded turn
+            prompt_data = self.generate_image_prompt_for_turn(turn_id, style)
+            if not prompt_data.get("success"):
+                return prompt_data
+
+            images = client.generate_image(
+                prompt=prompt_data["prompt"],
+                style=style,
+                aspect_ratio=aspect_ratio,
+            )
+        elif entities:
+            # Generate from entities
+            images = client.generate_from_entities(
+                entities=entities,
+                topic=topic,
+                style=style,
+                aspect_ratio=aspect_ratio,
+            )
+        elif message:
+            # Extract entities from message and generate
+            prompt_data = self.generate_image_prompt_for_message(
+                message=message,
+                topic=topic,
+                entities=entities,
+                style=style,
+            )
+            if not prompt_data.get("success"):
+                return prompt_data
+
+            images = client.generate_image(
+                prompt=prompt_data["prompt"],
+                style=style,
+                aspect_ratio=aspect_ratio,
+            )
+        else:
+            return {"success": False, "error": "No prompt, message, entities, or turn_id provided"}
+
+        if images:
+            img = images[0]
+            return {
+                "success": True,
+                "url": img.url,
+                "base64": img.base64_data,
+                "prompt": img.prompt,
+                "revised_prompt": img.revised_prompt,
+                "style": img.style,
+                "aspect_ratio": img.aspect_ratio,
+            }
+        else:
+            return {"success": False, "error": "Image generation failed"}
+
     # =========================================================================
     # TOOL REGISTRY - Graph-based tool management
     # All tools are data in the knowledge graph, not hardcoded
