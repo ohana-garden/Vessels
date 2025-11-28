@@ -60,6 +60,33 @@ class ConversationStatus(str, Enum):
 # =============================================================================
 
 @dataclass
+class ImageContext:
+    """Image generation context for a turn."""
+    prompt: str                              # The prompt used to generate
+    url: Optional[str] = None                # Generated image URL
+    task_id: Optional[str] = None            # NanoBanana taskId for async
+    aspect_ratio: str = "9:16"               # Mobile-first default
+    quality: str = "standard"                # Transport optimization
+    output_format: str = "webp"              # Best compression
+    entities_used: Optional[List[str]] = None  # Entities that informed the prompt
+    generated_at: Optional[datetime] = None
+    metadata: Optional[Dict[str, Any]] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "prompt": self.prompt,
+            "url": self.url,
+            "task_id": self.task_id,
+            "aspect_ratio": self.aspect_ratio,
+            "quality": self.quality,
+            "output_format": self.output_format,
+            "entities_used": self.entities_used,
+            "generated_at": self.generated_at.isoformat() if self.generated_at else None,
+            "metadata": self.metadata,
+        }
+
+
+@dataclass
 class Turn:
     """A single turn in a conversation."""
     turn_id: str
@@ -73,6 +100,8 @@ class Turn:
     entities: Optional[List[str]] = None
     tool_calls: Optional[List[Dict[str, Any]]] = None
     sentiment: Optional[str] = None
+    # Image generation context
+    image: Optional[ImageContext] = None
     created_at: datetime = field(default_factory=datetime.utcnow)
     response_at: Optional[datetime] = None
     latency_ms: Optional[int] = None
@@ -90,6 +119,7 @@ class Turn:
             "entities": self.entities,
             "tool_calls": self.tool_calls,
             "sentiment": self.sentiment,
+            "image": self.image.to_dict() if self.image else None,
             "created_at": self.created_at.isoformat(),
             "response_at": self.response_at.isoformat() if self.response_at else None,
             "latency_ms": self.latency_ms,
@@ -755,6 +785,84 @@ class ConversationStore:
         )
 
         return turn
+
+    def attach_image(
+        self,
+        turn_id: str,
+        prompt: str,
+        url: Optional[str] = None,
+        task_id: Optional[str] = None,
+        aspect_ratio: str = "9:16",
+        quality: str = "standard",
+        output_format: str = "webp",
+        entities_used: Optional[List[str]] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> Optional[Turn]:
+        """
+        Attach image generation context to a turn.
+
+        Stores the prompt, URL, and generation settings for the image
+        associated with this turn.
+
+        Args:
+            turn_id: ID of the turn to attach image to
+            prompt: The prompt used to generate the image
+            url: Generated image URL (may be None if async)
+            task_id: NanoBanana taskId for async retrieval
+            aspect_ratio: Image aspect ratio (default 9:16 for mobile)
+            quality: Quality level (high/standard/low/thumbnail)
+            output_format: Image format (webp/jpeg/png)
+            entities_used: Entities that informed the prompt
+            metadata: Additional metadata
+
+        Returns:
+            Updated Turn with image context, or None if turn not found
+        """
+        turn = self._turns.get(turn_id)
+        if not turn:
+            logger.warning(f"Cannot attach image: turn {turn_id} not found")
+            return None
+
+        # Create image context
+        turn.image = ImageContext(
+            prompt=prompt,
+            url=url,
+            task_id=task_id,
+            aspect_ratio=aspect_ratio,
+            quality=quality,
+            output_format=output_format,
+            entities_used=entities_used or turn.entities,
+            generated_at=datetime.utcnow(),
+            metadata=metadata,
+        )
+
+        logger.info(f"Attached image to turn {turn_id}: {prompt[:50]}...")
+        return turn
+
+    def update_image_url(self, turn_id: str, url: str) -> Optional[Turn]:
+        """
+        Update the image URL for a turn (e.g., after async generation completes).
+
+        Args:
+            turn_id: ID of the turn
+            url: The generated image URL
+
+        Returns:
+            Updated Turn, or None if turn not found or has no image context
+        """
+        turn = self._turns.get(turn_id)
+        if not turn or not turn.image:
+            return None
+
+        turn.image.url = url
+        turn.image.generated_at = datetime.utcnow()
+        logger.info(f"Updated image URL for turn {turn_id}")
+        return turn
+
+    def get_turn_image(self, turn_id: str) -> Optional[ImageContext]:
+        """Get the image context for a turn."""
+        turn = self._turns.get(turn_id)
+        return turn.image if turn else None
 
     # =========================================================================
     # Retrieval

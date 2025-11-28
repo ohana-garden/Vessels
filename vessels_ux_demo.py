@@ -189,10 +189,10 @@ class VesselsUXDemo:
         # Generate image prompt
         prompt_data = self.store.generate_image_prompt(turn, self.conversation)
 
-        # Try to generate image
+        # Try to generate image and store context
         image_url = None
         if prompt_data:
-            image_url = self._generate_image(prompt_data["prompt"])
+            image_url = self._generate_image(prompt_data["prompt"], turn.turn_id)
 
         return {
             "response": response,
@@ -240,19 +240,42 @@ class VesselsUXDemo:
 
         return found[:5]
 
-    def _generate_image(self, prompt: str) -> Optional[str]:
-        """Generate image via NanoBanana API (mobile-optimized)."""
+    def _generate_image(self, prompt: str, turn_id: str) -> Optional[str]:
+        """Generate image via NanoBanana API (mobile-optimized) and store context."""
         try:
             images = self.client.generate_image(
                 prompt=prompt,
                 aspect_ratio="9:16",  # Smartphone portrait
+                quality="standard",
+                output_format="webp",
                 wait_for_result=True,
             )
-            if images and images[0].url:
-                return images[0].url
+
+            # Store image context in conversation store
+            url = images[0].url if images and images[0].url else None
+            task_id = images[0].task_id if images else None
+
+            self.store.attach_image(
+                turn_id=turn_id,
+                prompt=prompt,
+                url=url,
+                task_id=task_id,
+                aspect_ratio="9:16",
+                quality="standard",
+                output_format="webp",
+            )
+
+            return url
         except Exception as e:
-            pass  # API unavailable, return None
-        return None
+            # Still store the prompt even if generation fails
+            self.store.attach_image(
+                turn_id=turn_id,
+                prompt=prompt,
+                aspect_ratio="9:16",
+                quality="standard",
+                output_format="webp",
+            )
+            return None
 
     def run_interactive(self):
         """Run interactive demo."""
