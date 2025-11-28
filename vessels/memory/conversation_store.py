@@ -144,6 +144,12 @@ class ConversationStore:
     Provides both in-memory caching for performance and graph persistence
     for durability.
 
+    Features:
+    - Structured node persistence (Conversation, Turn nodes)
+    - Episodic memory via add_episode() for automatic entity extraction
+    - Privacy scoping (user/vessel/project isolation)
+    - In-memory caching with LRU eviction
+
     Usage:
         store = ConversationStore(graphiti_client)
 
@@ -177,6 +183,7 @@ class ConversationStore:
         graphiti_client: Optional[Any] = None,
         enable_caching: bool = True,
         max_cache_size: int = 1000,
+        enable_entity_extraction: bool = True,
     ):
         """
         Initialize conversation store.
@@ -185,10 +192,12 @@ class ConversationStore:
             graphiti_client: VesselsGraphitiClient or GraphitiMemoryBackend
             enable_caching: Keep recent conversations in memory
             max_cache_size: Max conversations to cache
+            enable_entity_extraction: Use add_episode() for automatic entity extraction
         """
         self.graphiti = graphiti_client
         self.enable_caching = enable_caching
         self.max_cache_size = max_cache_size
+        self.enable_entity_extraction = enable_entity_extraction
 
         # In-memory cache for active conversations
         self._conversations: Dict[str, Conversation] = {}
@@ -197,8 +206,12 @@ class ConversationStore:
         # Index by participant
         self._by_user: Dict[str, List[str]] = {}      # user_id -> [conversation_ids]
         self._by_vessel: Dict[str, List[str]] = {}    # vessel_id -> [conversation_ids]
+        self._by_project: Dict[str, List[str]] = {}   # project_id -> [conversation_ids]
 
-        logger.info("ConversationStore initialized")
+        logger.info(
+            f"ConversationStore initialized "
+            f"(entity_extraction={'enabled' if enable_entity_extraction else 'disabled'})"
+        )
 
     # =========================================================================
     # Graph Client Helper
@@ -215,6 +228,161 @@ class ConversationStore:
         if hasattr(self.graphiti, 'graphiti') and hasattr(self.graphiti.graphiti, 'create_node'):
             return self.graphiti.graphiti
         return None
+
+    # =========================================================================
+    # Entity Extraction via Graphiti Episodes
+    # =========================================================================
+
+    def _format_turn_as_episode(
+        self,
+        turn: Turn,
+        conversation: Optional[Conversation] = None,
+    ) -> str:
+        """
+        Format a turn as narrative text for Graphiti entity extraction.
+
+        Creates natural language that Graphiti can parse to extract:
+        - Named entities (people, places, concepts)
+        - Relationships between entities
+        - Topics and themes
+        - Temporal information
+
+        Args:
+            turn: The turn to format
+            conversation: Optional conversation context
+
+        Returns:
+            Narrative text suitable for add_episode()
+        """
+        parts = []
+
+        # Add speaker context
+        speaker_label = self._get_speaker_label(turn.speaker_id, turn.speaker_type)
+
+        # Format the message
+        parts.append(f"{speaker_label} said: \"{turn.message}\"")
+
+        # Add response if present
+        if turn.response:
+            responder_label = self._get_responder_label(turn, conversation)
+            parts.append(f"{responder_label} responded: \"{turn.response}\"")
+
+        # Add detected intent if available
+        if turn.intent:
+            parts.append(f"The intent was: {turn.intent}")
+
+        # Add topic context if available
+        if conversation and conversation.topic:
+            parts.append(f"This was part of a conversation about: {conversation.topic}")
+
+        return " ".join(parts)
+
+    def _get_speaker_label(self, speaker_id: str, speaker_type: SpeakerType) -> str:
+        """Get a human-readable label for a speaker."""
+        if speaker_type == SpeakerType.USER:
+            return f"User ({speaker_id})"
+        elif speaker_type == SpeakerType.VESSEL:
+            return f"Vessel ({speaker_id})"
+        elif speaker_type == SpeakerType.AMBASSADOR:
+            return f"Ambassador ({speaker_id})"
+        elif speaker_type == SpeakerType.A0:
+            return "Agent Zero"
+        else:
+            return f"{speaker_type.value.title()} ({speaker_id})"
+
+    def _get_responder_label(
+        self,
+        turn: Turn,
+        conversation: Optional[Conversation],
+    ) -> str:
+        """Determine who responded to a turn."""
+        # User messages are typically responded to by vessels/agents
+        if turn.speaker_type == SpeakerType.USER:
+            if conversation and conversation.vessel_id:
+                return f"Vessel ({conversation.vessel_id})"
+            return "The vessel"
+        # Vessel/agent messages are responded to by users or other agents
+        elif turn.speaker_type in (SpeakerType.VESSEL, SpeakerType.AMBASSADOR, SpeakerType.A0):
+            if conversation and conversation.user_id:
+                return f"User ({conversation.user_id})"
+            return "The user"
+        return "The responder"
+
+    def _build_episode_metadata(
+        self,
+        turn: Turn,
+        conversation: Optional[Conversation] = None,
+    ) -> Dict[str, Any]:
+        """
+        Build metadata for an episode.
+
+        Includes privacy scoping information for isolation.
+        """
+        metadata = {
+            "turn_id": turn.turn_id,
+            "conversation_id": turn.conversation_id,
+            "speaker_id": turn.speaker_id,
+            "speaker_type": turn.speaker_type.value,
+            "sequence": turn.sequence_number,
+            "timestamp": turn.created_at.isoformat(),
+            "source": "conversation_store",
+        }
+
+        # Privacy scoping - critical for isolation
+        if conversation:
+            if conversation.user_id:
+                metadata["user_id"] = conversation.user_id
+            if conversation.vessel_id:
+                metadata["vessel_id"] = conversation.vessel_id
+            if conversation.project_id:
+                metadata["project_id"] = conversation.project_id
+            metadata["conversation_type"] = conversation.conversation_type.value
+
+        # Add entities if detected
+        if turn.entities:
+            metadata["pre_extracted_entities"] = turn.entities
+
+        return metadata
+
+    def _extract_entities_from_turn(
+        self,
+        turn: Turn,
+        conversation: Optional[Conversation] = None,
+    ) -> None:
+        """
+        Use Graphiti's add_episode() for automatic entity extraction.
+
+        This sends the turn as narrative text to Graphiti, which will:
+        1. Parse the text for named entities
+        2. Extract relationships between entities
+        3. Build/update the knowledge graph
+        4. Create searchable embeddings
+        """
+        if not self.enable_entity_extraction:
+            return
+
+        client = self._get_client()
+        if not client or not hasattr(client, 'add_episode'):
+            return
+
+        try:
+            # Format turn as narrative
+            episode_text = self._format_turn_as_episode(turn, conversation)
+
+            # Build metadata with privacy scoping
+            metadata = self._build_episode_metadata(turn, conversation)
+
+            # Send to Graphiti for entity extraction
+            client.add_episode(text=episode_text, metadata=metadata)
+
+            logger.debug(
+                f"Entity extraction complete for turn {turn.turn_id[:8]}... "
+                f"(text: {len(episode_text)} chars)"
+            )
+
+        except Exception as e:
+            # Don't fail the turn if entity extraction fails
+            logger.warning(f"Entity extraction failed for turn {turn.turn_id}: {e}")
 
     # =========================================================================
     # Conversation Lifecycle
@@ -263,7 +431,7 @@ class ConversationStore:
             self._conversations[conversation_id] = conversation
             self._evict_if_needed()
 
-            # Index by user/vessel
+            # Index by user/vessel/project for privacy scoping
             if user_id:
                 if user_id not in self._by_user:
                     self._by_user[user_id] = []
@@ -273,6 +441,11 @@ class ConversationStore:
                 if vessel_id not in self._by_vessel:
                     self._by_vessel[vessel_id] = []
                 self._by_vessel[vessel_id].append(conversation_id)
+
+            if project_id:
+                if project_id not in self._by_project:
+                    self._by_project[project_id] = []
+                self._by_project[project_id].append(conversation_id)
 
         # Persist to graph
         self._persist_conversation(conversation)
@@ -421,6 +594,12 @@ class ConversationStore:
         # Persist update
         self._persist_turn(turn)
 
+        # Get conversation for entity extraction context
+        conversation = self._conversations.get(turn.conversation_id)
+
+        # Extract entities now that we have the complete turn (message + response)
+        self._extract_entities_from_turn(turn, conversation)
+
         return turn
 
     def record_complete_turn(
@@ -539,6 +718,138 @@ class ConversationStore:
                 history.append({"role": "assistant", "content": turn.response})
 
         return history
+
+    # =========================================================================
+    # Privacy Scoping
+    # =========================================================================
+
+    def get_project_conversations(
+        self,
+        project_id: str,
+        limit: int = 20,
+        include_ended: bool = False,
+    ) -> List[Conversation]:
+        """Get conversations for a project."""
+        conv_ids = self._by_project.get(project_id, [])
+        conversations = []
+
+        for conv_id in reversed(conv_ids):  # Most recent first
+            conv = self._conversations.get(conv_id)
+            if conv:
+                if include_ended or conv.status == ConversationStatus.ACTIVE:
+                    conversations.append(conv)
+                if len(conversations) >= limit:
+                    break
+
+        return conversations
+
+    def check_access(
+        self,
+        conversation_id: str,
+        user_id: Optional[str] = None,
+        vessel_id: Optional[str] = None,
+        project_id: Optional[str] = None,
+    ) -> bool:
+        """
+        Check if an entity has access to a conversation.
+
+        Privacy rules:
+        - A user can access their own conversations
+        - A vessel can access conversations it participates in
+        - Project members can access project conversations
+        - Admins can access all (not implemented here, handled at API layer)
+        """
+        conversation = self.get_conversation(conversation_id)
+        if not conversation:
+            return False
+
+        # User access: must be a participant
+        if user_id:
+            if conversation.user_id == user_id:
+                return True
+            if user_id in conversation.participant_ids:
+                return True
+
+        # Vessel access: must be a participant
+        if vessel_id:
+            if conversation.vessel_id == vessel_id:
+                return True
+            if vessel_id in conversation.participant_ids:
+                return True
+
+        # Project access: must match project
+        if project_id:
+            if conversation.project_id == project_id:
+                return True
+
+        return False
+
+    def get_accessible_conversations(
+        self,
+        user_id: Optional[str] = None,
+        vessel_id: Optional[str] = None,
+        project_id: Optional[str] = None,
+        limit: int = 50,
+    ) -> List[Conversation]:
+        """
+        Get all conversations accessible within a privacy scope.
+
+        Returns conversations where the caller is authorized to access.
+        """
+        accessible_ids: set = set()
+
+        if user_id and user_id in self._by_user:
+            accessible_ids.update(self._by_user[user_id])
+
+        if vessel_id and vessel_id in self._by_vessel:
+            accessible_ids.update(self._by_vessel[vessel_id])
+
+        if project_id and project_id in self._by_project:
+            accessible_ids.update(self._by_project[project_id])
+
+        # Sort by last activity and return
+        conversations = []
+        for conv_id in accessible_ids:
+            conv = self._conversations.get(conv_id)
+            if conv:
+                conversations.append(conv)
+
+        conversations.sort(key=lambda c: c.last_activity_at, reverse=True)
+        return conversations[:limit]
+
+    def scoped_search(
+        self,
+        query: str,
+        user_id: Optional[str] = None,
+        vessel_id: Optional[str] = None,
+        project_id: Optional[str] = None,
+        limit: int = 20,
+    ) -> List[Dict[str, Any]]:
+        """
+        Search within a privacy scope.
+
+        Only returns results from conversations the caller can access.
+        """
+        # Get accessible conversations
+        accessible = self.get_accessible_conversations(
+            user_id=user_id,
+            vessel_id=vessel_id,
+            project_id=project_id,
+            limit=1000,  # Get all accessible for filtering
+        )
+        accessible_ids = {c.conversation_id for c in accessible}
+
+        # Search and filter
+        all_results = self.search(query, limit=limit * 2)  # Get more to filter
+
+        filtered_results = []
+        for result in all_results:
+            if result.get("conversation_id") in accessible_ids:
+                filtered_results.append(result)
+                if len(filtered_results) >= limit:
+                    break
+
+        return filtered_results
 
     # =========================================================================
     # Search

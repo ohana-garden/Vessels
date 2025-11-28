@@ -138,7 +138,10 @@ class AgentZeroCore:
 
         # Conversation Store - ALL conversations persisted (CORE FEATURE)
         self.conversation_store = None
-        
+
+        # Gardener - automated memory and conversation hygiene
+        self.gardener = None
+
     def initialize(self, memory_system=None, tool_system=None):
         """
         Initialize the coordination system.
@@ -172,6 +175,9 @@ class AgentZeroCore:
 
         # Initialize Conversation Store for ALL conversation persistence
         self._initialize_conversation_store()
+
+        # Initialize Gardener for memory and conversation hygiene
+        self._initialize_gardener()
 
         logger.info("Agent Zero Core initialized")
 
@@ -352,6 +358,60 @@ class AgentZeroCore:
         except ImportError as e:
             logger.warning(f"Could not initialize ConversationStore: {e}")
             self.conversation_store = None
+
+    def _initialize_gardener(self):
+        """Initialize Gardener agent for memory and conversation hygiene."""
+        try:
+            from vessels.memory import GardenerAgent
+
+            # Gardener needs a memory store - use community memory if available
+            memory_store = None
+            if hasattr(self, 'community_memory') and self.community_memory:
+                memory_store = self.community_memory
+
+            self.gardener = GardenerAgent(
+                memory_store=memory_store,
+                conversation_store=self.conversation_store,
+                schedule="nightly",  # Run maintenance during off-hours
+                cpu_budget_percent=5.0,
+            )
+
+            # Don't auto-start - let operators decide when to start
+            logger.info(
+                "Gardener agent initialized - "
+                "use agent_zero.start_gardener() to begin automated maintenance"
+            )
+
+        except ImportError as e:
+            logger.warning(f"Could not initialize Gardener: {e}")
+            self.gardener = None
+
+    def start_gardener(self) -> bool:
+        """Start the Gardener agent for automated maintenance."""
+        if not self.gardener:
+            self._initialize_gardener()
+
+        if self.gardener:
+            self.gardener.start()
+            return True
+        return False
+
+    def stop_gardener(self) -> bool:
+        """Stop the Gardener agent."""
+        if self.gardener:
+            self.gardener.stop()
+            return True
+        return False
+
+    def run_gardener_cycle(self) -> Dict[str, Any]:
+        """Manually trigger a Gardener maintenance cycle."""
+        if not self.gardener:
+            self._initialize_gardener()
+
+        if self.gardener:
+            stats = self.gardener.force_run()
+            return stats.to_dict()
+        return {"error": "Gardener not available"}
 
     def process_birth_message(self, user_id: str, message: str) -> Dict[str, Any]:
         """
