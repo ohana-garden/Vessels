@@ -71,7 +71,7 @@ def main():
     images = client.generate_image(
         prompt=prompt_data["prompt"],
         style=ImageStyle.WARM_HAWAIIAN,
-        aspect_ratio=AspectRatio.LANDSCAPE,
+        aspect_ratio=AspectRatio.PORTRAIT,  # Mobile-optimized 9:16
     )
 
     if images:

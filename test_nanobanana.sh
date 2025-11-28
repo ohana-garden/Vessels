@@ -16,8 +16,11 @@ curl --request POST \
   "prompt": "A warm Hawaiian community scene with kupuna teaching keiki in a taro garden. Style: warm, Hawaiian, community-focused",
   "numImages": 1,
   "type": "TEXTTOIAMGE",
-  "image_size": "16:9"
+  "image_size": "9:16"
 }' | python3 -m json.tool
+
+echo ""
+echo "Note: Using 9:16 portrait aspect ratio for smartphone screens"
 
 echo ""
 echo "Done. If you got a taskId, poll with:"

@@ -116,11 +116,11 @@ def demo_image_generation(prompts):
         print(f"\n--- Generating Image {i} ---")
         print(f"Prompt: \"{prompt_data['prompt'][:60]}...\"")
 
-        # Generate image
+        # Generate image (mobile-optimized portrait)
         images = client.generate_image(
             prompt=prompt_data['prompt'],
             style=ImageStyle.WARM_HAWAIIAN,
-            aspect_ratio=AspectRatio.LANDSCAPE,
+            aspect_ratio=AspectRatio.PORTRAIT,  # 9:16 for smartphones
         )
 
         if images:

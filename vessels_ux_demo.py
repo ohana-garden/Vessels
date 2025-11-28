@@ -241,11 +241,11 @@ class VesselsUXDemo:
         return found[:5]
 
     def _generate_image(self, prompt: str) -> Optional[str]:
-        """Generate image via NanoBanana API."""
+        """Generate image via NanoBanana API (mobile-optimized)."""
         try:
             images = self.client.generate_image(
                 prompt=prompt,
-                aspect_ratio="16:9",
+                aspect_ratio="9:16",  # Smartphone portrait
                 wait_for_result=True,
             )
             if images and images[0].url:

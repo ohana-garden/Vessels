@@ -23,7 +23,9 @@ class AspectRatio(str, Enum):
     """Supported aspect ratios for image generation."""
     SQUARE = "1:1"
     LANDSCAPE = "16:9"
-    PORTRAIT = "9:16"
+    PORTRAIT = "9:16"          # Smartphone full-screen
+    MOBILE_STORY = "9:16"      # Instagram/TikTok stories
+    MOBILE_FEED = "4:5"        # Instagram feed optimal
     WIDE = "21:9"
     PHOTO = "4:3"
     PHOTO_PORTRAIT = "3:4"
@@ -85,7 +87,7 @@ class NanoBananaClient:
         api_key: Optional[str] = None,
         base_url: Optional[str] = None,
         default_style: str = ImageStyle.WARM_HAWAIIAN,
-        default_aspect_ratio: str = AspectRatio.SQUARE,
+        default_aspect_ratio: str = AspectRatio.PORTRAIT,  # Mobile-first
         poll_interval: float = 2.0,
         max_poll_attempts: int = 30,
     ):
