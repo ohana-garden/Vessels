@@ -384,6 +384,126 @@ class ConversationStore:
             # Don't fail the turn if entity extraction fails
             logger.warning(f"Entity extraction failed for turn {turn.turn_id}: {e}")
 
+    def generate_image_prompt(
+        self,
+        turn: Turn,
+        conversation: Optional[Conversation] = None,
+        style: str = "warm, Hawaiian, community-focused",
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Generate an image prompt based on extracted entities from a turn.
+
+        This is the first practical use of entity extraction - creating
+        contextual visual content for the conversation.
+
+        Args:
+            turn: The turn to generate a prompt for
+            conversation: Optional conversation context
+            style: Visual style guidance
+
+        Returns:
+            Dict with prompt, entities used, and metadata, or None if no visual content needed
+        """
+        # Collect entities from the turn
+        entities = turn.entities or []
+
+        # Also extract key nouns/concepts from message if no entities provided
+        if not entities:
+            entities = self._extract_visual_concepts(turn.message)
+
+        if not entities:
+            return None  # Nothing visual to generate
+
+        # Categorize entities for better prompts
+        places = []
+        people_types = []
+        objects = []
+        concepts = []
+
+        # Simple categorization (in production, use NLP)
+        place_keywords = ['valley', 'center', 'garden', 'farm', 'beach', 'mountain', 'village', 'hawaii', 'kailua', 'waipio']
+        people_keywords = ['kupuna', 'elder', 'farmer', 'family', 'community', 'neighbor', 'ohana']
+        object_keywords = ['taro', 'food', 'meal', 'grant', 'program', 'building']
+
+        for entity in entities:
+            entity_lower = entity.lower()
+            if any(kw in entity_lower for kw in place_keywords):
+                places.append(entity)
+            elif any(kw in entity_lower for kw in people_keywords):
+                people_types.append(entity)
+            elif any(kw in entity_lower for kw in object_keywords):
+                objects.append(entity)
+            else:
+                concepts.append(entity)
+
+        # Build the image prompt
+        prompt_parts = []
+
+        # Scene setting
+        if places:
+            prompt_parts.append(f"Scene in {', '.join(places)}")
+        else:
+            prompt_parts.append("A warm Hawaiian community scene")
+
+        # People
+        if people_types:
+            prompt_parts.append(f"featuring {', '.join(people_types)}")
+
+        # Objects/activities
+        if objects:
+            prompt_parts.append(f"with {', '.join(objects)}")
+
+        # Add style
+        prompt_parts.append(f"Style: {style}")
+
+        # Add conversation topic context
+        if conversation and conversation.topic:
+            prompt_parts.append(f"Theme: {conversation.topic}")
+
+        image_prompt = ". ".join(prompt_parts)
+
+        return {
+            "prompt": image_prompt,
+            "entities_used": entities,
+            "places": places,
+            "people_types": people_types,
+            "objects": objects,
+            "concepts": concepts,
+            "turn_id": turn.turn_id,
+            "conversation_id": turn.conversation_id,
+            "style": style,
+        }
+
+    def _extract_visual_concepts(self, text: str) -> List[str]:
+        """
+        Extract visual concepts from text when no entities are provided.
+
+        Simple keyword extraction for visual elements.
+        """
+        # Visual keywords to look for
+        visual_keywords = [
+            # Places
+            'garden', 'farm', 'valley', 'beach', 'mountain', 'center', 'home',
+            'village', 'community', 'building', 'office',
+            # Hawaiian places
+            'kailua', 'waipio', 'maui', 'oahu', 'hawaii', 'honolulu',
+            # People
+            'kupuna', 'elder', 'family', 'children', 'farmer', 'community',
+            # Things
+            'taro', 'food', 'meal', 'plant', 'water', 'ocean',
+            # Activities
+            'farming', 'cooking', 'gathering', 'meeting', 'caring',
+        ]
+
+        text_lower = text.lower()
+        found = []
+
+        for keyword in visual_keywords:
+            if keyword in text_lower:
+                found.append(keyword)
+
+        return found[:5]  # Limit to 5 most relevant
+
     # =========================================================================
     # Conversation Lifecycle
     # =========================================================================

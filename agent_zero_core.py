@@ -1956,6 +1956,101 @@ class AgentZeroCore:
         stats["enabled"] = True
         return stats
 
+    def generate_image_prompt_for_turn(
+        self,
+        turn_id: str,
+        style: str = "warm, Hawaiian, community-focused",
+    ) -> Dict[str, Any]:
+        """
+        Generate an image prompt based on a conversation turn.
+
+        Uses entity extraction to create contextual visual content.
+
+        Args:
+            turn_id: The turn to generate a prompt for
+            style: Visual style guidance
+
+        Returns:
+            Dict with prompt and metadata, or error
+        """
+        if not self.conversation_store:
+            return {"success": False, "error": "ConversationStore not available"}
+
+        turn = self.conversation_store.get_turn(turn_id)
+        if not turn:
+            return {"success": False, "error": f"Turn {turn_id} not found"}
+
+        conversation = self.conversation_store.get_conversation(turn.conversation_id)
+
+        result = self.conversation_store.generate_image_prompt(turn, conversation, style)
+
+        if result:
+            return {"success": True, **result}
+        else:
+            return {"success": False, "error": "No visual content to generate"}
+
+    def generate_image_prompt_for_message(
+        self,
+        message: str,
+        topic: Optional[str] = None,
+        entities: Optional[List[str]] = None,
+        style: str = "warm, Hawaiian, community-focused",
+    ) -> Dict[str, Any]:
+        """
+        Generate an image prompt directly from a message.
+
+        Useful for generating images without recording a turn.
+
+        Args:
+            message: The message text
+            topic: Optional topic context
+            entities: Optional pre-extracted entities
+            style: Visual style guidance
+
+        Returns:
+            Dict with prompt and metadata
+        """
+        if not self.conversation_store:
+            # Create temporary store just for prompt generation
+            from vessels.memory import ConversationStore
+            temp_store = ConversationStore(enable_entity_extraction=False)
+        else:
+            temp_store = self.conversation_store
+
+        # Create a temporary turn for prompt generation
+        from vessels.memory.conversation_store import Turn, Conversation, SpeakerType, ConversationType
+        from datetime import datetime
+
+        temp_turn = Turn(
+            turn_id="temp",
+            conversation_id="temp",
+            sequence_number=0,
+            speaker_id="user",
+            speaker_type=SpeakerType.USER,
+            message=message,
+            entities=entities,
+            created_at=datetime.utcnow(),
+        )
+
+        temp_conv = None
+        if topic:
+            temp_conv = Conversation(
+                conversation_id="temp",
+                participant_ids=["user", "vessel"],
+                conversation_type=ConversationType.USER_VESSEL,
+                topic=topic,
+            )
+
+        result = temp_store.generate_image_prompt(temp_turn, temp_conv, style)
+
+        if result:
+            # Remove temp IDs
+            result.pop("turn_id", None)
+            result.pop("conversation_id", None)
+            return {"success": True, **result}
+        else:
+            return {"success": False, "error": "No visual content to generate"}
+
     # =========================================================================
     # TOOL REGISTRY - Graph-based tool management
     # All tools are data in the knowledge graph, not hardcoded
