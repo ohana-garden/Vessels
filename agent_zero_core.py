@@ -123,6 +123,10 @@ class AgentZeroCore:
         # Specialized agents (not spawned, but coordinated through A0)
         self.birth_agent = None  # Birth Agent for vessel creation
         self.mcp_explorer = None  # MCP Explorer for capability discovery
+        self.ambassador_factory = None  # Factory for MCP Ambassador agents
+
+        # Track MCP Ambassadors (server_id -> ambassador)
+        self.mcp_ambassadors: Dict[str, Any] = {}
 
         # Tool Registry - graph-based tool management (no hardcoding!)
         self.tool_registry = None
@@ -151,6 +155,9 @@ class AgentZeroCore:
 
         # Initialize MCP Explorer for capability discovery
         self._initialize_mcp_explorer()
+
+        # Initialize Ambassador Factory for MCP server personification
+        self._initialize_ambassador_factory()
 
         logger.info("Agent Zero Core initialized")
 
@@ -202,6 +209,27 @@ class AgentZeroCore:
             logger.warning(f"Could not initialize MCP Explorer: {e}")
             self.mcp_explorer = None
 
+    def _initialize_ambassador_factory(self):
+        """Initialize the Ambassador Factory for MCP server personification."""
+        try:
+            from vessels.agents.mcp_ambassador import MCPAmbassadorFactory
+            self.ambassador_factory = MCPAmbassadorFactory(
+                llm_call=self.llm_call,
+            )
+
+            # Create ambassadors for all seeded MCP servers
+            if self.mcp_explorer:
+                for server in self.mcp_explorer.servers.values():
+                    self._birth_mcp_ambassador(server)
+
+            logger.info(
+                f"Ambassador Factory initialized with "
+                f"{len(self.mcp_ambassadors)} ambassadors"
+            )
+        except ImportError as e:
+            logger.warning(f"Could not initialize Ambassador Factory: {e}")
+            self.ambassador_factory = None
+
     def set_llm_call(self, llm_call: Callable[[str], str]) -> None:
         """
         Set or update the LLM call function.
@@ -219,6 +247,9 @@ class AgentZeroCore:
         # Update Tool Registry if it exists
         if self.tool_registry:
             self.tool_registry.llm_call = llm_call
+        # Update Ambassador Factory if it exists
+        if self.ambassador_factory:
+            self.ambassador_factory.llm_call = llm_call
         logger.info("LLM call function configured for AgentZeroCore")
 
     def process_birth_message(self, user_id: str, message: str) -> Dict[str, Any]:
@@ -871,9 +902,13 @@ class AgentZeroCore:
         # Add to MCP catalog - this will automatically notify interested vessels
         added = self.mcp_explorer.add_discovered_server(server)
 
-        # Also register tools in A0's tool registry for unified tool management
-        if added and self.tool_registry:
-            self._register_mcp_server_tools(server)
+        if added:
+            # Register tools in A0's tool registry for unified tool management
+            if self.tool_registry:
+                self._register_mcp_server_tools(server)
+
+            # Birth an ambassador for this MCP server
+            self._birth_mcp_ambassador(server)
 
         return added
 
@@ -927,6 +962,270 @@ class AgentZeroCore:
             f"Registered {len(tools_to_register)} tools from MCP server "
             f"'{server.name}' in tool registry"
         )
+
+    def _birth_mcp_ambassador(self, server) -> Optional[Dict[str, Any]]:
+        """
+        Birth an ambassador vessel for an MCP server.
+
+        Each MCP server gets a personified ambassador that can be talked to.
+        The ambassador explains capabilities, helps use tools, and makes
+        the MCP ecosystem conversational.
+
+        Args:
+            server: MCPServerInfo object
+
+        Returns:
+            Ambassador info dict or None if failed
+        """
+        if not self.ambassador_factory:
+            logger.warning("Ambassador factory not initialized, cannot birth ambassador")
+            return None
+
+        try:
+            # Create the ambassador through the factory
+            ambassador = self.ambassador_factory.create_ambassador(
+                server_id=server.server_id,
+                server_name=server.name,
+                description=server.description,
+                capabilities=server.capabilities,
+                tools_provided=server.tools_provided,
+                problems_it_solves=server.problems_it_solves,
+                domains=server.domains,
+            )
+
+            # Track the ambassador
+            self.mcp_ambassadors[server.server_id] = ambassador
+
+            logger.info(
+                f"Birthed ambassador '{ambassador.persona.friendly_name}' "
+                f"({ambassador.persona.emoji}) for MCP server '{server.name}'"
+            )
+
+            return ambassador.to_dict()
+
+        except Exception as e:
+            logger.error(f"Failed to birth ambassador for {server.name}: {e}")
+            return None
+
+    # =========================================================================
+    # MCP AMBASSADOR API - Talk to your MCP servers
+    # =========================================================================
+
+    def talk_to_ambassador(
+        self,
+        server_id: str,
+        message: str,
+    ) -> Dict[str, Any]:
+        """
+        Have a conversation with an MCP server's ambassador.
+
+        Instead of reading docs, just ask the ambassador!
+
+        Args:
+            server_id: ID of the MCP server
+            message: Your message/question
+
+        Returns:
+            Dict with ambassador's response
+        """
+        if server_id not in self.mcp_ambassadors:
+            # Try to find ambassador by friendly name
+            ambassador = self._find_ambassador_by_name(message)
+            if ambassador:
+                server_id = ambassador.persona.server_id
+            else:
+                return {
+                    "success": False,
+                    "error": f"No ambassador found for '{server_id}'",
+                    "available_ambassadors": self.list_ambassadors(),
+                }
+
+        if not self.ambassador_factory:
+            return {
+                "success": False,
+                "error": "Ambassador factory not initialized",
+            }
+
+        response = self.ambassador_factory.converse(server_id, message)
+        ambassador = self.mcp_ambassadors[server_id]
+
+        return {
+            "success": True,
+            "ambassador": ambassador.persona.friendly_name,
+            "emoji": ambassador.persona.emoji,
+            "response": response,
+            "server_id": server_id,
+        }
+
+    def _find_ambassador_by_name(self, name: str) -> Optional[Any]:
+        """Find an ambassador by friendly name or address."""
+        if not self.ambassador_factory:
+            return None
+        return self.ambassador_factory.get_ambassador_by_name(name)
+
+    def get_ambassador(self, server_id: str) -> Optional[Dict[str, Any]]:
+        """Get info about a specific ambassador."""
+        ambassador = self.mcp_ambassadors.get(server_id)
+        if ambassador:
+            return ambassador.to_dict()
+        return None
+
+    def get_ambassador_intro(self, server_id: str) -> str:
+        """Get an ambassador's self-introduction."""
+        if not self.ambassador_factory:
+            return "Ambassador system not available"
+        return self.ambassador_factory.get_ambassador_intro(server_id)
+
+    def list_ambassadors(self) -> List[Dict[str, Any]]:
+        """List all MCP ambassadors."""
+        results = []
+        for server_id, ambassador in self.mcp_ambassadors.items():
+            results.append({
+                "server_id": server_id,
+                "ambassador_id": ambassador.ambassador_id,
+                "friendly_name": ambassador.persona.friendly_name,
+                "emoji": ambassador.persona.emoji,
+                "self_intro": ambassador.persona.self_intro,
+                "capabilities": ambassador.persona.capabilities[:3],
+            })
+        return results
+
+    def meet_ambassadors(self) -> str:
+        """
+        Get a friendly introduction to all ambassadors.
+
+        Great for first-time users to see what's available.
+        """
+        if not self.ambassador_factory:
+            return "Ambassador system not available"
+        return self.ambassador_factory.list_ambassador_intros()
+
+    def ask_ambassador_about_tool(
+        self,
+        server_id: str,
+        tool_name: str,
+    ) -> Dict[str, Any]:
+        """
+        Ask an ambassador to explain how to use a specific tool.
+
+        Args:
+            server_id: ID of the MCP server
+            tool_name: Name of the tool to explain
+
+        Returns:
+            Dict with explanation
+        """
+        if server_id not in self.mcp_ambassadors:
+            return {
+                "success": False,
+                "error": f"No ambassador for '{server_id}'",
+            }
+
+        if not self.ambassador_factory:
+            return {
+                "success": False,
+                "error": "Ambassador factory not initialized",
+            }
+
+        ambassador = self.mcp_ambassadors[server_id]
+
+        # Get tool info if available
+        tool_description = ""
+        tool_params = None
+
+        if self.mcp_explorer:
+            server = self.mcp_explorer.get_server(server_id)
+            if server and tool_name in server.tools_provided:
+                tool_description = f"Tool from {server.name}"
+
+        explanation = self.ambassador_factory.explain_tool(
+            server_id=server_id,
+            tool_name=tool_name,
+            tool_description=tool_description,
+            tool_params=tool_params,
+        )
+
+        return {
+            "success": True,
+            "ambassador": ambassador.persona.friendly_name,
+            "tool_name": tool_name,
+            "explanation": explanation,
+        }
+
+    def find_ambassador_for_need(
+        self,
+        need: str,
+    ) -> Dict[str, Any]:
+        """
+        Find which ambassador can help with a specific need.
+
+        Args:
+            need: Natural language description of what you need
+
+        Returns:
+            Dict with recommended ambassador and reasoning
+        """
+        if not self.mcp_ambassadors:
+            return {
+                "success": False,
+                "error": "No ambassadors available",
+            }
+
+        # Score each ambassador
+        scores = []
+        need_lower = need.lower()
+
+        for server_id, ambassador in self.mcp_ambassadors.items():
+            score = 0
+            persona = ambassador.persona
+
+            # Check capabilities
+            for cap in persona.capabilities:
+                if cap.lower() in need_lower or need_lower in cap.lower():
+                    score += 2
+
+            # Check problems it solves
+            for problem in persona.problems_it_solves:
+                if any(word in need_lower for word in problem.lower().split()):
+                    score += 3
+
+            # Check domains
+            for domain in persona.domains:
+                if domain.lower() in need_lower:
+                    score += 1
+
+            if score > 0:
+                scores.append((server_id, ambassador, score))
+
+        if not scores:
+            return {
+                "success": False,
+                "error": f"No ambassador found for need: {need}",
+                "available_ambassadors": self.list_ambassadors(),
+            }
+
+        # Sort by score
+        scores.sort(key=lambda x: x[2], reverse=True)
+
+        best = scores[0]
+        ambassador = best[1]
+
+        return {
+            "success": True,
+            "server_id": best[0],
+            "ambassador": ambassador.persona.friendly_name,
+            "emoji": ambassador.persona.emoji,
+            "intro": ambassador.persona.self_intro,
+            "confidence": min(best[2] / 6, 1.0),  # Normalize score
+            "alternatives": [
+                {
+                    "server_id": s[0],
+                    "ambassador": s[1].persona.friendly_name,
+                    "emoji": s[1].persona.emoji,
+                }
+                for s in scores[1:3]  # Top 2 alternatives
+            ],
+        }
 
     # =========================================================================
     # TOOL REGISTRY - Graph-based tool management

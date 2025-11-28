@@ -35,6 +35,7 @@ class NodeType(str, Enum):
     # Vessels core
     PROJECT = "Project"            # Bounded collaborative space (community)
     VESSEL = "Vessel"              # Personified digital twin
+    MCP_AMBASSADOR = "MCPAmbassador"  # Personified agent for MCP server
 
 
 class RelationType(str, Enum):
@@ -68,6 +69,10 @@ class RelationType(str, Enum):
     HOSTS = "HOSTS"                     # Project -[HOSTS]-> Vessel
     MEMBER_OF = "MEMBER_OF"             # Person -[MEMBER_OF]-> Project
     OWNS = "OWNS"                       # Person -[OWNS]-> Project
+
+    # Ambassador relationships
+    REPRESENTS_SERVER = "REPRESENTS_SERVER"  # MCPAmbassador -[REPRESENTS_SERVER]-> MCPServer
+    SPEAKS_FOR = "SPEAKS_FOR"               # MCPAmbassador -[SPEAKS_FOR]-> Tool (can explain/invoke)
 
 
 class PropertyName(str, Enum):
@@ -203,6 +208,18 @@ class VesselsGraphSchema:
             "privacy_level",
             "persona",               # JSON persona configuration
             PropertyName.STATUS,
+            PropertyName.CREATED_AT,
+        ],
+        NodeType.MCP_AMBASSADOR: [
+            PropertyName.NAME,          # Friendly name (e.g., "Sunny")
+            PropertyName.DESCRIPTION,   # Self-introduction
+            "ambassador_id",
+            "server_id",                # MCP server it represents
+            "vessel_id",                # Vessel ID (ambassadors ARE vessels)
+            "style",                    # Communication style
+            "emoji",                    # Representative emoji
+            "capabilities",             # What it can help with
+            "tools_provided",           # Tools it can explain/invoke
             PropertyName.CREATED_AT,
         ],
     }
