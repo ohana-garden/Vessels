@@ -23,7 +23,9 @@ class FalkorDBVesselRegistry:
     def __init__(
         self,
         falkor_client=None,
-        graph_name: str = "vessels_registry"
+        graph_name: str = "vessels_registry",
+        db_path: Optional[str] = None,
+        registry_dir: Optional[str] = None
     ):
         """
         Initialize FalkorDB VesselRegistry.
@@ -31,7 +33,12 @@ class FalkorDBVesselRegistry:
         Args:
             falkor_client: FalkorDBClient instance (will create if None)
             graph_name: Name of the graph for vessel storage
+            db_path: Ignored (for backward compatibility with SQLite registry API)
+            registry_dir: Ignored (for backward compatibility with SQLite registry API)
         """
+        # Store for compatibility (not used by FalkorDB but may be checked by tests)
+        self.db_path = db_path
+        self.registry_dir = registry_dir
         self.graph_name = graph_name
 
         if falkor_client is None:

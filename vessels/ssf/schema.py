@@ -205,12 +205,19 @@ class ConstraintBindingConfig:
     # For explicit mode: list of constraint names to apply
     explicit_constraints: Optional[List[str]] = None
 
+    # For filtered mode: list of virtues to check
+    applicable_virtues: Optional[List[str]] = None
+
+    # Minimum virtue thresholds (dict mapping virtue names to minimum values)
+    minimum_virtue_thresholds: Optional[Dict[str, float]] = None
+
     # Validation configuration
     validate_inputs: bool = True   # Check inputs against manifold
     validate_outputs: bool = True  # Check outputs against manifold
 
-    # Boundary behavior
+    # Boundary behavior (on_boundary_approach is canonical, boundary_behavior is alias)
     on_boundary_approach: BoundaryBehavior = BoundaryBehavior.BLOCK
+    boundary_behavior: Optional[BoundaryBehavior] = None  # Alias field
     escalation_target: Optional[str] = None  # Persona role to escalate to
 
     # Forbidden patterns (hard-coded safety rails)
@@ -220,14 +227,25 @@ class ConstraintBindingConfig:
     # Boundary threshold (0-1, how close to constraint boundary triggers behavior)
     boundary_threshold: float = 0.1
 
+    def __post_init__(self):
+        """Handle backward-compatible aliases after initialization."""
+        # If boundary_behavior was set but on_boundary_approach wasn't, use boundary_behavior
+        if self.boundary_behavior is not None:
+            self.on_boundary_approach = self.boundary_behavior
+        # Always sync boundary_behavior to on_boundary_approach
+        self.boundary_behavior = self.on_boundary_approach
+
     def to_dict(self) -> Dict[str, Any]:
         """Serialize to dictionary."""
         return {
             "mode": self.mode.value,
             "explicit_constraints": self.explicit_constraints,
+            "applicable_virtues": self.applicable_virtues,
+            "minimum_virtue_thresholds": self.minimum_virtue_thresholds,
             "validate_inputs": self.validate_inputs,
             "validate_outputs": self.validate_outputs,
             "on_boundary_approach": self.on_boundary_approach.value,
+            "boundary_behavior": self.on_boundary_approach.value,  # Include alias
             "escalation_target": self.escalation_target,
             "forbidden_input_patterns": self.forbidden_input_patterns,
             "forbidden_output_patterns": self.forbidden_output_patterns,
@@ -237,12 +255,16 @@ class ConstraintBindingConfig:
     @classmethod
     def from_dict(cls, d: Dict[str, Any]) -> "ConstraintBindingConfig":
         """Create from dictionary."""
+        # Handle both on_boundary_approach and boundary_behavior
+        boundary = d.get("on_boundary_approach", d.get("boundary_behavior", "block"))
         return cls(
             mode=ConstraintBindingMode(d.get("mode", "full")),
             explicit_constraints=d.get("explicit_constraints"),
+            applicable_virtues=d.get("applicable_virtues"),
+            minimum_virtue_thresholds=d.get("minimum_virtue_thresholds"),
             validate_inputs=d.get("validate_inputs", True),
             validate_outputs=d.get("validate_outputs", True),
-            on_boundary_approach=BoundaryBehavior(d.get("on_boundary_approach", "block")),
+            on_boundary_approach=BoundaryBehavior(boundary),
             escalation_target=d.get("escalation_target"),
             forbidden_input_patterns=d.get("forbidden_input_patterns", []),
             forbidden_output_patterns=d.get("forbidden_output_patterns", []),
@@ -488,8 +510,9 @@ class SpawnConstraints:
     When a persona has spawn permissions, these constraints limit
     what kinds of SSFs can be created.
     """
-    # Allowed patterns
+    # Allowed patterns (permitted_categories is canonical, allowed_categories is alias)
     permitted_categories: List[SSFCategory] = field(default_factory=list)
+    allowed_categories: Optional[List[SSFCategory]] = None  # Alias field
     permitted_handler_types: List[HandlerType] = field(default_factory=list)
     max_risk_level: RiskLevel = RiskLevel.MEDIUM
 
@@ -501,13 +524,31 @@ class SpawnConstraints:
     max_timeout_seconds: int = 60
     max_memory_mb: int = 256
 
-    # Spawning limits
+    # Spawning limits (max_spawned_per_session is canonical, max_spawns_per_session is alias)
     max_spawned_per_session: int = 10
+    max_spawns_per_session: Optional[int] = None  # Alias field
     max_spawned_total: int = 100
 
     # Approval requirements
     requires_approval: bool = False
     approval_threshold: float = 0.8  # 0-1, consensus required
+
+    # Constraint inheritance
+    inherit_virtue_thresholds: bool = True
+
+    def __post_init__(self):
+        """Handle backward-compatible aliases after initialization."""
+        # If allowed_categories was set, use it as permitted_categories
+        if self.allowed_categories is not None:
+            self.permitted_categories = self.allowed_categories
+        # Always sync allowed_categories to permitted_categories
+        self.allowed_categories = self.permitted_categories
+
+        # Handle max_spawns_per_session alias
+        if self.max_spawns_per_session is not None:
+            self.max_spawned_per_session = self.max_spawns_per_session
+        # Always sync max_spawns_per_session to max_spawned_per_session
+        self.max_spawns_per_session = self.max_spawned_per_session
 
     def to_dict(self) -> Dict[str, Any]:
         """Serialize to dictionary."""

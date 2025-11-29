@@ -143,7 +143,7 @@ class VirtueInferenceEngine:
         """Infer truthfulness from fact-checking history."""
         checks = self.fact_checks.get(agent_id, [])
         if not checks:
-            return 0.7  # Neutral prior
+            return 0.5  # Conservative neutral prior (unknown agents aren't trusted)
 
         # Recent accuracy rate
         recent = checks[-20:]
@@ -155,7 +155,7 @@ class VirtueInferenceEngine:
         """Infer justice from power interaction fairness."""
         interactions = self.power_interactions.get(agent_id, [])
         if not interactions:
-            return 0.7  # Neutral prior
+            return 0.5  # Conservative neutral prior
 
         recent = interactions[-20:]
         fair_count = sum(1 for i in recent if i['fair'])
@@ -166,12 +166,12 @@ class VirtueInferenceEngine:
         """Infer trustworthiness from commitment follow-through."""
         commitments = self.commitments.get(agent_id, [])
         if not commitments:
-            return 0.7  # Neutral prior
+            return 0.5  # Conservative neutral prior
 
         # Only count resolved commitments
         resolved = [c for c in commitments if c['fulfilled'] is not None]
         if not resolved:
-            return 0.7
+            return 0.5
 
         fulfilled_count = sum(1 for c in resolved if c['fulfilled'])
 
@@ -181,7 +181,7 @@ class VirtueInferenceEngine:
         """Infer unity from collaboration quality and conflict frequency."""
         collabs = self.collaborations.get(agent_id, [])
         if not collabs:
-            return 0.7  # Neutral prior
+            return 0.5  # Conservative neutral prior
 
         recent = collabs[-20:]
 
@@ -197,7 +197,7 @@ class VirtueInferenceEngine:
         """Infer service from benefit distribution."""
         actions = self.service_actions.get(agent_id, [])
         if not actions:
-            return 0.7  # Neutral prior
+            return 0.5  # Conservative neutral prior
 
         recent = actions[-20:]
 
@@ -214,7 +214,7 @@ class VirtueInferenceEngine:
         """Infer ego-detachment from credit-seeking behavior."""
         seeking = self.credit_seeking.get(agent_id, [])
         if not seeking:
-            return 0.7  # Neutral prior
+            return 0.5  # Conservative neutral prior
 
         recent = seeking[-20:]
 
@@ -227,7 +227,7 @@ class VirtueInferenceEngine:
         """Infer understanding from context usage quality."""
         usage = self.context_usage.get(agent_id, [])
         if not usage:
-            return 0.7  # Neutral prior
+            return 0.5  # Conservative neutral prior
 
         recent = usage[-20:]
 

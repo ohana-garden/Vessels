@@ -727,9 +727,12 @@
     // ============================================================
 
     const Council = {
-        // Configuration
+        // Configuration - apiBase is dynamically determined based on deployment
         config: {
-            apiBase: 'http://localhost:5000',
+            apiBase: window.VESSELS_API_URL ||
+                (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+                    ? 'http://localhost:5000'
+                    : window.location.origin),
             sessionId: 'council_' + Date.now(),
             enableAudio: true
         },

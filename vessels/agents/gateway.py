@@ -85,8 +85,9 @@ class CommercialAgentGateway:
     COMMERCIAL_INDICATORS = [
         "buy", "purchase", "recommend", "which product",
         "where can I get", "looking for", "need to find",
-        "best option for", "comparison", "price", "cost",
-        "vendor", "supplier", "service provider"
+        "best option for", "best product", "comparison", "price", "cost",
+        "vendor", "supplier", "service provider", "shop", "shopping",
+        "store", "order", "delivery service", "pricing", "deal"
     ]
 
     def __init__(self):

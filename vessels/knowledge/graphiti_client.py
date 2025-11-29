@@ -133,7 +133,7 @@ class VesselsGraphitiClient:
 
     def create_node(
         self,
-        node_type: NodeType,
+        node_type: Any,  # Accept both NodeType enum and string
         properties: Dict[str, Any],
         node_id: Optional[str] = None
     ) -> str:
@@ -141,13 +141,21 @@ class VesselsGraphitiClient:
         Create a node in the knowledge graph
 
         Args:
-            node_type: Type of node (from NodeType enum)
+            node_type: Type of node (from NodeType enum or string for extensions)
             properties: Node properties (must include required properties)
             node_id: Optional node ID (generated if not provided)
 
         Returns:
             Node ID
         """
+        # Handle both enum and string node types
+        if hasattr(node_type, 'value'):
+            node_type_value = node_type.value
+            node_type_name = str(node_type)
+        else:
+            node_type_value = str(node_type)
+            node_type_name = str(node_type)
+
         # Add community_id if not present
         if PropertyName.COMMUNITY_ID not in properties:
             properties[PropertyName.COMMUNITY_ID] = self.community_id
@@ -160,24 +168,25 @@ class VesselsGraphitiClient:
         if PropertyName.CREATED_AT not in properties:
             properties[PropertyName.CREATED_AT] = datetime.utcnow().isoformat()
 
-        # Validate properties
-        if not VesselsGraphSchema.validate_node_properties(node_type, properties):
-            missing = set(VesselsGraphSchema.get_required_properties(node_type)) - set(properties.keys())
-            raise ValueError(f"Missing required properties for {node_type}: {missing}")
+        # Validate properties only for known NodeType enums
+        if isinstance(node_type, NodeType):
+            if not VesselsGraphSchema.validate_node_properties(node_type, properties):
+                missing = set(VesselsGraphSchema.get_required_properties(node_type)) - set(properties.keys())
+                raise ValueError(f"Missing required properties for {node_type}: {missing}")
 
         # Generate ID if not provided
         if node_id is None:
-            node_id = f"{node_type.value}_{datetime.utcnow().timestamp()}"
+            node_id = f"{node_type_value}_{datetime.utcnow().timestamp()}"
 
         try:
             # Use Graphiti to create node
             # This is a simplified version - actual implementation depends on Graphiti API
             result = self.graphiti.create_node(
-                node_type=node_type.value,
+                node_type=node_type_value,
                 node_id=node_id,
                 properties=properties
             )
-            logger.debug(f"Created {node_type} node: {node_id}")
+            logger.debug(f"Created {node_type_name} node: {node_id}")
             return node_id
 
         except Exception as e:
@@ -187,7 +196,7 @@ class VesselsGraphitiClient:
     def create_relationship(
         self,
         source_id: str,
-        rel_type: RelationType,
+        rel_type: Any,  # Accept both RelationType enum and string
         target_id: str,
         properties: Optional[Dict[str, Any]] = None
     ):
@@ -196,11 +205,19 @@ class VesselsGraphitiClient:
 
         Args:
             source_id: Source node ID
-            rel_type: Relationship type
+            rel_type: Relationship type (from RelationType enum or string for extensions)
             target_id: Target node ID
             properties: Optional relationship properties
         """
         properties = properties or {}
+
+        # Handle both enum and string relationship types
+        if hasattr(rel_type, 'value'):
+            rel_type_value = rel_type.value
+            rel_type_name = str(rel_type)
+        else:
+            rel_type_value = str(rel_type)
+            rel_type_name = str(rel_type)
 
         # Add created_by if servant_id present
         if self.servant_id and PropertyName.CREATED_BY not in properties:
@@ -213,11 +230,11 @@ class VesselsGraphitiClient:
         try:
             self.graphiti.create_relationship(
                 source_id=source_id,
-                rel_type=rel_type.value,
+                rel_type=rel_type_value,
                 target_id=target_id,
                 properties=properties
             )
-            logger.debug(f"Created {rel_type} relationship: {source_id} -> {target_id}")
+            logger.debug(f"Created {rel_type_name} relationship: {source_id} -> {target_id}")
 
         except Exception as e:
             logger.error(f"Error creating relationship: {e}")

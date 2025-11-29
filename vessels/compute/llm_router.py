@@ -186,7 +186,7 @@ class LLMRouter:
         Decision logic:
         1. Honor preferred_tier if specified and available
         2. NEVER send sensitive data to Tier 2
-        3. Use Tier 0 for ultra-low latency (< 200ms)
+        3. Use Tier 0 for ultra-low latency (< 200ms) if available
         4. Use Tier 1 for most requests (default)
         5. Use Tier 2 only for large context + non-sensitive + high quality
         """
@@ -202,7 +202,12 @@ class LLMRouter:
         # RULE 1: Sensitive data NEVER goes to Petals
         if request.sensitive:
             if request.latency_requirement_ms < 200:
-                return ComputeTier.DEVICE
+                # Try Tier 0 for ultra-low latency, fall back to Tier 1 if unavailable
+                if self._is_tier_available(ComputeTier.DEVICE):
+                    return ComputeTier.DEVICE
+                else:
+                    logger.warning("Tier 0 not available for sensitive ultra-low latency request, using Tier 1")
+                    return ComputeTier.EDGE
             else:
                 return ComputeTier.EDGE
 
@@ -242,12 +247,23 @@ class LLMRouter:
         return ComputeTier.EDGE
 
     def _is_tier_available(self, tier: ComputeTier) -> bool:
-        """Check if a compute tier is available"""
+        """Check if a compute tier is available based on config.
+
+        A tier is available if it's enabled in the config. The actual
+        client availability is checked during execution.
+        """
         if tier == ComputeTier.DEVICE:
+            # Check config first (preferred), then client
+            if self.tier_config is not None:
+                return self.tier_config.tier0_enabled
             return self.tier0 is not None
         elif tier == ComputeTier.EDGE:
+            if self.tier_config is not None:
+                return self.tier_config.tier1_enabled
             return self.tier1 is not None
         elif tier == ComputeTier.PETALS:
+            if self.tier_config is not None:
+                return self.tier_config.tier2_enabled
             return self.tier2 is not None and getattr(self.tier2, "enabled", False)
         return False
 

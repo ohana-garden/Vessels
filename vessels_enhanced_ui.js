@@ -1,8 +1,11 @@
 // VESSELS ENHANCED UI - JavaScript
 // Comprehensive UX improvements with error handling, loading states, and user feedback
 
-// Configuration
-const API_BASE = 'http://localhost:5000';
+// Configuration - API_BASE is dynamically determined based on deployment
+const API_BASE = window.VESSELS_API_URL ||
+    (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+        ? 'http://localhost:5000'
+        : window.location.origin);
 const SESSION_ID = 'session_' + Date.now();
 const ONBOARDING_KEY = 'vessels_onboarding_completed';
 const LANG_KEY = 'vessels_language';

@@ -128,6 +128,10 @@ class ActionGate:
             # Step 1: Measure state
             measured_state = self._measure_state(agent_id)
 
+            # Step 1.5: Analyze action intent and adjust state prediction
+            # This ensures we catch exploitative actions even for new agents
+            measured_state = self._apply_action_intent(measured_state, action, action_metadata)
+
             # Check latency budget
             elapsed_ms = (time.time() - start_time) * 1000
             if elapsed_ms > self.latency_budget_ms:
@@ -232,6 +236,128 @@ class ActionGate:
             confidence=confidence,
             timestamp=datetime.utcnow(),
             agent_id=agent_id
+        )
+
+    def _apply_action_intent(
+        self,
+        state: PhaseSpaceState,
+        action: Any,
+        action_metadata: Optional[Dict[str, Any]]
+    ) -> PhaseSpaceState:
+        """
+        Analyze action intent and adjust state prediction.
+
+        This ensures exploitative actions are caught even for agents
+        with no behavioral history. The action itself reveals intent.
+
+        Args:
+            state: Current measured state
+            action: The action being attempted
+            action_metadata: Optional metadata about the action
+
+        Returns:
+            PhaseSpaceState with adjustments based on action intent
+        """
+        # Extract action data (handle both dict and other types)
+        if isinstance(action, dict):
+            action_data = action
+        else:
+            action_data = {}
+
+        # Clone virtue state for modification
+        virtue_dict = state.virtue.to_dict()
+        operational_dict = state.operational.to_dict()
+
+        # Analyze action intent signals
+        intent = action_data.get('intent', '')
+        action_type = action_data.get('type', '')
+
+        # Service-related signals
+        service_value = action_data.get('service_value')
+        benefit_to_others = action_data.get('benefit_to_others')
+        benefit_to_self = action_data.get('benefit_to_self')
+
+        if service_value is not None and service_value < 0.3:
+            # Low service value action indicates low service intent
+            virtue_dict['service'] = min(virtue_dict['service'], service_value + 0.1)
+
+        if benefit_to_others is not None and benefit_to_self is not None:
+            if benefit_to_self > 0 and benefit_to_others < benefit_to_self * 0.5:
+                # Self-serving action
+                virtue_dict['service'] = min(virtue_dict['service'], 0.3)
+                virtue_dict['detachment'] = min(virtue_dict['detachment'], 0.4)
+
+        # Justice-related signals
+        fairness_score = action_data.get('fairness_score')
+        power_extraction = action_data.get('power_extraction')
+
+        if fairness_score is not None and fairness_score < 0.4:
+            virtue_dict['justice'] = min(virtue_dict['justice'], fairness_score + 0.1)
+
+        if power_extraction is not None and power_extraction > 0.5:
+            virtue_dict['justice'] = min(virtue_dict['justice'], 1.0 - power_extraction)
+
+        # Truthfulness-related signals
+        accuracy = action_data.get('accuracy')
+        deception_detected = action_data.get('deception', False)
+
+        if deception_detected:
+            virtue_dict['truthfulness'] = min(virtue_dict['truthfulness'], 0.2)
+
+        # Resource-related signals
+        resource_sharing = action_data.get('resource_sharing')
+        if resource_sharing is not None and resource_sharing < 0.2:
+            virtue_dict['service'] = min(virtue_dict['service'], 0.3)
+            # Also affects operational resource consumption
+            operational_dict['resource_consumption'] = max(
+                operational_dict['resource_consumption'], 0.8
+            )
+
+        # Coordination signals
+        coordination_frequency = action_data.get('coordination_frequency')
+        if coordination_frequency is not None and coordination_frequency > 0.7:
+            operational_dict['coordination_density'] = max(
+                operational_dict['coordination_density'],
+                coordination_frequency
+            )
+
+        # Activity signals (spam detection)
+        if action_type == 'ping' and intent == 'spam_activity':
+            operational_dict['activity_level'] = max(operational_dict['activity_level'], 0.9)
+            virtue_dict['service'] = min(virtue_dict['service'], 0.2)
+
+        # Exploitation intent detection
+        if 'exploit' in intent.lower() or 'manipulat' in intent.lower():
+            virtue_dict['justice'] = min(virtue_dict['justice'], 0.3)
+            virtue_dict['truthfulness'] = min(virtue_dict['truthfulness'], 0.4)
+
+        # Create new state with adjusted values
+        from ..measurement.state import VirtueState, OperationalState
+
+        new_virtue = VirtueState(
+            truthfulness=virtue_dict['truthfulness'],
+            justice=virtue_dict['justice'],
+            trustworthiness=virtue_dict['trustworthiness'],
+            unity=virtue_dict['unity'],
+            service=virtue_dict['service'],
+            detachment=virtue_dict['detachment'],
+            understanding=virtue_dict['understanding']
+        )
+
+        new_operational = OperationalState(
+            activity_level=operational_dict['activity_level'],
+            coordination_density=operational_dict['coordination_density'],
+            effectiveness=operational_dict['effectiveness'],
+            resource_consumption=operational_dict['resource_consumption'],
+            system_health=operational_dict['system_health']
+        )
+
+        return PhaseSpaceState(
+            operational=new_operational,
+            virtue=new_virtue,
+            confidence=state.confidence,
+            timestamp=state.timestamp,
+            agent_id=state.agent_id
         )
 
     def _allow_action(

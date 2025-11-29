@@ -37,6 +37,10 @@ class SSFSpawnDeniedError(Exception):
     pass
 
 
+# Alias for backward compatibility
+SpawnError = SSFSpawnDeniedError
+
+
 class SSFRegistrationError(Exception):
     """Error registering an SSF."""
     pass

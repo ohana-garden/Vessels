@@ -37,6 +37,14 @@ class CompositionStatus(str, Enum):
     CANCELLED = "cancelled"
 
 
+class CompositionType(str, Enum):
+    """Type of composition pattern."""
+    SEQUENCE = "sequence"
+    PARALLEL = "parallel"
+    CONDITIONAL = "conditional"
+    LOOP = "loop"
+
+
 @dataclass
 class SSFStep:
     """A single step in an SSF composition."""
@@ -101,6 +109,7 @@ class CompositionResult:
     status: CompositionStatus
     completed_steps: int
     total_steps: int
+    composition_type: CompositionType = CompositionType.SEQUENCE
     results: List[SSFStepResult] = field(default_factory=list)
     final_output: Optional[Dict[str, Any]] = None
     failure_reason: Optional[str] = None
@@ -115,6 +124,7 @@ class CompositionResult:
         """Serialize to dictionary."""
         return {
             "status": self.status.value,
+            "composition_type": self.composition_type.value,
             "completed_steps": self.completed_steps,
             "total_steps": self.total_steps,
             "results": [r.to_dict() for r in self.results],
@@ -206,6 +216,7 @@ class SSFComposer:
                 status=CompositionStatus.FAILED,
                 completed_steps=0,
                 total_steps=len(steps),
+                composition_type=CompositionType.SEQUENCE,
                 failure_reason="Persona lacks composition permission",
             )
 
@@ -214,6 +225,7 @@ class SSFComposer:
                 status=CompositionStatus.FAILED,
                 completed_steps=0,
                 total_steps=len(steps),
+                composition_type=CompositionType.SEQUENCE,
                 failure_reason=f"Composition exceeds max length ({len(steps)} > {permissions.max_composition_length})",
             )
 
@@ -257,6 +269,7 @@ class SSFComposer:
                     status=CompositionStatus.PARTIAL,
                     completed_steps=i,
                     total_steps=len(steps),
+                    composition_type=CompositionType.SEQUENCE,
                     results=results,
                     failure_reason=result.error or result.status.value,
                     execution_time_seconds=(datetime.utcnow() - start_time).total_seconds(),
@@ -270,6 +283,7 @@ class SSFComposer:
             status=CompositionStatus.COMPLETE,
             completed_steps=len(steps),
             total_steps=len(steps),
+            composition_type=CompositionType.SEQUENCE,
             results=results,
             final_output=previous_output,
             execution_time_seconds=(datetime.utcnow() - start_time).total_seconds(),
@@ -310,6 +324,7 @@ class SSFComposer:
                 status=CompositionStatus.FAILED,
                 completed_steps=0,
                 total_steps=len(steps),
+                composition_type=CompositionType.PARALLEL,
                 failure_reason="Persona lacks parallel composition permission",
             )
 
@@ -318,6 +333,7 @@ class SSFComposer:
                 status=CompositionStatus.FAILED,
                 completed_steps=0,
                 total_steps=len(steps),
+                composition_type=CompositionType.PARALLEL,
                 failure_reason=f"Too many parallel SSFs ({len(steps)} > {permissions.max_parallel_ssfs})",
             )
 
@@ -359,6 +375,7 @@ class SSFComposer:
                     status=CompositionStatus.FAILED,
                     completed_steps=0,
                     total_steps=len(steps),
+                    composition_type=CompositionType.PARALLEL,
                     failure_reason=str(e),
                     execution_time_seconds=(datetime.utcnow() - start_time).total_seconds(),
                 )
@@ -406,6 +423,7 @@ class SSFComposer:
             status=status,
             completed_steps=len(steps) - failed_count,
             total_steps=len(steps),
+            composition_type=CompositionType.PARALLEL,
             results=step_results,
             final_output={"results": outputs} if outputs else None,
             execution_time_seconds=(datetime.utcnow() - start_time).total_seconds(),
@@ -456,6 +474,7 @@ class SSFComposer:
                 status=CompositionStatus.FAILED,
                 completed_steps=0,
                 total_steps=1 + max(len(true_branch), len(false_branch)),
+                composition_type=CompositionType.CONDITIONAL,
                 failure_reason=f"Condition evaluation failed: {condition_result.error}",
             )
 
@@ -473,12 +492,15 @@ class SSFComposer:
         logger.debug(f"Conditional composition taking {branch_name} branch")
 
         # Execute the chosen branch
-        return await self.compose_sequence(
+        result = await self.compose_sequence(
             steps=branch,
             invoking_persona=invoking_persona,
             invoking_agent=invoking_agent,
             execution_context=execution_context,
         )
+        # Override composition_type to CONDITIONAL
+        result.composition_type = CompositionType.CONDITIONAL
+        return result
 
     async def compose_loop(
         self,
@@ -531,6 +553,7 @@ class SSFComposer:
                     status=CompositionStatus.FAILED,
                     completed_steps=len(all_results),
                     total_steps=len(all_results) + 1,
+                    composition_type=CompositionType.LOOP,
                     results=all_results,
                     failure_reason=f"Loop condition failed: {condition_result.error}",
                 )
@@ -555,6 +578,7 @@ class SSFComposer:
                     status=CompositionStatus.PARTIAL,
                     completed_steps=len(all_results),
                     total_steps=len(all_results),
+                    composition_type=CompositionType.LOOP,
                     results=all_results,
                     failure_reason=iteration_result.failure_reason,
                 )
@@ -566,6 +590,7 @@ class SSFComposer:
             status=CompositionStatus.COMPLETE,
             completed_steps=len(all_results),
             total_steps=len(all_results),
+            composition_type=CompositionType.LOOP,
             results=all_results,
             final_output=last_output,
         )
