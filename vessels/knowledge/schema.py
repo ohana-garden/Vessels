@@ -47,6 +47,11 @@ class NodeType(str, Enum):
     CONVERSATION = "Conversation"  # A conversation session (user-vessel, vessel-vessel, etc.)
     TURN = "Turn"                  # A single turn in a conversation (message + response)
 
+    # SSF (Serverless Smart Functions) - The mandatory execution layer
+    SSF = "SSF"                    # Serverless Smart Function definition
+    SSF_EXECUTION = "SSFExecution"  # Record of an SSF execution
+    SSF_COMPOSITION = "SSFComposition"  # A composition of multiple SSFs
+
 
 class RelationType(str, Enum):
     """Relationship types in the Vessels knowledge graph"""
@@ -98,6 +103,14 @@ class RelationType(str, Enum):
     PARTICIPATED_IN = "PARTICIPATED_IN"     # User/Vessel -[PARTICIPATED_IN]-> Conversation
     HAS_TURN = "HAS_TURN"                   # Conversation -[HAS_TURN]-> Turn
     NEXT_TURN = "NEXT_TURN"                 # Turn -[NEXT_TURN]-> Turn (linked list)
+
+    # SSF (Serverless Smart Functions) relationships
+    CAN_INVOKE = "CAN_INVOKE"               # Persona -[CAN_INVOKE]-> SSF
+    INVOKED_SSF = "INVOKED_SSF"             # SSFExecution -[INVOKED_SSF]-> SSF
+    EXECUTED_BY = "EXECUTED_BY"             # SSFExecution -[EXECUTED_BY]-> Agent/Persona
+    SSF_SPAWNED_BY = "SSF_SPAWNED_BY"       # SSF -[SSF_SPAWNED_BY]-> Persona (for dynamic SSFs)
+    COMPOSES = "COMPOSES"                   # SSFComposition -[COMPOSES]-> SSF (ordered)
+    BLOCKED_BY_CONSTRAINT = "BLOCKED_BY_CONSTRAINT"  # SSFExecution -[BLOCKED_BY_CONSTRAINT]-> constraint_name
     ABOUT_TOPIC = "ABOUT_TOPIC"             # Conversation -[ABOUT_TOPIC]-> topic string
     REFERENCES = "REFERENCES"               # Turn -[REFERENCES]-> any entity mentioned
 
@@ -323,6 +336,56 @@ class VesselsGraphSchema:
             PropertyName.CREATED_AT,
             "response_at",              # When response was generated
             "latency_ms",               # Response latency
+        ],
+        # SSF (Serverless Smart Functions) entities
+        NodeType.SSF: [
+            "ssf_id",                   # UUID
+            PropertyName.NAME,          # Unique name (e.g., "send_sms")
+            PropertyName.DESCRIPTION,   # Human-readable description
+            "description_for_llm",      # LLM-optimized description
+            "version",                  # Semantic version
+            "category",                 # SSFCategory value
+            "risk_level",               # low, medium, high, critical
+            "handler_type",             # inline, module, mcp, remote, container
+            "handler_config",           # JSON handler configuration
+            "input_schema",             # JSON Schema for inputs
+            "output_schema",            # JSON Schema for outputs
+            "side_effects",             # List of side effects
+            "reversible",               # Whether effects can be undone
+            "timeout_seconds",          # Max execution time
+            "memory_mb",                # Memory limit
+            "constraint_binding",       # JSON constraint binding config
+            "spawned_by_persona_id",    # If dynamically spawned
+            "tags",                     # Search tags
+            PropertyName.CREATED_AT,
+        ],
+        NodeType.SSF_EXECUTION: [
+            "execution_id",             # UUID
+            "ssf_id",                   # SSF that was executed
+            "ssf_name",                 # Name for quick reference
+            "persona_id",               # Invoking persona
+            "agent_id",                 # Invoking agent
+            PropertyName.COMMUNITY_ID,
+            "inputs_hash",              # Hash of inputs (privacy)
+            "output_hash",              # Hash of output
+            PropertyName.STATUS,        # success, blocked, error, timeout, escalated
+            "error_message",            # If failed
+            "constraint_violations",    # List of violated constraints
+            "duration_seconds",         # Execution time
+            "request_id",               # Trace correlation
+            PropertyName.CREATED_AT,
+            "completed_at",
+        ],
+        NodeType.SSF_COMPOSITION: [
+            "composition_id",           # UUID
+            "step_count",               # Number of steps
+            "completed_steps",          # Steps completed
+            PropertyName.STATUS,        # complete, partial, failed
+            "persona_id",               # Invoking persona
+            "agent_id",                 # Invoking agent
+            "duration_seconds",         # Total duration
+            PropertyName.CREATED_AT,
+            "completed_at",
         ],
     }
 
