@@ -6,17 +6,22 @@ Manages creation, tracking, and archival of servant projects:
 - Tracks active projects
 - Seeds projects with initial knowledge
 - Archives completed projects
+
+REQUIRES AgentZeroCore - all project operations are coordinated through A0.
 """
 
 import logging
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, TYPE_CHECKING
 from datetime import datetime
 import uuid
 
 from .project import ServantProject, ProjectStatus
 from vessels.knowledge import VesselsGraphitiClient, SharedVectorStore
 from vessels.knowledge.schema import ServantType, NodeType, RelationType
+
+if TYPE_CHECKING:
+    from agent_zero_core import AgentZeroCore
 
 logger = logging.getLogger(__name__)
 
@@ -31,15 +36,26 @@ class ProjectManager:
     - Seed project knowledge
     - Archive completed projects
     - Query project status
+
+    REQUIRES AgentZeroCore - all project operations are coordinated through A0.
     """
 
-    def __init__(self, projects_dir: Path = Path("work_dir/projects")):
+    def __init__(
+        self,
+        agent_zero: "AgentZeroCore",
+        projects_dir: Path = Path("work_dir/projects")
+    ):
         """
         Initialize project manager
 
         Args:
+            agent_zero: AgentZeroCore instance (REQUIRED)
             projects_dir: Root directory for all projects
         """
+        if agent_zero is None:
+            raise ValueError("ProjectManager requires AgentZeroCore")
+
+        self.agent_zero = agent_zero
         self.projects_dir = Path(projects_dir)
         self.projects_dir.mkdir(parents=True, exist_ok=True)
 
@@ -49,7 +65,9 @@ class ProjectManager:
         # Shared knowledge store for seeding
         self.shared_store = SharedVectorStore()
 
-        logger.info(f"Project Manager initialized with root: {self.projects_dir}")
+        # Register with A0
+        self.agent_zero.project_manager = self
+        logger.info(f"Project Manager initialized with A0 (root: {self.projects_dir})")
 
     def create_project(
         self,

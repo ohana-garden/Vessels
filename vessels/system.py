@@ -1,20 +1,50 @@
 """
 Vessels System Bootstrap: The Clean Entrypoint
+
+REQUIRES AgentZeroCore - all system operations are coordinated through A0.
 """
 import logging
-from typing import Dict, Any, List
+from typing import Dict, Any, List, TYPE_CHECKING
 
 from vessels.core.registry import VesselRegistry
 from vessels.core.vessel import Vessel, PrivacyLevel
 # Import Kala directly assuming it's in the python path/root
 from kala import KalaValueSystem, ContributionType
 
+if TYPE_CHECKING:
+    from agent_zero_core import AgentZeroCore
+
 logger = logging.getLogger(__name__)
 
 class VesselsSystem:
-    def __init__(self, db_path: str = "vessels_metadata.db"):
-        self.registry = VesselRegistry(db_path=db_path)
+    """
+    Complete Vessels system orchestrator.
+
+    REQUIRES AgentZeroCore - all system operations are coordinated through A0.
+    """
+
+    def __init__(
+        self,
+        agent_zero: "AgentZeroCore",
+        db_path: str = "vessels_metadata.db"
+    ):
+        """
+        Initialize VesselsSystem.
+
+        Args:
+            agent_zero: AgentZeroCore instance (REQUIRED)
+            db_path: Path to SQLite database file
+        """
+        if agent_zero is None:
+            raise ValueError("VesselsSystem requires AgentZeroCore")
+
+        self.agent_zero = agent_zero
+        self.registry = VesselRegistry(agent_zero=agent_zero, db_path=db_path)
         self.kala = KalaValueSystem()
+
+        # Register with A0
+        self.agent_zero.vessels_system = self
+        logger.info("VesselsSystem initialized with A0")
 
         # Bootstrap default vessel if none exists
         if not self.registry.list_vessels():

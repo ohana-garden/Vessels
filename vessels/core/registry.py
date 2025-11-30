@@ -1,11 +1,13 @@
 """
 Vessel Registry: Manages vessel lifecycle using SQLite persistence.
+
+REQUIRES AgentZeroCore - all vessel operations are coordinated through A0.
 """
 import json
 import sqlite3
 import logging
 import threading
-from typing import Any, Dict, List, Optional, Union, overload
+from typing import Any, Dict, List, Optional, Union, overload, TYPE_CHECKING
 from datetime import datetime
 from pathlib import Path
 
@@ -13,14 +15,22 @@ from pathlib import Path
 from .vessel import TierConfig, Vessel, PrivacyLevel
 from vessels.knowledge.schema import CommunityPrivacy
 
+if TYPE_CHECKING:
+    from agent_zero_core import AgentZeroCore
+
 logger = logging.getLogger(__name__)
 
 
 class VesselRegistry:
-    """Persist and retrieve Vessel definitions using SQLite."""
+    """
+    Persist and retrieve Vessel definitions using SQLite.
+
+    REQUIRES AgentZeroCore - all vessel operations are coordinated through A0.
+    """
 
     def __init__(
         self,
+        agent_zero: "AgentZeroCore",
         db_path: Optional[str] = None,
         registry_dir: Optional[str] = None
     ):
@@ -28,9 +38,15 @@ class VesselRegistry:
         Initialize VesselRegistry.
 
         Args:
+            agent_zero: AgentZeroCore instance (REQUIRED)
             db_path: Path to SQLite database file
             registry_dir: Directory for storing vessel data (db_path will be created in this dir)
         """
+        if agent_zero is None:
+            raise ValueError("VesselRegistry requires AgentZeroCore")
+
+        self.agent_zero = agent_zero
+
         if registry_dir:
             self.registry_dir = Path(registry_dir)
             self.registry_dir.mkdir(parents=True, exist_ok=True)
@@ -42,6 +58,10 @@ class VesselRegistry:
         self._lock = threading.RLock()
         self.conn = sqlite3.connect(self.db_path, check_same_thread=False)
         self._create_schema()
+
+        # Register with A0
+        self.agent_zero.vessel_registry = self
+        logger.info("VesselRegistry initialized with A0")
 
     def _create_schema(self) -> None:
         """Create the database schema if it doesn't exist."""

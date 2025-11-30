@@ -2,14 +2,19 @@
 Secure Session Manager
 
 Replaces in-memory dict with TTL-based secure session storage.
+
+REQUIRES AgentZeroCore - all session operations are coordinated through A0.
 """
 
 from cachetools import TTLCache
 from datetime import datetime
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, TYPE_CHECKING
 import logging
 import threading
 import uuid
+
+if TYPE_CHECKING:
+    from agent_zero_core import AgentZeroCore
 
 logger = logging.getLogger(__name__)
 
@@ -23,10 +28,13 @@ class SessionManager:
     - Thread-safe operations
     - Maximum session limits
     - Secure session ID generation
+
+    REQUIRES AgentZeroCore - all session operations are coordinated through A0.
     """
 
     def __init__(
         self,
+        agent_zero: "AgentZeroCore",
         max_sessions: int = 10000,
         ttl_seconds: int = 3600,
         max_context_items: int = 100
@@ -35,17 +43,24 @@ class SessionManager:
         Initialize session manager.
 
         Args:
+            agent_zero: AgentZeroCore instance (REQUIRED)
             max_sessions: Maximum number of concurrent sessions
             ttl_seconds: Session time-to-live in seconds (default 1 hour)
             max_context_items: Maximum context items per session
         """
+        if agent_zero is None:
+            raise ValueError("SessionManager requires AgentZeroCore")
+
+        self.agent_zero = agent_zero
         self.sessions = TTLCache(maxsize=max_sessions, ttl=ttl_seconds)
         self.lock = threading.RLock()
         self.max_context_items = max_context_items
         self.ttl_seconds = ttl_seconds
 
+        # Register with A0
+        self.agent_zero.session_manager = self
         logger.info(
-            f"SessionManager initialized: max_sessions={max_sessions}, "
+            f"SessionManager initialized with A0: max_sessions={max_sessions}, "
             f"ttl={ttl_seconds}s, max_context={max_context_items}"
         )
 

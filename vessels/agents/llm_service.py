@@ -7,12 +7,17 @@ Handles:
 - Fallback on failure
 - Response parsing
 - Cost/latency optimization
+
+REQUIRES AgentZeroCore - all LLM operations are coordinated through A0.
 """
 
 import asyncio
 import logging
 import os
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from agent_zero_core import AgentZeroCore
 
 logger = logging.getLogger(__name__)
 
@@ -23,10 +28,13 @@ class LLMService:
 
     Provides both sync and async interfaces for LLM calls,
     routing through the appropriate compute tier.
+
+    REQUIRES AgentZeroCore - all LLM operations are coordinated through A0.
     """
 
     def __init__(
         self,
+        agent_zero: "AgentZeroCore",
         tier_config=None,
         prefer_local: bool = True,
         api_key: Optional[str] = None
@@ -35,10 +43,15 @@ class LLMService:
         Initialize LLM service.
 
         Args:
+            agent_zero: AgentZeroCore instance (REQUIRED)
             tier_config: TierConfig from vessel (optional)
             prefer_local: Prefer local/edge tiers when possible
             api_key: API key for cloud tier (defaults to env var)
         """
+        if agent_zero is None:
+            raise ValueError("LLMService requires AgentZeroCore")
+
+        self.agent_zero = agent_zero
         self.tier_config = tier_config
         self.prefer_local = prefer_local
         self.api_key = api_key or os.getenv("ANTHROPIC_API_KEY") or os.getenv("OPENAI_API_KEY")
@@ -46,6 +59,10 @@ class LLMService:
         self._router = None
         self._anthropic_client = None
         self._openai_client = None
+
+        # Register with A0
+        self.agent_zero.llm_service = self
+        logger.info("LLMService initialized with A0")
 
     def call(self, prompt: str, max_tokens: int = 1000, temperature: float = 0.7) -> str:
         """
@@ -243,6 +260,7 @@ class LLMService:
 
 
 def create_llm_service(
+    agent_zero: "AgentZeroCore",
     tier_config=None,
     prefer_local: bool = True
 ) -> LLMService:
@@ -250,24 +268,26 @@ def create_llm_service(
     Factory function to create LLM service.
 
     Args:
+        agent_zero: AgentZeroCore instance (REQUIRED)
         tier_config: Optional TierConfig from vessel
         prefer_local: Prefer local tiers
 
     Returns:
         Configured LLMService instance
     """
-    return LLMService(tier_config=tier_config, prefer_local=prefer_local)
+    return LLMService(agent_zero=agent_zero, tier_config=tier_config, prefer_local=prefer_local)
 
 
-def get_llm_callable(tier_config=None) -> Callable[[str], str]:
+def get_llm_callable(agent_zero: "AgentZeroCore", tier_config=None) -> Callable[[str], str]:
     """
     Get a simple LLM callable for injection into Birth Agent etc.
 
     Args:
+        agent_zero: AgentZeroCore instance (REQUIRED)
         tier_config: Optional TierConfig
 
     Returns:
         Function that takes prompt and returns response
     """
-    service = create_llm_service(tier_config=tier_config)
+    service = create_llm_service(agent_zero=agent_zero, tier_config=tier_config)
     return service.get_callable()

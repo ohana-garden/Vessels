@@ -5,9 +5,11 @@ Extends the standard ActionGate to include:
 - Tension detection before constraint validation
 - Check protocol for guidance when needed
 - Parable recording for collective learning
+
+REQUIRES AgentZeroCore - all codex operations are coordinated through A0.
 """
 
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, TYPE_CHECKING
 from datetime import datetime
 import logging
 
@@ -22,6 +24,9 @@ from .tension_detector import TensionDetector, Tension
 from .check_protocol import CheckProtocol, CheckResponse
 from .council import VillageCouncil
 from .parable import ParableStorage
+
+if TYPE_CHECKING:
+    from agent_zero_core import AgentZeroCore
 
 logger = logging.getLogger(__name__)
 
@@ -44,10 +49,13 @@ class CodexGate(ActionGate):
     - Recognize tension → Stop
     - Request guidance → Listen
     - Learn → Record parable
+
+    REQUIRES AgentZeroCore - all codex operations are coordinated through A0.
     """
 
     def __init__(
         self,
+        agent_zero: "AgentZeroCore",
         manifold: Manifold,
         operational_metrics: OperationalMetrics,
         virtue_engine: VirtueInferenceEngine,
@@ -63,6 +71,7 @@ class CodexGate(ActionGate):
         Initialize codex gate.
 
         Args:
+            agent_zero: AgentZeroCore instance (REQUIRED)
             manifold: Moral manifold
             operational_metrics: Operational metrics tracker
             virtue_engine: Virtue inference engine
@@ -74,6 +83,11 @@ class CodexGate(ActionGate):
             max_consecutive_blocks: Max consecutive blocks before intervention
             enable_tension_detection: Enable codex tension detection
         """
+        if agent_zero is None:
+            raise ValueError("CodexGate requires AgentZeroCore")
+
+        self.agent_zero = agent_zero
+
         # Initialize parent ActionGate
         super().__init__(
             manifold=manifold,
@@ -92,6 +106,10 @@ class CodexGate(ActionGate):
             parable_storage=parable_storage
         )
         self.enable_tension_detection = enable_tension_detection
+
+        # Register with A0
+        self.agent_zero.codex_gate = self
+        logger.info("CodexGate initialized with A0")
 
     def gate_action(
         self,

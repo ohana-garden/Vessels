@@ -5,23 +5,33 @@ Replaces SQLite-based registry with graph-native storage that enables:
 - Relationship queries between vessels and communities
 - Efficient traversal of vessel hierarchies
 - Native integration with the knowledge graph
+
+REQUIRES AgentZeroCore - all vessel operations are coordinated through A0.
 """
 import json
 import logging
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union, TYPE_CHECKING
 from datetime import datetime
 
 from .vessel import TierConfig, Vessel, PrivacyLevel
 from vessels.knowledge.schema import CommunityPrivacy
 
+if TYPE_CHECKING:
+    from agent_zero_core import AgentZeroCore
+
 logger = logging.getLogger(__name__)
 
 
 class FalkorDBVesselRegistry:
-    """Persist and retrieve Vessel definitions using FalkorDB graph database."""
+    """
+    Persist and retrieve Vessel definitions using FalkorDB graph database.
+
+    REQUIRES AgentZeroCore - all vessel operations are coordinated through A0.
+    """
 
     def __init__(
         self,
+        agent_zero: "AgentZeroCore",
         falkor_client=None,
         graph_name: str = "vessels_registry"
     ):
@@ -29,9 +39,14 @@ class FalkorDBVesselRegistry:
         Initialize FalkorDB VesselRegistry.
 
         Args:
+            agent_zero: AgentZeroCore instance (REQUIRED)
             falkor_client: FalkorDBClient instance (will create if None)
             graph_name: Name of the graph for vessel storage
         """
+        if agent_zero is None:
+            raise ValueError("FalkorDBVesselRegistry requires AgentZeroCore")
+
+        self.agent_zero = agent_zero
         self.graph_name = graph_name
 
         if falkor_client is None:
@@ -42,7 +57,10 @@ class FalkorDBVesselRegistry:
 
         self.graph = self.falkor_client.get_graph(graph_name)
         self._ensure_indexes()
-        logger.info(f"FalkorDB VesselRegistry initialized with graph '{graph_name}'")
+
+        # Register with A0
+        self.agent_zero.falkordb_registry = self
+        logger.info(f"FalkorDB VesselRegistry initialized with A0 (graph: '{graph_name}')")
 
     def _ensure_indexes(self):
         """Create indexes for efficient vessel queries."""

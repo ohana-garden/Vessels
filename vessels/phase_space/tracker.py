@@ -6,16 +6,24 @@ Stores:
 - Transitions (state changes from actions)
 - Security events (constraint violations)
 - Attractors (discovered behavioral patterns)
+
+REQUIRES AgentZeroCore - all trajectory operations are coordinated through A0.
 """
 
 import sqlite3
 import json
-from typing import List, Optional, Dict, Any
+import logging
+from typing import List, Optional, Dict, Any, TYPE_CHECKING
 from datetime import datetime
 from pathlib import Path
 
 from ..measurement.state import PhaseSpaceState
 from ..gating.events import SecurityEvent, StateTransition
+
+if TYPE_CHECKING:
+    from agent_zero_core import AgentZeroCore
+
+logger = logging.getLogger(__name__)
 
 
 class TrajectoryTracker:
@@ -24,10 +32,13 @@ class TrajectoryTracker:
 
     Schema matches spec section 1.5.
     Supports hybrid mode with Graphiti backend.
+
+    REQUIRES AgentZeroCore - all trajectory operations are coordinated through A0.
     """
 
     def __init__(
         self,
+        agent_zero: "AgentZeroCore",
         db_path: str = "vessels_trajectories.db",
         backend: str = "sqlite",
         graphiti_client=None,
@@ -37,11 +48,16 @@ class TrajectoryTracker:
         Initialize tracker with SQLite database and optional Graphiti backend.
 
         Args:
+            agent_zero: AgentZeroCore instance (REQUIRED)
             db_path: Path to SQLite database file
             backend: Backend type: "sqlite", "graphiti", or "hybrid"
             graphiti_client: VesselsGraphitiClient instance (for graphiti/hybrid backends)
             community_id: Community ID (for graphiti backend)
         """
+        if agent_zero is None:
+            raise ValueError("TrajectoryTracker requires AgentZeroCore")
+
+        self.agent_zero = agent_zero
         self.db_path = db_path
         self.backend_type = backend
         self.graphiti_tracker = None
@@ -78,6 +94,10 @@ class TrajectoryTracker:
             self._create_schema()
         else:
             self.conn = None
+
+        # Register with A0
+        self.agent_zero.trajectory_tracker = self
+        logger.info(f"TrajectoryTracker initialized with A0 (backend: {self.backend_type})")
 
     def _create_schema(self):
         """Create database schema if not exists."""
