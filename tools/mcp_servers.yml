@@ -1,0 +1,66 @@
+# MCP Server Configuration
+# Defines MCP servers that A0 can connect to for tool discovery
+
+version: "1.0"
+
+# Server definitions
+servers:
+  # Local filesystem access
+  filesystem:
+    enabled: true
+    command: "npx"
+    args: ["-y", "@anthropic-ai/mcp-server-filesystem"]
+    env:
+      ALLOWED_PATHS: "/home/user/Vessels"
+    capabilities:
+      - file_read
+      - file_write
+      - directory_list
+
+  # Web search capability
+  brave_search:
+    enabled: false  # Requires API key
+    command: "npx"
+    args: ["-y", "@anthropic-ai/mcp-server-brave-search"]
+    env:
+      BRAVE_API_KEY: "${BRAVE_API_KEY}"
+    capabilities:
+      - web_search
+
+  # Memory/knowledge graph
+  memory:
+    enabled: true
+    command: "npx"
+    args: ["-y", "@anthropic-ai/mcp-server-memory"]
+    capabilities:
+      - memory_store
+      - memory_retrieve
+      - entity_create
+      - relation_create
+
+  # GitHub integration
+  github:
+    enabled: false  # Requires token
+    command: "npx"
+    args: ["-y", "@anthropic-ai/mcp-server-github"]
+    env:
+      GITHUB_TOKEN: "${GITHUB_TOKEN}"
+    capabilities:
+      - repo_read
+      - issue_create
+      - pr_create
+
+# Discovery settings
+discovery:
+  auto_discover: true
+  refresh_interval_seconds: 300
+  cache_capabilities: true
+
+# Security settings
+security:
+  require_approval_for:
+    - file_write
+    - external_api
+    - data_mutation
+  blocked_capabilities: []
+  sandbox_mode: true

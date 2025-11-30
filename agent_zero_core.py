@@ -142,6 +142,9 @@ class AgentZeroCore:
         # Gardener - automated memory and conversation hygiene
         self.gardener = None
 
+        # SSF Integration - ALL actions go through SSFs
+        self.ssf_integration = None
+
         # Intent patterns for natural language processing (merged from DynamicAgentFactory)
         self.intent_patterns = {
             "grant_discovery": [
@@ -216,6 +219,9 @@ class AgentZeroCore:
 
         # Initialize Gardener for memory and conversation hygiene
         self._initialize_gardener()
+
+        # Initialize SSF Integration - ALL actions go through SSFs
+        self._initialize_ssf()
 
         logger.info("Agent Zero Core initialized")
 
@@ -423,6 +429,35 @@ class AgentZeroCore:
         except ImportError as e:
             logger.warning(f"Could not initialize Gardener: {e}")
             self.gardener = None
+
+    def _initialize_ssf(self):
+        """Initialize SSF (Serverless Smart Functions) integration.
+
+        SSFs are the ONLY way agents can affect the external world.
+        All tool calls route through SSF execution with constraint validation.
+        """
+        try:
+            from vessels.a0.ssf_integration import create_a0_integration
+            from vessels.constraints.manifold import Manifold
+
+            # Get manifold for constraint validation
+            manifold = None
+            if hasattr(self, 'vessel_registry') and self.vessel_registry:
+                # Try to get manifold from default vessel
+                default_vessel = self.vessel_registry.get_default_vessel()
+                if default_vessel and hasattr(default_vessel, 'manifold'):
+                    manifold = default_vessel.manifold
+
+            self.ssf_integration = create_a0_integration(
+                manifold=manifold,
+                memory_client=self.memory_system,
+            )
+
+            logger.info("SSF Integration initialized - all actions go through SSFs")
+
+        except ImportError as e:
+            logger.warning(f"Could not initialize SSF Integration: {e}")
+            self.ssf_integration = None
 
     def start_gardener(self) -> bool:
         """Start the Gardener agent for automated maintenance."""
