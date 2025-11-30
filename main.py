@@ -25,7 +25,7 @@ def main():
     """
     try:
         # Import and run the CLI
-        from vessels import VesselsCLI
+        from vessels_cli import VesselsCLI
 
         # Create CLI instance (this will run startup checks)
         cli = VesselsCLI(show_startup_banner=True)

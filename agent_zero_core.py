@@ -142,6 +142,44 @@ class AgentZeroCore:
         # Gardener - automated memory and conversation hygiene
         self.gardener = None
 
+        # Intent patterns for natural language processing (merged from DynamicAgentFactory)
+        self.intent_patterns = {
+            "grant_discovery": [
+                r"find.*grant", r"search.*funding", r"discover.*opportunit",
+                r"grant.*available", r"funding.*source", r"grant.*catalog"
+            ],
+            "grant_writing": [
+                r"write.*grant", r"appl.*grant", r"submit.*proposal",
+                r"grant.*applic", r"proposal.*writing", r"draft.*proposal"
+            ],
+            "volunteer_coordination": [
+                r"coordinate.*volunteer", r"manage.*volunteer", r"volunteer.*organiz",
+                r"help.*volunteer", r"volunteer.*recruit", r"volunteer.*schedule"
+            ],
+            "elder_care": [
+                r"elder.*care", r"senior.*service", r"aging.*support",
+                r"elderly.*help", r"senior.*care", r"home.*care"
+            ],
+            "community_coordination": [
+                r"coordinate.*community", r"organiz.*community", r"community.*help",
+                r"local.*support", r"community.*resource", r"community.*event"
+            ],
+            "resource_management": [
+                r"manage.*resource", r"allocat.*resource", r"distribut.*resource",
+                r"resource.*coordinat", r"asset.*management", r"inventory"
+            ]
+        }
+
+        # Capability matrix for each intent
+        self.capability_matrix = {
+            "grant_discovery": ["web_search", "data_analysis", "opportunity_matching", "deadline_tracking"],
+            "grant_writing": ["document_generation", "compliance_checking", "narrative_writing", "budget_creation"],
+            "volunteer_coordination": ["volunteer_matching", "task_assignment", "scheduling", "communication"],
+            "elder_care": ["needs_assessment", "program_design", "care_coordination", "resource_mapping"],
+            "community_coordination": ["resource_allocation", "scheduling", "communication", "stakeholder_engagement"],
+            "resource_management": ["inventory_tracking", "allocation_optimization", "usage_monitoring", "distribution"]
+        }
+
     def initialize(self, memory_system=None, tool_system=None):
         """
         Initialize the coordination system.
@@ -464,6 +502,153 @@ class AgentZeroCore:
         if self.birth_agent:
             return self.birth_agent.has_active_session(user_id)
         return False
+
+    # =========================================================================
+    # NATURAL LANGUAGE REQUEST PROCESSING
+    # Merged from DynamicAgentFactory - A0 is THE main core
+    # =========================================================================
+
+    def process_request(self, user_input: str, user_id: str = "default") -> Dict[str, Any]:
+        """
+        Process natural language request and create/coordinate agents.
+
+        This is the main entry point for user requests. It:
+        1. Detects intents from the request
+        2. Determines required capabilities
+        3. Generates agent specifications
+        4. Spawns and coordinates agents
+
+        Args:
+            user_input: Natural language input from user
+            user_id: User identifier
+
+        Returns:
+            Response dictionary with results
+        """
+        import re
+
+        # Step 1: Detect intents
+        detected_intents = self._detect_intents(user_input)
+
+        # Step 2: Generate agent specifications for detected intents
+        if detected_intents:
+            agent_specs = self._generate_agent_specs(detected_intents)
+
+            # Step 3: Spawn agents
+            agent_ids = self.spawn_agents(agent_specs)
+
+            return {
+                "status": "success",
+                "message": f"Spawned {len(agent_ids)} agents for your request",
+                "intents": detected_intents,
+                "agents": agent_ids,
+                "user_id": user_id
+            }
+        else:
+            # No specific intent detected - provide general response
+            return {
+                "status": "success",
+                "message": "I understand your request. How can I help you further?",
+                "intents": [],
+                "agents": [],
+                "user_id": user_id
+            }
+
+    def _detect_intents(self, request: str) -> List[str]:
+        """
+        Detect intents from user request using regex patterns.
+
+        Args:
+            request: User input text
+
+        Returns:
+            List of detected intent names
+        """
+        import re
+        detected = []
+        request_lower = request.lower()
+
+        for intent, patterns in self.intent_patterns.items():
+            for pattern in patterns:
+                if re.search(pattern, request_lower, re.IGNORECASE):
+                    if intent not in detected:
+                        detected.append(intent)
+                    break
+
+        return detected
+
+    def _generate_agent_specs(self, intents: List[str]) -> List[AgentSpecification]:
+        """
+        Generate agent specifications from detected intents.
+
+        Args:
+            intents: List of detected intent names
+
+        Returns:
+            List of AgentSpecification objects
+        """
+        agent_configs = {
+            "grant_discovery": {
+                "name": "GrantDiscoveryAgent",
+                "description": "Discovers and analyzes grant opportunities",
+                "communication_style": "analytical",
+                "autonomy_level": "high"
+            },
+            "grant_writing": {
+                "name": "GrantWritingAgent",
+                "description": "Writes and submits grant applications",
+                "communication_style": "professional",
+                "autonomy_level": "medium"
+            },
+            "volunteer_coordination": {
+                "name": "VolunteerCoordinationAgent",
+                "description": "Coordinates volunteer activities and recruitment",
+                "communication_style": "collaborative",
+                "autonomy_level": "high"
+            },
+            "elder_care": {
+                "name": "ElderCareSpecialistAgent",
+                "description": "Specializes in elder care programs and services",
+                "communication_style": "compassionate",
+                "autonomy_level": "high"
+            },
+            "community_coordination": {
+                "name": "CommunityCoordinationAgent",
+                "description": "Coordinates community resources and activities",
+                "communication_style": "collaborative",
+                "autonomy_level": "high"
+            },
+            "resource_management": {
+                "name": "ResourceManagementAgent",
+                "description": "Manages and allocates community resources",
+                "communication_style": "systematic",
+                "autonomy_level": "high"
+            }
+        }
+
+        specifications = []
+        for intent in intents:
+            config = agent_configs.get(intent, {
+                "name": f"{intent.title().replace('_', '')}Agent",
+                "description": f"Agent specializing in {intent.replace('_', ' ')}",
+                "communication_style": "collaborative",
+                "autonomy_level": "medium"
+            })
+
+            capabilities = self.capability_matrix.get(intent, [])
+
+            spec = AgentSpecification(
+                name=config["name"],
+                description=config["description"],
+                capabilities=capabilities,
+                tools_needed=[],  # Tools resolved during spawn
+                communication_style=config["communication_style"],
+                autonomy_level=config["autonomy_level"],
+                specialization=intent
+            )
+            specifications.append(spec)
+
+        return specifications
 
     def set_vessel_registry(self, registry: Any) -> None:
         """
