@@ -1,0 +1,829 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shoghi - Voice-First Community Coordination</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #000;
+            color: white;
+            height: 100vh;
+            overflow: hidden;
+            position: relative;
+        }
+        
+        /* Fullscreen Stage */
+        .stage {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: linear-gradient(135deg, #0a0e27 0%, #1a1f3a 100%);
+            position: relative;
+        }
+        
+        /* Dynamic Content Area */
+        .content-area {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            opacity: 0;
+            transition: opacity 0.5s ease;
+        }
+        
+        .content-area.active {
+            opacity: 1;
+        }
+        
+        /* Welcome Screen */
+        .welcome {
+            text-align: center;
+            animation: pulse 2s ease-in-out infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 0.7; }
+            50% { opacity: 1; }
+        }
+        
+        .welcome h1 {
+            font-size: 72px;
+            font-weight: 300;
+            margin-bottom: 20px;
+            background: linear-gradient(45deg, #4ade80, #a78bfa);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        
+        .welcome p {
+            font-size: 24px;
+            opacity: 0.8;
+            color: #e5e5e5;
+        }
+        
+        /* Grant Cards */
+        .grant-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            width: 90%;
+            max-width: 1200px;
+            padding: 20px;
+        }
+        
+        .grant-card {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 30px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            transform: translateY(30px);
+            opacity: 0;
+            animation: slideUp 0.6s forwards;
+        }
+        
+        .grant-card:nth-child(1) { animation-delay: 0.1s; }
+        .grant-card:nth-child(2) { animation-delay: 0.2s; }
+        .grant-card:nth-child(3) { animation-delay: 0.3s; }
+        
+        @keyframes slideUp {
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+        
+        .grant-title {
+            font-size: 24px;
+            font-weight: 600;
+            margin-bottom: 10px;
+            color: #4ade80;
+        }
+        
+        .grant-amount {
+            font-size: 32px;
+            font-weight: 700;
+            color: #fbbf24;
+            margin-bottom: 15px;
+        }
+        
+        .grant-description {
+            font-size: 16px;
+            line-height: 1.6;
+            color: rgba(255, 255, 255, 0.8);
+        }
+        
+        /* Map View */
+        .map-container {
+            width: 90%;
+            max-width: 1000px;
+            height: 70%;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .map-overlay {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px 20px;
+            border-radius: 10px;
+            backdrop-filter: blur(10px);
+        }
+        
+        .route-info {
+            font-size: 14px;
+            margin-bottom: 10px;
+        }
+        
+        .route-info strong {
+            color: #4ade80;
+        }
+        
+        /* Calendar View */
+        .calendar-view {
+            width: 90%;
+            max-width: 800px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 20px;
+            padding: 30px;
+            backdrop-filter: blur(20px);
+        }
+        
+        .calendar-header {
+            font-size: 24px;
+            margin-bottom: 20px;
+            color: #a78bfa;
+        }
+        
+        .time-slots {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+        }
+        
+        .time-slot {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 15px;
+            border-radius: 10px;
+            text-align: center;
+            transition: all 0.3s ease;
+        }
+        
+        .time-slot.available {
+            border: 2px solid #4ade80;
+            color: #4ade80;
+        }
+        
+        .time-slot.selected {
+            background: rgba(74, 222, 128, 0.3);
+            transform: scale(1.05);
+        }
+        
+        /* Elder Care Protocol */
+        .care-protocol {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(20px);
+            border-radius: 30px;
+            padding: 50px;
+            max-width: 800px;
+            width: 90%;
+            border: 2px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .protocol-title {
+            font-size: 36px;
+            font-weight: 300;
+            margin-bottom: 30px;
+            text-align: center;
+            color: #a78bfa;
+        }
+        
+        .protocol-step {
+            margin: 20px 0;
+            padding: 20px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 15px;
+            border-left: 4px solid #4ade80;
+            opacity: 0;
+            animation: fadeIn 0.5s forwards;
+        }
+        
+        .protocol-step:nth-child(2) { animation-delay: 0.2s; }
+        .protocol-step:nth-child(3) { animation-delay: 0.4s; }
+        .protocol-step:nth-child(4) { animation-delay: 0.6s; }
+        
+        @keyframes fadeIn {
+            to { opacity: 1; }
+        }
+        
+        /* Photo Gallery */
+        .photo-gallery {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            width: 90%;
+            max-width: 1000px;
+            padding: 20px;
+        }
+        
+        .photo-item {
+            position: relative;
+            border-radius: 15px;
+            overflow: hidden;
+            aspect-ratio: 1;
+            background: rgba(255, 255, 255, 0.1);
+        }
+        
+        .photo-label {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: linear-gradient(to top, rgba(0,0,0,0.8), transparent);
+            padding: 20px 10px 10px;
+            color: white;
+            font-size: 14px;
+        }
+        
+        /* Help Menu */
+        .help-menu {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(20px);
+            border-radius: 30px;
+            padding: 40px;
+            max-width: 600px;
+            width: 90%;
+        }
+        
+        .help-title {
+            font-size: 32px;
+            margin-bottom: 30px;
+            text-align: center;
+            background: linear-gradient(45deg, #4ade80, #a78bfa);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        
+        .help-item {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            padding: 15px;
+            margin: 10px 0;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 10px;
+        }
+        
+        .help-icon {
+            font-size: 24px;
+        }
+        
+        /* Movie-Style Subtitles */
+        .subtitles {
+            position: absolute;
+            bottom: 40px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 90%;
+            max-width: 1000px;
+            text-align: center;
+            z-index: 1000;
+            pointer-events: none;
+        }
+        
+        .subtitle {
+            display: inline-block;
+            padding: 15px 30px;
+            margin: 5px;
+            background: rgba(0, 0, 0, 0.85);
+            backdrop-filter: blur(20px);
+            border-radius: 30px;
+            font-size: 20px;
+            line-height: 1.4;
+            animation: subtitleIn 0.3s ease-out;
+            max-width: 80%;
+        }
+        
+        @keyframes subtitleIn {
+            from {
+                transform: translateY(20px);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+        
+        .subtitle.user {
+            background: rgba(74, 222, 128, 0.2);
+            border: 1px solid rgba(74, 222, 128, 0.5);
+        }
+        
+        .subtitle.agent-grant {
+            background: rgba(251, 191, 36, 0.2);
+            border: 1px solid rgba(251, 191, 36, 0.5);
+        }
+        
+        .subtitle.agent-care {
+            background: rgba(167, 139, 250, 0.2);
+            border: 1px solid rgba(167, 139, 250, 0.5);
+        }
+        
+        .subtitle.agent-food {
+            background: rgba(34, 197, 94, 0.2);
+            border: 1px solid rgba(34, 197, 94, 0.5);
+        }
+        
+        .speaker-label {
+            font-size: 14px;
+            opacity: 0.7;
+            margin-bottom: 5px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        /* Voice Input Status */
+        .voice-status {
+            position: fixed;
+            bottom: 10px;
+            right: 10px;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #dc2626;
+            transition: all 0.3s ease;
+        }
+        
+        .voice-status.listening {
+            background: #4ade80;
+            box-shadow: 0 0 0 0 rgba(74, 222, 128, 1);
+            animation: voicePulse 2s infinite;
+        }
+        
+        @keyframes voicePulse {
+            0% {
+                box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.7);
+            }
+            70% {
+                box-shadow: 0 0 0 10px rgba(74, 222, 128, 0);
+            }
+            100% {
+                box-shadow: 0 0 0 0 rgba(74, 222, 128, 0);
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Fullscreen Stage -->
+    <div class="stage">
+        <!-- Dynamic Content Area -->
+        <div class="content-area active" id="contentArea">
+            <div class="welcome" id="welcomeScreen">
+                <h1>Aloha 🌺</h1>
+                <p>Just speak naturally.</p>
+            </div>
+        </div>
+        
+        <!-- Movie-Style Subtitles -->
+        <div class="subtitles" id="subtitles"></div>
+        
+        <!-- Voice Status Indicator -->
+        <div class="voice-status" id="voiceStatus"></div>
+    </div>
+    
+    <script>
+        // Configuration
+        const API_BASE = 'http://localhost:5000';
+        const SESSION_ID = 'session_' + Date.now();
+        
+        // State
+        let isListening = false;
+        let currentEmotion = 'neutral';
+        let speechRecognition = null;
+        
+        // Initialize speech recognition
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        
+        if (SpeechRecognition) {
+            speechRecognition = new SpeechRecognition();
+            speechRecognition.continuous = true;
+            speechRecognition.interimResults = true;
+            speechRecognition.lang = 'en-US';
+            
+            speechRecognition.onstart = () => {
+                isListening = true;
+                document.getElementById('voiceStatus').classList.add('listening');
+            };
+            
+            speechRecognition.onend = () => {
+                isListening = false;
+                document.getElementById('voiceStatus').classList.remove('listening');
+                // Restart for always-on mic
+                if (!isListening) {
+                    setTimeout(startListening, 1000);
+                }
+            };
+            
+            speechRecognition.onerror = (event) => {
+                if (event.error === 'no-speech' || event.error === 'audio-capture') {
+                    setTimeout(startListening, 1000);
+                }
+            };
+            
+            speechRecognition.onresult = (event) => {
+                const last = event.results.length - 1;
+                const transcript = event.results[last][0].transcript;
+                
+                if (event.results[last].isFinal) {
+                    processVoiceInput(transcript);
+                }
+            };
+        }
+        
+        function startListening() {
+            if (speechRecognition && !isListening) {
+                try {
+                    speechRecognition.start();
+                } catch (e) {
+                    // Already started
+                }
+            }
+        }
+        
+        async function processVoiceInput(text) {
+            // Show user subtitle
+            addSubtitle(text, 'user', 'You');
+            
+            // Detect emotion from text
+            detectEmotion(text);
+            
+            try {
+                // Send to backend
+                const response = await fetch(`${API_BASE}/api/voice/process`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        text: text,
+                        session_id: SESSION_ID,
+                        emotion: currentEmotion
+                    })
+                });
+                
+                const data = await response.json();
+                
+                // Render the content
+                renderContent(data.content_type, data.content_data);
+                
+                // Show subtitles with delays
+                if (data.subtitles) {
+                    data.subtitles.forEach(subtitle => {
+                        setTimeout(() => {
+                            addSubtitle(subtitle.text, subtitle.type, subtitle.speaker);
+                        }, subtitle.delay || 0);
+                    });
+                }
+                
+            } catch (error) {
+                console.error('Backend communication error:', error);
+                // Fallback to local processing
+                processLocally(text);
+            }
+        }
+        
+        function detectEmotion(text) {
+            const lower = text.toLowerCase();
+            
+            if (lower.includes('confused') || lower.includes("don't understand")) {
+                currentEmotion = 'uncertain';
+            } else if (lower.includes('frustrated') || lower.includes('nothing works')) {
+                currentEmotion = 'frustrated';
+            } else if (lower.includes('great') || lower.includes('awesome')) {
+                currentEmotion = 'excited';
+            } else {
+                currentEmotion = 'neutral';
+            }
+        }
+        
+        function renderContent(type, data) {
+            const contentArea = document.getElementById('contentArea');
+            
+            switch(type) {
+                case 'grant_cards':
+                    renderGrantCards(contentArea, data);
+                    break;
+                case 'care_protocol':
+                    renderCareProtocol(contentArea, data);
+                    break;
+                case 'map_view':
+                    renderMapView(contentArea, data);
+                    break;
+                case 'calendar_view':
+                    renderCalendarView(contentArea, data);
+                    break;
+                case 'photo_gallery':
+                    renderPhotoGallery(contentArea, data);
+                    break;
+                case 'help_menu':
+                    renderHelpMenu(contentArea, data);
+                    break;
+                default:
+                    // Keep current content
+                    break;
+            }
+        }
+        
+        function renderGrantCards(container, data) {
+            const grants = data.grants || [];
+            container.innerHTML = `
+                <div class="grant-cards">
+                    ${grants.map(grant => `
+                        <div class="grant-card">
+                            <div class="grant-title">${grant.title}</div>
+                            <div class="grant-amount">${grant.amount}</div>
+                            <div class="grant-description">${grant.description}</div>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        }
+        
+        function renderCareProtocol(container, data) {
+            container.innerHTML = `
+                <div class="care-protocol">
+                    <div class="protocol-title">${data.title}</div>
+                    ${data.steps.map(step => `
+                        <div class="protocol-step">
+                            <strong>${step.title}:</strong> ${step.description}
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        }
+        
+        function renderMapView(container, data) {
+            container.innerHTML = `
+                <div class="map-container">
+                    <div style="width: 100%; height: 100%; background: linear-gradient(135deg, #1e3a5f 0%, #0f1e35 100%); position: relative;">
+                        <svg width="100%" height="100%" style="position: absolute;">
+                            ${data.routes.map(route => `
+                                <path d="M ${Math.random()*500} ${Math.random()*300} Q ${Math.random()*500} ${Math.random()*300} ${Math.random()*500} ${Math.random()*300}" 
+                                      stroke="${route.color}" stroke-width="3" fill="none" stroke-dasharray="5,5">
+                                    <animate attributeName="stroke-dashoffset" from="10" to="0" dur="1s" repeatCount="indefinite"/>
+                                </path>
+                            `).join('')}
+                        </svg>
+                        <div class="map-overlay">
+                            ${data.routes.map(route => `
+                                <div class="route-info">
+                                    <strong>${route.driver}:</strong> ${route.stops} stops, ${route.distance}
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+        
+        function renderCalendarView(container, data) {
+            container.innerHTML = `
+                <div class="calendar-view">
+                    <div class="calendar-header">${data.title}</div>
+                    <div class="time-slots">
+                        ${data.slots.map(slot => `
+                            <div class="time-slot ${slot.available ? 'available' : ''} ${slot.selected ? 'selected' : ''}">
+                                ${slot.day} ${slot.time}
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+        }
+        
+        function renderPhotoGallery(container, data) {
+            const colors = ['#4ade80', '#f59e0b', '#8b5cf6', '#06b6d4'];
+            container.innerHTML = `
+                <div class="photo-gallery">
+                    ${data.items.map((item, i) => `
+                        <div class="photo-item">
+                            <div style="width: 100%; height: 100%; background: linear-gradient(135deg, ${colors[i % colors.length]}, ${colors[(i+1) % colors.length]});"></div>
+                            <div class="photo-label">${item.name} - ${item.location}</div>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        }
+        
+        function renderHelpMenu(container, data) {
+            container.innerHTML = `
+                <div class="help-menu">
+                    <div class="help-title">I Can Help With</div>
+                    ${data.items.map(item => `
+                        <div class="help-item">
+                            <span class="help-icon">${item.icon}</span>
+                            <span>${item.text}</span>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        }
+        
+        function addSubtitle(text, type, speaker) {
+            const subtitles = document.getElementById('subtitles');
+            
+            // Clear old subtitles
+            if (subtitles.children.length > 2) {
+                subtitles.innerHTML = '';
+            }
+            
+            const subtitle = document.createElement('div');
+            subtitle.className = `subtitle ${type}`;
+            
+            if (speaker) {
+                subtitle.innerHTML = `
+                    <div class="speaker-label">${speaker}</div>
+                    ${text}
+                `;
+            } else {
+                subtitle.textContent = text;
+            }
+            
+            subtitles.appendChild(subtitle);
+        }
+        
+        // Local fallback processing
+        function processLocally(text) {
+            const lower = text.toLowerCase();
+            
+            if (lower.includes('grant') || lower.includes('funding')) {
+                showLocalGrantInterface();
+            } else if (lower.includes('elder') || lower.includes('kupuna')) {
+                showLocalElderCare();
+            } else if (lower.includes('food') || lower.includes('hungry')) {
+                showLocalFoodInterface();
+            } else if (lower.includes('route') || lower.includes('delivery')) {
+                showLocalMapInterface();
+            } else if (lower.includes('schedule') || lower.includes('when')) {
+                showLocalCalendarInterface();
+            } else if (lower.includes('help')) {
+                showLocalHelpInterface();
+            }
+        }
+        
+        // Local content generators (same as before)
+        function showLocalGrantInterface() {
+            renderContent('grant_cards', {
+                grants: [
+                    {
+                        title: 'Older Americans Act',
+                        amount: '$50K - $500K',
+                        description: 'Federal funding for elder care services.'
+                    },
+                    {
+                        title: 'Hawaii Community Foundation',
+                        amount: '$10K - $50K',
+                        description: 'Local funding for community initiatives.'
+                    }
+                ]
+            });
+            
+            setTimeout(() => {
+                addSubtitle("I found grants for your needs", 'agent-grant', 'Grant Finder');
+            }, 500);
+        }
+        
+        function showLocalElderCare() {
+            renderContent('care_protocol', {
+                title: 'Kupuna Care Protocol',
+                steps: [
+                    {title: 'Morning Check', description: 'Call or visit by 9am'},
+                    {title: 'Midday Support', description: 'Lunch and talk story'},
+                    {title: 'Afternoon Tasks', description: 'Appointments and shopping'},
+                    {title: 'Evening Safety', description: 'Dinner check and secure home'}
+                ]
+            });
+            
+            setTimeout(() => {
+                addSubtitle("Here's the care protocol", 'agent-care', 'Elder Care Specialist');
+            }, 500);
+        }
+        
+        function showLocalFoodInterface() {
+            renderContent('photo_gallery', {
+                items: [
+                    {name: '50 lbs breadfruit', location: 'Kalapana'},
+                    {name: 'Fresh ulu', location: 'Pahoa'},
+                    {name: 'Taro', location: 'Keaau'},
+                    {name: 'Bananas', location: 'Mountain View'}
+                ]
+            });
+            
+            setTimeout(() => {
+                addSubtitle("Food available for pickup", 'agent-food', 'Food Coordinator');
+            }, 500);
+        }
+        
+        function showLocalMapInterface() {
+            renderContent('map_view', {
+                routes: [
+                    {driver: 'Maria', stops: 3, distance: '12 miles', color: '#4ade80'},
+                    {driver: 'John', stops: 2, distance: '8 miles', color: '#fbbf24'}
+                ]
+            });
+            
+            setTimeout(() => {
+                addSubtitle("Routes optimized for delivery", 'agent-food', 'Route Coordinator');
+            }, 500);
+        }
+        
+        function showLocalCalendarInterface() {
+            renderContent('calendar_view', {
+                title: 'Available Times',
+                slots: [
+                    {day: 'Mon', time: '2-4pm', available: true},
+                    {day: 'Tue', time: '10am-12pm', available: true, selected: true},
+                    {day: 'Wed', time: '2-4pm', available: true},
+                    {day: 'Fri', time: '2-4pm', available: true}
+                ]
+            });
+            
+            setTimeout(() => {
+                addSubtitle("Tuesday morning works best", 'agent-care', 'Schedule Coordinator');
+            }, 500);
+        }
+        
+        function showLocalHelpInterface() {
+            renderContent('help_menu', {
+                items: [
+                    {icon: '💰', text: 'Finding grants'},
+                    {icon: '🌺', text: 'Elder care'},
+                    {icon: '🍛', text: 'Food distribution'},
+                    {icon: '🚗', text: 'Transportation'},
+                    {icon: '📅', text: 'Scheduling'}
+                ]
+            });
+            
+            setTimeout(() => {
+                addSubtitle("Tell me what you need", 'agent-care', 'Host Agent');
+            }, 500);
+        }
+        
+        // Keyboard shortcuts for testing
+        document.addEventListener('keypress', (e) => {
+            const shortcuts = {
+                '1': "I need grants for elder care",
+                '2': "Show me the elder care protocol",
+                '3': "What food is available?",
+                '4': "Show delivery routes",
+                '5': "When can volunteers help?",
+                'h': "I need help"
+            };
+            
+            if (shortcuts[e.key]) {
+                processVoiceInput(shortcuts[e.key]);
+            }
+        });
+        
+        // Start listening on load
+        window.addEventListener('load', () => {
+            // Try to start speech recognition
+            setTimeout(() => {
+                startListening();
+            }, 1000);
+            
+            // Check backend connection
+            fetch(`${API_BASE}/api/status`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status) {
+                        addSubtitle("System connected and ready", 'agent-care', 'System');
+                    }
+                })
+                .catch(() => {
+                    addSubtitle("Running in local mode", 'agent-care', 'System');
+                });
+        });
+    </script>
+</body>
+</html>
