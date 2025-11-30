@@ -3,6 +3,8 @@ A2A Service - Agent-to-Agent Communication Service
 
 Manages A2A channels, task delegation, and inter-agent coordination.
 Uses Nostr as the decentralized transport layer.
+
+REQUIRES AgentZeroCore - all A2A operations are coordinated through A0.
 """
 
 import logging
@@ -25,6 +27,7 @@ from .types import (
 
 if TYPE_CHECKING:
     from vessels.communication.nostr_adapter import NostrAdapter
+    from agent_zero_core import AgentZeroCore
 
 logger = logging.getLogger(__name__)
 
@@ -110,8 +113,10 @@ class A2AService:
     - Direct communication channels
     - Message routing via Nostr
 
+    REQUIRES AgentZeroCore - all A2A communication is coordinated through A0.
+
     Usage:
-        service = A2AService(my_agent_card, nostr_adapter)
+        service = A2AService(agent_zero, my_agent_card, nostr_adapter)
         service.publish_card()  # Make discoverable
 
         # Send a task to another agent
@@ -127,6 +132,7 @@ class A2AService:
 
     def __init__(
         self,
+        agent_zero: "AgentZeroCore",
         agent_card: AgentCard,
         nostr_adapter: Optional["NostrAdapter"] = None,
         graphiti_client: Optional[Any] = None,
@@ -135,13 +141,18 @@ class A2AService:
         Initialize A2A service.
 
         Args:
+            agent_zero: AgentZeroCore instance (REQUIRED)
             agent_card: This agent's identity and capabilities
             nostr_adapter: Nostr adapter for decentralized messaging
             graphiti_client: Optional Graphiti client for graph storage
         """
+        if agent_zero is None:
+            raise ValueError("A2AService requires AgentZeroCore")
+
+        self.agent_zero = agent_zero
         self.agent_card = agent_card
         self.nostr = nostr_adapter
-        self.graphiti = graphiti_client
+        self.graphiti = graphiti_client or agent_zero.memory_system
 
         # Track active tasks and channels
         self.tasks: Dict[str, Task] = {}
@@ -153,6 +164,9 @@ class A2AService:
         # Callbacks for incoming events
         self._task_handlers: Dict[str, Callable[[Task], None]] = {}
         self._message_handlers: Dict[str, Callable[[Message], None]] = {}
+
+        # Register with A0
+        self.agent_zero.a2a_service = self
 
         logger.info(f"A2A Service initialized for agent: {agent_card.name} ({agent_card.agent_id})")
 

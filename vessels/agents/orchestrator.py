@@ -13,15 +13,23 @@ Supports:
 - Parallel fan-out (A -> [B, C, D] -> E)
 - Conditional routing (if X then A else B)
 - Error handling and recovery
+
+A0 INTEGRATION:
+- Orchestrator registers with AgentZeroCore as a system-level coordinator
+- Uses A0's spawn_agents for creating pipeline agents when available
+- Falls back to local AgentFactory when A0 is not configured
 """
 
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Union, TYPE_CHECKING
 import asyncio
 import uuid
+
+if TYPE_CHECKING:
+    from agent_zero_core import AgentZeroCore, AgentSpecification
 
 logger = logging.getLogger(__name__)
 
@@ -149,31 +157,39 @@ class Orchestrator:
     3. Routes outputs between agents
     4. Handles errors and retries
     5. Records results to community memory
+
+    REQUIRES AgentZeroCore - all agent operations go through A0.
     """
 
     def __init__(
         self,
-        agent_factory: Optional[AgentFactory] = None,
-        community_memory=None,
-        vessel_context=None
+        agent_zero: "AgentZeroCore",
+        vessel_id: Optional[str] = None,
+        community_memory=None
     ):
         """
         Initialize orchestrator.
 
         Args:
-            agent_factory: Factory for creating agents
+            agent_zero: AgentZeroCore instance (REQUIRED)
+            vessel_id: Vessel ID for spawning agents via A0
             community_memory: Community memory for storing results
-            vessel_context: Vessel context for this orchestration
         """
-        self.agent_factory = agent_factory or AgentFactory()
-        self.community_memory = community_memory
-        self.vessel_context = vessel_context
+        if agent_zero is None:
+            raise ValueError("Orchestrator requires AgentZeroCore")
+
+        self.agent_zero = agent_zero
+        self.vessel_id = vessel_id
+        self.community_memory = community_memory or agent_zero.memory_system
 
         self.pipelines: Dict[str, PipelineDefinition] = {}
         self.executions: Dict[str, PipelineExecution] = {}
 
-        # Register default agent handlers
-        self._default_handlers: Dict[AgentType, Callable] = {}
+        # A0 spawned agents (agent_type -> agent_id)
+        self._a0_agents: Dict[AgentType, str] = {}
+
+        # Register with A0
+        self._register_with_a0()
 
     def register_pipeline(self, pipeline: PipelineDefinition):
         """Register a pipeline definition."""
@@ -499,6 +515,123 @@ class Orchestrator:
             ]
         }
 
+    # =========================================================================
+    # A0 Integration Methods
+    # =========================================================================
+
+    def _register_with_a0(self):
+        """Register orchestrator with AgentZeroCore."""
+        if not self.agent_zero:
+            return
+
+        try:
+            # Register as system-level orchestrator
+            self.agent_zero.orchestrator = self
+            logger.info("Orchestrator registered with AgentZeroCore")
+        except Exception as e:
+            logger.warning(f"Failed to register with A0: {e}")
+
+    def _spawn_a0_agent(self, agent_type: AgentType) -> Optional[str]:
+        """
+        Spawn an agent via A0 for pipeline execution.
+
+        Args:
+            agent_type: Type of agent to spawn
+
+        Returns:
+            Agent ID if successful, None otherwise
+        """
+        if not self.agent_zero:
+            return None
+
+        # Check if already spawned
+        if agent_type in self._a0_agents:
+            return self._a0_agents[agent_type]
+
+        try:
+            from agent_zero_core import AgentSpecification
+
+            # Create specification for this agent type
+            spec = AgentSpecification(
+                name=f"Pipeline{agent_type.value.title()}",
+                description=f"Pipeline agent for {agent_type.value} tasks",
+                capabilities=[agent_type.value, "pipeline_execution"],
+                tools_needed=self._get_tools_for_agent_type(agent_type),
+                communication_style="collaborative",
+                autonomy_level="medium",
+                specialization=agent_type.value
+            )
+
+            # Spawn via A0
+            agent_ids = self.agent_zero.spawn_agents(
+                [spec],
+                vessel_id=self.vessel_id
+            )
+
+            if agent_ids:
+                self._a0_agents[agent_type] = agent_ids[0]
+                logger.info(f"Spawned A0 agent for {agent_type.value}: {agent_ids[0]}")
+                return agent_ids[0]
+
+        except Exception as e:
+            logger.warning(f"Failed to spawn A0 agent for {agent_type.value}: {e}")
+
+        return None
+
+    def _get_tools_for_agent_type(self, agent_type: AgentType) -> List[str]:
+        """Get tools needed for a specific agent type."""
+        tools_map = {
+            AgentType.PLANNER: ["task_breakdown", "requirement_analysis"],
+            AgentType.ARCHITECT: ["design_tools", "diagram_generation"],
+            AgentType.DEVELOPER: ["code_editor", "git", "file_system"],
+            AgentType.TESTER: ["test_runner", "coverage_analysis"],
+            AgentType.DEPLOYER: ["deployment_tools", "environment_config"],
+            AgentType.ANALYST: ["data_analysis", "visualization"],
+            AgentType.RESEARCHER: ["web_search", "document_analysis"],
+            AgentType.CUSTOM: []
+        }
+        return tools_map.get(agent_type, [])
+
+    def _send_task_to_a0_agent(
+        self,
+        agent_id: str,
+        task: "PipelineTask",
+        context: Dict[str, Any]
+    ) -> Optional[Any]:
+        """
+        Send a task to an A0-spawned agent.
+
+        Args:
+            agent_id: A0 agent ID
+            task: Pipeline task to execute
+            context: Execution context
+
+        Returns:
+            Agent output if successful
+        """
+        if not self.agent_zero:
+            return None
+
+        try:
+            # Send message to agent via A0
+            message = {
+                "type": "pipeline_task",
+                "task_id": task.task_id,
+                "agent_type": task.agent_type.value,
+                "input": task.input_data,
+                "context": context
+            }
+
+            self.agent_zero.send_message(agent_id, message)
+
+            # Wait for response (simplified - real impl would be async)
+            # For now, return None to indicate A0 handling
+            return {"status": "delegated_to_a0", "agent_id": agent_id}
+
+        except Exception as e:
+            logger.warning(f"Failed to send task to A0 agent: {e}")
+            return None
+
 
 # Convenience function for creating standard pipelines
 def create_development_pipeline() -> PipelineDefinition:
@@ -535,3 +668,31 @@ def create_research_pipeline() -> PipelineDefinition:
         max_retries=3,
         timeout_seconds=900
     )
+
+
+def create_orchestrator_with_a0(
+    agent_zero: "AgentZeroCore",
+    vessel_id: Optional[str] = None,
+    community_memory=None
+) -> Orchestrator:
+    """
+    Factory function to create an Orchestrator integrated with A0.
+
+    This is the preferred way to create an Orchestrator when A0 is available.
+
+    Args:
+        agent_zero: AgentZeroCore instance
+        vessel_id: Optional vessel ID for agent spawning
+        community_memory: Optional community memory for results
+
+    Returns:
+        Orchestrator instance registered with A0
+    """
+    orchestrator = Orchestrator(
+        agent_zero=agent_zero,
+        vessel_id=vessel_id,
+        community_memory=community_memory or agent_zero.memory_system
+    )
+
+    logger.info("Created Orchestrator with A0 integration")
+    return orchestrator

@@ -4,9 +4,12 @@ Commercial Agent Gateway - Servant-controlled introduction logic.
 Community servants control access to commercial agents. Commercial agents
 CANNOT directly contact users - they must be introduced by servants who
 assess relevance, community policy, and user preferences.
+
+REQUIRES AgentZeroCore - all gateway operations are coordinated through A0.
 """
 
-from typing import Optional, List, Dict
+import logging
+from typing import Optional, List, Dict, TYPE_CHECKING
 from dataclasses import dataclass
 from datetime import datetime
 import re
@@ -17,6 +20,11 @@ from .disclosure import (
     CommercialAgentIntroduction,
     DisclosurePackage
 )
+
+if TYPE_CHECKING:
+    from agent_zero_core import AgentZeroCore
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -79,6 +87,8 @@ class CommercialAgentGateway:
     3. Query relevance
     4. Commercial intent detection
     5. Servant assessment of value
+
+    REQUIRES AgentZeroCore - all gateway operations are coordinated through A0.
     """
 
     # Commercial intent indicators
@@ -89,8 +99,22 @@ class CommercialAgentGateway:
         "vendor", "supplier", "service provider"
     ]
 
-    def __init__(self):
+    def __init__(self, agent_zero: "AgentZeroCore"):
+        """
+        Initialize the gateway.
+
+        Args:
+            agent_zero: AgentZeroCore instance (REQUIRED)
+        """
+        if agent_zero is None:
+            raise ValueError("CommercialAgentGateway requires AgentZeroCore")
+
+        self.agent_zero = agent_zero
         self.registered_agents: List[CommercialAgent] = []
+
+        # Register with A0
+        self.agent_zero.commercial_gateway = self
+        logger.info("CommercialAgentGateway initialized with A0")
 
     def register_commercial_agent(self, agent: CommercialAgent):
         """Register a commercial agent with the gateway."""

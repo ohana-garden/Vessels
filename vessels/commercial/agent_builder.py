@@ -3,12 +3,18 @@ Commercial Agent Builder
 
 Provides a template-based system for creating commercial agents with
 standardized ethical constraints and disclosure requirements.
+
+A0 INTEGRATION:
+- Commercial agents are spawned through AgentZeroCore when available
+- A0 provides vessel-scoped resources (memory, tools, action gate)
+- Falls back to config-only mode when A0 is not available
 """
 
+import logging
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, TYPE_CHECKING
 
 from .fee_structure import ProductCategory, FeeConfig, get_fee_config
 from .skills import (
@@ -19,6 +25,11 @@ from .skills import (
     generate_disclosure_script,
     validate_agent_skills
 )
+
+if TYPE_CHECKING:
+    from agent_zero_core import AgentZeroCore, AgentSpecification
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -110,15 +121,33 @@ class CommercialAgentConfig:
 
 class CommercialAgentBuilder:
     """
-    Builder for creating commercial agents with standardized structure
+    Builder for creating commercial agents with standardized structure.
 
     Anyone can create a commercial agent, but they must follow the
     template structure and ethical guidelines.
+
+    REQUIRES AgentZeroCore - all commercial agents are spawned through A0.
     """
 
-    def __init__(self):
-        """Initialize the builder"""
+    def __init__(
+        self,
+        agent_zero: "AgentZeroCore",
+        vessel_id: Optional[str] = None
+    ):
+        """
+        Initialize the builder.
+
+        Args:
+            agent_zero: AgentZeroCore instance (REQUIRED)
+            vessel_id: Vessel ID for agent spawning
+        """
+        if agent_zero is None:
+            raise ValueError("CommercialAgentBuilder requires AgentZeroCore")
+
+        self.agent_zero = agent_zero
+        self.vessel_id = vessel_id
         self.agent_config: Optional[CommercialAgentConfig] = None
+        self._spawned_agent_id: Optional[str] = None
 
     def create_commercial_agent(
         self,
@@ -320,7 +349,9 @@ class CommercialAgentBuilder:
 
     def validate_and_build(self) -> CommercialAgentConfig:
         """
-        Validate configuration and return final config
+        Validate configuration and return final config.
+
+        If agent_zero is configured, also spawns the agent via A0.
 
         Returns:
             Validated CommercialAgentConfig
@@ -348,7 +379,53 @@ class CommercialAgentBuilder:
         if not self.agent_config.disclosure_script:
             raise ValueError("Must call generate_disclosure_script before building")
 
+        # Spawn via A0
+        self._spawn_via_a0()
+
         return self.agent_config
+
+    def _spawn_via_a0(self) -> str:
+        """
+        Spawn the commercial agent via AgentZeroCore.
+
+        Returns:
+            Spawned agent ID
+
+        Raises:
+            RuntimeError: If agent spawning fails
+        """
+        from agent_zero_core import AgentSpecification
+
+        # Create agent specification for A0
+        spec = AgentSpecification(
+            name=self.agent_config.name,
+            description=f"Commercial agent for {self.agent_config.company_name}: {self.agent_config.product_description}",
+            capabilities=list(self.agent_config.capabilities.get("can_do", [])),
+            tools_needed=["disclosure_system", "product_database", "fee_calculator"],
+            communication_style="consultative",
+            autonomy_level="medium",
+            specialization="commercial"
+        )
+
+        # Spawn via A0 with commercial constraints
+        agent_ids = self.agent_zero.spawn_agents(
+            [spec],
+            vessel_id=self.vessel_id
+        )
+
+        if not agent_ids:
+            raise RuntimeError(f"Failed to spawn commercial agent for {self.agent_config.company_name}")
+
+        self._spawned_agent_id = agent_ids[0]
+        logger.info(
+            f"Spawned commercial agent via A0: {self._spawned_agent_id} "
+            f"for {self.agent_config.company_name}"
+        )
+        return self._spawned_agent_id
+
+    def get_spawned_agent_id(self) -> Optional[str]:
+        """Get the A0 agent ID if spawned."""
+        return self._spawned_agent_id
 
     def _generate_agent_id(self, company_name: str) -> str:
         """Generate unique agent ID"""

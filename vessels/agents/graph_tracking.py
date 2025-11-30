@@ -10,13 +10,21 @@ Extends the Vessels knowledge graph schema to track:
 
 All commercial activity is tracked in FalkorDB for full transparency
 and auditability.
+
+REQUIRES AgentZeroCore - all graph tracking is coordinated through A0.
 """
 
-from typing import Dict, List, Optional
+import logging
+from typing import Dict, List, Optional, TYPE_CHECKING
 from datetime import datetime
 from enum import Enum
 
 from ..knowledge.schema import NodeType, RelationType, PropertyName
+
+if TYPE_CHECKING:
+    from agent_zero_core import AgentZeroCore
+
+logger = logging.getLogger(__name__)
 
 
 # Extend node types for commercial tracking
@@ -49,18 +57,34 @@ class CommercialRelationshipGraph:
 
     Every commercial agent introduction, interaction, and transaction
     is recorded in the graph for audit and transparency.
+
+    REQUIRES AgentZeroCore - all graph tracking is coordinated through A0.
     """
 
-    def __init__(self, falkor_client, graph_name: str = "vessels_commercial"):
+    def __init__(
+        self,
+        agent_zero: "AgentZeroCore",
+        falkor_client=None,
+        graph_name: str = "vessels_commercial"
+    ):
         """
         Initialize with FalkorDB client.
 
         Args:
-            falkor_client: FalkorDBClient instance
+            agent_zero: AgentZeroCore instance (REQUIRED)
+            falkor_client: FalkorDBClient instance (defaults to A0's memory_system)
             graph_name: Graph namespace for commercial tracking
         """
-        self.falkor_client = falkor_client
-        self.graph = falkor_client.get_graph(graph_name)
+        if agent_zero is None:
+            raise ValueError("CommercialRelationshipGraph requires AgentZeroCore")
+
+        self.agent_zero = agent_zero
+        self.falkor_client = falkor_client or agent_zero.memory_system
+        self.graph = self.falkor_client.get_graph(graph_name) if self.falkor_client else None
+
+        # Register with A0
+        self.agent_zero.commercial_graph = self
+        logger.info("CommercialRelationshipGraph initialized with A0")
 
     def register_commercial_agent(
         self,

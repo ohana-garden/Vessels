@@ -4,13 +4,18 @@ Ghost Agent wrapper for simulation mode.
 Allows agents to run in "ghost mode" where they observe queries and
 propose actions but don't execute them. Useful for safety testing
 before production deployment.
+
+REQUIRES AgentZeroCore - all ghost operations are coordinated through A0.
 """
 
 import logging
 from dataclasses import dataclass, field
-from typing import Any, List, Dict, Optional
+from typing import Any, List, Dict, Optional, TYPE_CHECKING
 from datetime import datetime
 import json
+
+if TYPE_CHECKING:
+    from agent_zero_core import AgentZeroCore
 
 logger = logging.getLogger(__name__)
 
@@ -68,8 +73,9 @@ class GhostAgent:
 
     def __init__(
         self,
+        agent_zero: "AgentZeroCore",
         agent: Any,
-        action_gate: Any,
+        action_gate: Any = None,
         ghost_mode: bool = True,
         log_file: Optional[str] = None
     ):
@@ -77,20 +83,28 @@ class GhostAgent:
         Initialize Ghost Agent.
 
         Args:
+            agent_zero: AgentZeroCore instance (REQUIRED)
             agent: Agent to wrap in ghost mode
-            action_gate: ActionGate for validation
+            action_gate: ActionGate for validation (defaults to A0's gate)
             ghost_mode: If True, actions are simulated (not executed)
             log_file: Optional file to log simulation entries
         """
+        if agent_zero is None:
+            raise ValueError("GhostAgent requires AgentZeroCore")
+
+        self.agent_zero = agent_zero
         self.agent = agent
-        self.action_gate = action_gate
+        self.action_gate = action_gate or agent_zero.gate
         self.ghost_mode = ghost_mode
         self.log_file = log_file
         self.simulation_log: List[SimulationEntry] = []
 
+        # Register with A0
+        self.agent_zero.ghost_agent = self
+
         logger.info(
             f"Ghost Agent initialized for {agent.__class__.__name__} "
-            f"(ghost_mode={ghost_mode})"
+            f"(ghost_mode={ghost_mode}) with A0"
         )
 
     def handle_query(self, query: Any, query_metadata: Optional[Dict] = None) -> Optional[Any]:

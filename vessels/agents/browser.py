@@ -9,34 +9,18 @@ This agent transforms internal moral conflicts into search queries, retrieves
 relevant external examples, and attaches them as "External Wisdom" to help
 humans contextualize their decisions within broader historical and ethical
 frameworks.
+
+REQUIRES AgentZeroCore - all browser operations are coordinated through A0.
 """
 
 import logging
-from typing import List, Dict, Optional, Protocol
-from vessels.knowledge.parable import Parable
-Browser Agent: External Wisdom Forager
-
-The BrowserAgent is designed to search the outside world for wisdom, precedents,
-and case studies related to moral conflicts encountered by the Vessels community.
-
-When a Parable captures an internal conflict, the BrowserAgent can:
-1. Generate appropriate search queries from the moral tension
-2. Search for related history, philosophy, and real-world examples
-3. Synthesize findings into digestible "External Wisdom" for the community
-
-This creates a "Mirror of the World" - showing how others have faced similar
-dilemmas and what can be learned from their experiences.
-"""
-
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Protocol, TYPE_CHECKING
 from dataclasses import dataclass
-import logging
 
-# Import the Parable class
-import sys
-from pathlib import Path
-sys.path.insert(0, str(Path(__file__).parent.parent))
-from knowledge.parable import Parable
+from vessels.knowledge.parable import Parable
+
+if TYPE_CHECKING:
+    from agent_zero_core import AgentZeroCore
 
 logger = logging.getLogger(__name__)
 
@@ -74,17 +58,31 @@ class ParableBrowserAgent:
     The agent takes a Parable representing an internal moral conflict,
     generates appropriate search queries, retrieves relevant external
     examples, and enriches the Parable with this wisdom.
+
+    REQUIRES AgentZeroCore - all browser operations are coordinated through A0.
     """
 
-    def __init__(self, search_tool_interface: SearchToolInterface):
+    def __init__(
+        self,
+        agent_zero: "AgentZeroCore",
+        search_tool_interface: SearchToolInterface
+    ):
         """
         Initialize the Parable Browser Agent.
 
         Args:
+            agent_zero: AgentZeroCore instance (REQUIRED)
             search_tool_interface: Implementation of SearchToolInterface
         """
+        if agent_zero is None:
+            raise ValueError("ParableBrowserAgent requires AgentZeroCore")
+
+        self.agent_zero = agent_zero
         self.search = search_tool_interface
-        logger.info("Initialized ParableBrowserAgent")
+
+        # Register with A0
+        self.agent_zero.browser_agent = self
+        logger.info("Initialized ParableBrowserAgent with A0")
 
     def enrich_parable(
         self,
@@ -317,18 +315,31 @@ class BrowserAgent:
     The BrowserAgent takes a Parable (internal conflict) and searches the outside
     world for related examples, philosophy, case studies, and historical precedents.
     It then synthesizes these findings into actionable wisdom for the community.
+
+    REQUIRES AgentZeroCore - all browser operations are coordinated through A0.
     """
 
-    def __init__(self, search_client=None):
+    def __init__(
+        self,
+        agent_zero: "AgentZeroCore",
+        search_client=None
+    ):
         """
         Initialize BrowserAgent.
 
         Args:
+            agent_zero: AgentZeroCore instance (REQUIRED)
             search_client: Optional search client (WebSearch, etc.)
-                          If not provided, will attempt to use available search tools
         """
+        if agent_zero is None:
+            raise ValueError("BrowserAgent requires AgentZeroCore")
+
+        self.agent_zero = agent_zero
         self.search_client = search_client
-        logger.info("Initialized BrowserAgent for external wisdom foraging")
+
+        # Register with A0
+        self.agent_zero.browser_agent = self
+        logger.info("Initialized BrowserAgent with A0")
 
     def forage_for_wisdom(
         self,

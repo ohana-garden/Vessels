@@ -5,13 +5,15 @@ The Gardener runs as a background agent, continuously maintaining
 memory quality through pruning, synthesis, and fact-checking.
 
 Now also handles conversation pruning for the ConversationStore.
+
+REQUIRES AgentZeroCore - all gardener operations are coordinated through A0.
 """
 
 import logging
 import time
 import threading
 from dataclasses import dataclass, field
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, TYPE_CHECKING
 from datetime import datetime, time as dt_time
 
 from vessels.memory.pruning import (
@@ -22,6 +24,9 @@ from vessels.memory.pruning import (
 )
 from vessels.memory.synthesis import MemorySynthesizer, WisdomNode
 from vessels.memory.fact_checking import FactChecker, Contradiction
+
+if TYPE_CHECKING:
+    from agent_zero_core import AgentZeroCore
 
 logger = logging.getLogger(__name__)
 
@@ -72,11 +77,14 @@ class GardenerAgent:
     4. **Optimization**: Maintain optimal memory graph structure
 
     Runs continuously with low priority, during off-peak hours.
+
+    REQUIRES AgentZeroCore - all gardener operations are coordinated through A0.
     """
 
     def __init__(
         self,
-        memory_store,
+        agent_zero: "AgentZeroCore",
+        memory_store=None,
         conversation_store=None,
         pruning_criteria: Optional[PruningCriteria] = None,
         conversation_pruning_criteria: Optional[ConversationPruningCriteria] = None,
@@ -88,7 +96,8 @@ class GardenerAgent:
         Initialize Gardener agent.
 
         Args:
-            memory_store: CommunityMemory instance to maintain
+            agent_zero: AgentZeroCore instance (REQUIRED)
+            memory_store: CommunityMemory instance (defaults to A0's memory_system)
             conversation_store: ConversationStore instance (optional)
             pruning_criteria: Criteria for memory pruning
             conversation_pruning_criteria: Criteria for conversation pruning
@@ -96,8 +105,15 @@ class GardenerAgent:
             schedule: When to run ("continuous", "nightly", "weekly")
             cpu_budget_percent: Max CPU usage percentage (default 5%)
         """
-        self.memory_store = memory_store
-        self.conversation_store = conversation_store
+        if agent_zero is None:
+            raise ValueError("GardenerAgent requires AgentZeroCore")
+
+        self.agent_zero = agent_zero
+        self.memory_store = memory_store or agent_zero.memory_system
+        self.conversation_store = conversation_store or agent_zero.conversation_store
+
+        # Register with A0
+        self.agent_zero.gardener = self
         self.pruner = MemoryPruner(criteria=pruning_criteria)
         self.conversation_pruner = ConversationPruner(criteria=conversation_pruning_criteria)
         self.synthesizer = MemorySynthesizer(similarity_threshold=synthesis_threshold)
