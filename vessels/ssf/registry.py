@@ -19,8 +19,6 @@ from .schema import (
     SSFDefinition,
     SSFCategory,
     RiskLevel,
-    HandlerType,
-    SSFHandler,
     ConstraintBindingConfig,
     ConstraintBindingMode,
     BoundaryBehavior,

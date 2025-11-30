@@ -16,7 +16,6 @@ from ...schema import (
     RiskLevel,
     SSFHandler,
     ConstraintBindingConfig,
-    ConstraintBindingMode,
 )
 
 logger = logging.getLogger(__name__)

@@ -5,21 +5,18 @@ Validates SSF definitions for completeness, safety, and correctness.
 Used both at registration time and for dynamic SSF spawning.
 """
 
-import json
 import logging
 import re
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional
 
 from .schema import (
     SSFDefinition,
-    SSFHandler,
     HandlerType,
     SSFCategory,
     RiskLevel,
-    ConstraintBindingConfig,
     ConstraintBindingMode,
 )
 

@@ -29,7 +29,6 @@ from .schema import (
     SSFStatus,
     SSFCategory,
     RiskLevel,
-    ConstraintBindingConfig,
     ConstraintBindingMode,
     BoundaryBehavior,
     ManifoldValidation,
@@ -408,9 +407,9 @@ class SSFRuntime:
             required = schema.get("required", [])
 
             # Check required fields
-            for field in required:
-                if field not in inputs:
-                    return f"Missing required field: {field}"
+            for field_name in required:
+                if field_name not in inputs:
+                    return f"Missing required field: {field_name}"
 
             # Check additional properties
             if not schema.get("additionalProperties", True):
@@ -757,7 +756,8 @@ class SSFRuntime:
             return
 
         try:
-            execution_record = {
+            # Build record for future storage (depends on Graphiti interface)
+            _execution_record = {  # noqa: F841
                 "type": "ssf_execution",
                 "ssf_id": str(ssf.id),
                 "ssf_name": ssf.name,
@@ -773,8 +773,7 @@ class SSFRuntime:
                 "timestamp": datetime.utcnow().isoformat(),
                 "request_id": str(context.request_id),
             }
-
-            # Store in memory (implementation depends on Graphiti interface)
+            # TODO: Store _execution_record to memory_client when interface is ready
             logger.debug(f"SSF execution logged: {ssf.name} ({duration:.3f}s)")
 
         except Exception as e:
@@ -795,7 +794,8 @@ class SSFRuntime:
             return
 
         try:
-            blocked_record = {
+            # Build record for future storage
+            _blocked_record = {  # noqa: F841
                 "type": "ssf_blocked",
                 "ssf_id": str(ssf.id),
                 "ssf_name": ssf.name,
@@ -808,7 +808,7 @@ class SSFRuntime:
                 "violation": validation.violation,
                 "timestamp": datetime.utcnow().isoformat(),
             }
-
+            # TODO: Store _blocked_record to memory_client when interface is ready
             logger.warning(f"SSF blocked: {ssf.name} - {validation.violation}")
 
         except Exception as e:

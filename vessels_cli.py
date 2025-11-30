@@ -4,10 +4,8 @@ VESSELS CLI - Command Line Interface
 Uses AgentZeroCore as THE main core for all operations.
 """
 
-import sys
 import argparse
 import logging
-from typing import Dict, Any
 
 from agent_zero_core import agent_zero
 

@@ -14,27 +14,20 @@ VESSEL-NATIVE DESIGN:
 - No global memory/tool system - all resources come from vessels
 """
 
-import asyncio
-import json
 import logging
 import uuid
 from datetime import datetime
-from typing import Dict, List, Any, Optional, Callable, TYPE_CHECKING
+from typing import Dict, List, Any, Optional, Callable
 from dataclasses import dataclass, field
 from enum import Enum
 import threading
 import queue
 from concurrent.futures import ThreadPoolExecutor
-import inspect
-
-# Avoid circular imports
-if TYPE_CHECKING:
-    from vessels.core.registry import VesselRegistry
-    from vessels.core.vessel import Vessel
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
 
 class AgentStatus(Enum):
     IDLE = "idle"
@@ -44,6 +37,7 @@ class AgentStatus(Enum):
     ERROR = "error"
     PAUSED_FOR_CONSULTATION = "paused_for_consultation"
     WAITING_ASYNC = "waiting_async"
+
 
 @dataclass
 class AgentSpecification:
@@ -56,7 +50,8 @@ class AgentSpecification:
     autonomy_level: str = "high"
     memory_type: str = "shared"
     specialization: str = "general"
-    
+
+
 @dataclass
 class AgentInstance:
     """Live agent instance with vessel-scoped resources"""
@@ -73,7 +68,8 @@ class AgentInstance:
     connections: List[str] = field(default_factory=list)
     message_queue: queue.Queue = field(default_factory=queue.Queue)
     active_consultation: Optional[Any] = None
-    
+
+
 class AgentZeroCore:
     """
     Meta-coordination engine that spawns and manages agents.
@@ -438,7 +434,6 @@ class AgentZeroCore:
         """
         try:
             from vessels.a0.ssf_integration import create_a0_integration
-            from vessels.constraints.manifold import Manifold
 
             # Get manifold for constraint validation
             manifold = None
@@ -560,8 +555,6 @@ class AgentZeroCore:
         Returns:
             Response dictionary with results
         """
-        import re
-
         # Step 1: Detect intents
         detected_intents = self._detect_intents(user_input)
 
@@ -791,7 +784,6 @@ class AgentZeroCore:
             Dict with vessel details including vessel_id
         """
         from vessels.core.vessel import Vessel, PrivacyLevel
-        from vessels.knowledge.schema import CommunityPrivacy
 
         # Get the project
         project = self._projects.get(project_id) if hasattr(self, '_projects') else None
@@ -1860,7 +1852,7 @@ class AgentZeroCore:
         card = vessel_to_agent_card(vessel)
 
         # Register in A2A registry
-        entry = self.a2a_registry.register(card)
+        self.a2a_registry.register(card)
 
         # Also register in A2A service for coordination
         if self.a2a_service:
@@ -2509,27 +2501,23 @@ class AgentZeroCore:
 
     def interpret_community_needs(self, need_description: str) -> List[AgentSpecification]:
         """Interpret natural language community needs into agent specifications"""
-        
-        # Parse the need description and determine required capabilities
-        needs_analysis = self._analyze_community_needs(need_description)
-        
         # Generate appropriate agent specifications
         agents_needed = []
-        
+
         if "grant" in need_description.lower() or "funding" in need_description.lower():
             agents_needed.extend(self._create_grant_management_agents())
-            
+
         if "coordinate" in need_description.lower() or "volunteer" in need_description.lower():
             agents_needed.extend(self._create_coordination_agents())
-            
+
         if "elder" in need_description.lower() or "care" in need_description.lower():
             agents_needed.extend(self._create_elder_care_agents())
-            
+
         # Always include general coordination agents
         agents_needed.extend(self._create_general_coordination_agents())
-        
+
         return agents_needed
-    
+
     def _analyze_community_needs(self, description: str) -> Dict[str, Any]:
         """Analyze community needs from description"""
         analysis = {
@@ -2541,26 +2529,26 @@ class AgentZeroCore:
             "resource_requirements": [],
             "coordination_complexity": "medium"
         }
-        
+
         # Simple but effective need analysis
         desc_lower = description.lower()
-        
+
         if "elder" in desc_lower or "senior" in desc_lower:
             analysis["primary_focus"] = "elder_care"
             analysis["target_population"] = "elderly"
-            
+
         if "grant" in desc_lower or "funding" in desc_lower:
             analysis["primary_focus"] = "grant_management"
             analysis["resource_requirements"].append("funding")
-            
+
         if "puna" in desc_lower or "hawaii" in desc_lower:
             analysis["geographic_area"] = "puna_hawaii"
-            
+
         if "urgent" in desc_lower or "emergency" in desc_lower:
             analysis["urgency_level"] = "high"
-            
+
         return analysis
-    
+
     def _create_grant_management_agents(self) -> List[AgentSpecification]:
         """Create grant management agent specifications"""
         return [
@@ -2586,7 +2574,7 @@ class AgentZeroCore:
                 specialization="grant_tracking"
             )
         ]
-    
+
     def _create_coordination_agents(self) -> List[AgentSpecification]:
         """Create coordination agent specifications"""
         return [
@@ -2605,7 +2593,7 @@ class AgentZeroCore:
                 specialization="volunteer_management"
             )
         ]
-    
+
     def _create_elder_care_agents(self) -> List[AgentSpecification]:
         """Create elder care specific agents"""
         return [
@@ -2624,7 +2612,7 @@ class AgentZeroCore:
                 specialization="resource_navigation"
             )
         ]
-    
+
     def _create_general_coordination_agents(self) -> List[AgentSpecification]:
         """Create general coordination agents"""
         return [
@@ -2644,7 +2632,7 @@ class AgentZeroCore:
                 specialization="communication"
             )
         ]
-    
+
     def spawn_agents(self, specifications: List[AgentSpecification],
                      vessel_id: Optional[str] = None, **kwargs) -> List[str]:
         """
@@ -2675,10 +2663,12 @@ class AgentZeroCore:
             agent_id = self._spawn_agent(spec, vessel=vessel, **kwargs)
             spawned_ids.append(agent_id)
 
-        logger.info(f"Spawned {len(spawned_ids)} agents" +
-                   (f" in vessel {vessel_id}" if vessel_id else ""))
+        msg = f"Spawned {len(spawned_ids)} agents"
+        if vessel_id:
+            msg += f" in vessel {vessel_id}"
+        logger.info(msg)
         return spawned_ids
-    
+
     def _spawn_agent(self, specification: AgentSpecification,
                      vessel: Optional[Any] = None, **kwargs) -> str:
         """
@@ -2745,14 +2735,14 @@ class AgentZeroCore:
         agent_thread.daemon = True
         agent_thread.start()
 
-        logger.info(
-            f"Spawned agent {specification.name} with ID {agent_id}" +
-            (f" in vessel {vessel_id}" if vessel_id else "")
-        )
+        msg = f"Spawned agent {specification.name} with ID {agent_id}"
+        if vessel_id:
+            msg += f" in vessel {vessel_id}"
+        logger.info(msg)
         return agent_id
 
     def _resolve_vessel_tools(self, tools_needed: List[str],
-                             vessel: Any) -> List[str]:
+                              vessel: Any) -> List[str]:
         """
         Resolve tool names to vessel-scoped implementations.
 
@@ -2773,7 +2763,7 @@ class AgentZeroCore:
                     f"Tool '{tool_name}' not found in vessel {vessel.vessel_id}"
                 )
         return resolved
-    
+
     def _assign_tools(self, tools_needed: List[str]) -> List[str]:
         """
         Assign tools to an agent using the Tool Registry.
@@ -2807,7 +2797,7 @@ class AgentZeroCore:
                     logger.warning(f"No tools found for need: {tool_need}")
 
         return list(set(assigned_tools))  # Dedupe
-    
+
     def _agent_processing_loop(self, agent_id: str):
         """
         Main processing loop for each agent.
@@ -2863,14 +2853,14 @@ class AgentZeroCore:
                 agent.status = AgentStatus.ERROR
 
             threading.Event().wait(1)  # Brief pause
-    
+
     def _process_agent_message(self, agent_id: str, message: Dict[str, Any]):
         """Process message for specific agent"""
         agent = self.agents[agent_id]
-        
+
         if message.get("type") == "task":
             agent.memory["active_tasks"].append(message.get("content"))
-            
+
         elif message.get("type") == "query":
             response = self._generate_agent_response(agent_id, message.get("content"))
             self.send_message(message.get("sender_id"), {
@@ -2878,37 +2868,37 @@ class AgentZeroCore:
                 "content": response,
                 "sender_id": agent_id
             })
-    
+
     def _process_agent_tasks(self, agent_id: str):
         """Process active tasks for agent"""
         agent = self.agents[agent_id]
-        
+
         if agent.memory["active_tasks"]:
             task = agent.memory["active_tasks"].pop(0)
-            
+
             # Execute task based on agent specialization
             result = self._execute_agent_task(agent_id, task)
-            
+
             # Store result and learning
             agent.memory["interaction_history"].append({
                 "task": task,
                 "result": result,
                 "timestamp": datetime.now()
             })
-            
+
             agent.memory["learned_patterns"].append({
                 "task_type": task.get("type"),
                 "success": result.get("success", False),
                 "approach": result.get("approach", "")
             })
-    
+
     def _execute_agent_task(self, agent_id: str, task: Dict[str, Any]) -> Dict[str, Any]:
         """Execute specific task for agent"""
         agent = self.agents[agent_id]
         spec = agent.specification
-        
+
         result = {"success": False, "approach": spec.specialization}
-        
+
         try:
             if spec.specialization == "grant_discovery":
                 result = self._execute_grant_discovery_task(task)
@@ -2920,13 +2910,13 @@ class AgentZeroCore:
                 result = self._execute_elder_care_task(task)
             else:
                 result = self._execute_general_task(task)
-                
+
         except Exception as e:
             logger.error(f"Task execution error for agent {agent_id}: {e}")
             result["error"] = str(e)
-            
+
         return result
-    
+
     def _execute_grant_discovery_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
         """Execute grant discovery task"""
         # This would integrate with the grant coordination system
@@ -2938,7 +2928,7 @@ class AgentZeroCore:
             ],
             "approach": "web_search_and_analysis"
         }
-    
+
     def _execute_grant_writing_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
         """Execute grant writing task"""
         return {
@@ -2947,7 +2937,7 @@ class AgentZeroCore:
             "compliance_score": 0.95,
             "approach": "template_based_generation"
         }
-    
+
     def _execute_coordination_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
         """Execute coordination task"""
         return {
@@ -2956,7 +2946,7 @@ class AgentZeroCore:
             "resource_allocation": "Optimized resource distribution...",
             "approach": "collaborative_planning"
         }
-    
+
     def _execute_elder_care_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
         """Execute elder care task"""
         return {
@@ -2965,7 +2955,7 @@ class AgentZeroCore:
             "resource_needs": "Identified required resources...",
             "approach": "needs_based_design"
         }
-    
+
     def _execute_general_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
         """Execute general task"""
         return {
@@ -2973,24 +2963,24 @@ class AgentZeroCore:
             "task_result": f"Completed task: {task}",
             "approach": "general_processing"
         }
-    
+
     def _generate_agent_response(self, agent_id: str, query: str) -> str:
         """Generate response from agent based on query"""
         agent = self.agents[agent_id]
         spec = agent.specification
-        
+
         return f"Agent {spec.name} ({spec.specialization}) received query: {query}"
-    
+
     def send_message(self, agent_id: str, message: Dict[str, Any]):
         """Send message to specific agent"""
         if agent_id in self.agents:
             self.agents[agent_id].message_queue.put(message)
-    
+
     def broadcast_message(self, message: Dict[str, Any]):
         """Broadcast message to all agents"""
         for agent_id in self.agents:
             self.send_message(agent_id, message)
-    
+
     def get_agent_status(self, agent_id: str) -> Optional[Dict[str, Any]]:
         """Get status of specific agent"""
         if agent_id in self.agents:
@@ -3005,43 +2995,43 @@ class AgentZeroCore:
                 "tools": agent.tools
             }
         return None
-    
+
     def get_all_agents_status(self) -> List[Dict[str, Any]]:
         """Get status of all agents"""
         return [self.get_agent_status(agent_id) for agent_id in self.agents]
-    
+
     def _coordination_loop(self):
         """Main coordination system loop"""
         while self.running:
             try:
                 # Monitor agent health
                 self._monitor_agents()
-                
+
                 # Optimize agent connections
                 self._optimize_connections()
-                
+
                 # Handle system-level tasks
                 self._handle_system_tasks()
-                
+
             except Exception as e:
                 logger.error(f"Coordination loop error: {e}")
-                
+
             threading.Event().wait(5)  # Coordination interval
-    
+
     def _monitor_agents(self):
         """Monitor agent health and performance"""
         for agent_id, agent in self.agents.items():
             # Check if agent is responsive
             time_since_active = (datetime.now() - agent.last_active).seconds
-            
+
             if time_since_active > 300 and agent.status != AgentStatus.IDLE:  # 5 minutes
                 logger.warning(f"Agent {agent_id} may be unresponsive")
-                
+
             # Restart agents in error state
             if agent.status == AgentStatus.ERROR:
                 logger.info(f"Restarting agent {agent_id}")
                 agent.status = AgentStatus.IDLE
-    
+
     def _optimize_connections(self):
         """Optimize agent connections based on workload"""
         # Simple connection optimization
@@ -3049,22 +3039,25 @@ class AgentZeroCore:
             # Connect agents with complementary specializations
             for other_id, other_agent in self.agents.items():
                 if agent_id != other_id:
-                    if (agent.specification.specialization != other_agent.specification.specialization and
-                        other_id not in agent.connections):
+                    specs_differ = (
+                        agent.specification.specialization !=
+                        other_agent.specification.specialization
+                    )
+                    if specs_differ and other_id not in agent.connections:
                         agent.connections.append(other_id)
-    
+
     def _handle_system_tasks(self):
         """Handle system-level coordination tasks"""
         # Distribute workload among agents
         active_agents = [a for a in self.agents.values() if a.status == AgentStatus.ACTIVE]
         idle_agents = [a for a in self.agents.values() if a.status == AgentStatus.IDLE]
-        
+
         # Balance load if needed
         if len(active_agents) > len(idle_agents) * 2:
             # Redistribute tasks to idle agents
             for agent in idle_agents[:2]:  # Activate up to 2 idle agents
                 agent.status = AgentStatus.ACTIVE
-    
+
     def execute_gated_action(
         self,
         agent_id: str,
@@ -3162,7 +3155,7 @@ class AgentZeroCore:
                 if hasattr(self.interface, 'send_message'):
                     self.interface.send_message(agent_id, message)
                 else:
-                    logger.warning(f"Interface does not have send_message method")
+                    logger.warning("Interface does not have send_message method")
                     print(f"\n[Agent {agent_id}]\n{message}\n")
             except Exception as e:
                 logger.error(f"Error sending message to user: {e}")
@@ -3273,6 +3266,7 @@ class AgentZeroCore:
             self.coordination_thread.join(timeout=10)
         self.executor.shutdown(wait=True)
         logger.info("Agent Zero Core shutdown complete")
+
 
 # Global instance for easy access
 agent_zero = AgentZeroCore()

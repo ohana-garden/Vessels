@@ -13,7 +13,6 @@ The dollar peg provides a consistent reference point for valuation while
 maintaining the distinction that kala measures social value, not financial transactions.
 """
 
-import json
 import logging
 from datetime import datetime
 from typing import Dict, List, Any, Optional
@@ -25,6 +24,7 @@ logger = logging.getLogger(__name__)
 
 # Dollar peg: 1 kala ≈ $1 USD (loosely pegged)
 KALA_TO_USD_RATE = 1.0
+
 
 class ContributionType(Enum):
     """Types of contributions that can be valued in kala"""
@@ -38,6 +38,7 @@ class ContributionType(Enum):
     KNOWLEDGE = "knowledge"            # Teaching and mentoring
     CREATIVE = "creative"              # Art, music, cultural work
     OTHER = "other"                    # Other community contributions
+
 
 @dataclass
 class KalaContribution:
@@ -54,6 +55,7 @@ class KalaContribution:
     verified: bool = False             # Has this been verified/approved?
     tags: List[str] = field(default_factory=list)
 
+
 @dataclass
 class KalaAccount:
     """Tracks kala contributions for a community member or entity"""
@@ -64,6 +66,7 @@ class KalaAccount:
     total_kala_given: float = 0.0
     total_kala_received: float = 0.0
     created_at: datetime = field(default_factory=datetime.now)
+
 
 class KalaValueSystem:
     """
@@ -547,19 +550,23 @@ class KalaValueSystem:
             }
         }
 
+
 # Example usage and common contribution valuation helpers
 def value_elder_care_visit(hours: float) -> float:
     """Standard valuation for elder care visits"""
     system = KalaValueSystem()
     return system.value_time_contribution(hours, skill_level="skilled")
 
+
 def value_meal_delivery(meals: int, cost_per_meal: float = 12.0) -> float:
     """Standard valuation for meal delivery"""
     return meals * cost_per_meal
 
+
 def value_transportation(miles: float, rate_per_mile: float = 0.67) -> float:
     """Standard valuation for transportation (IRS mileage rate)"""
     return miles * rate_per_mile
+
 
 # Global kala system instance
 kala_system = KalaValueSystem()

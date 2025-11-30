@@ -9,9 +9,8 @@ code execution, no raw API calls, no escape hatch.
 """
 
 import logging
-from dataclasses import dataclass, field
-from datetime import datetime
-from typing import Any, Callable, Dict, List, Optional
+from dataclasses import dataclass
+from typing import Any, Dict, List, Optional
 from uuid import UUID
 
 from ..ssf.schema import (
@@ -22,11 +21,10 @@ from ..ssf.schema import (
     SSFHandler,
     HandlerType,
     ExecutionContext,
-    SSFPermissions,
     SSFSpawnRequest,
 )
 from ..ssf.runtime import SSFRuntime, Persona, A0AgentInstance
-from ..ssf.registry import SSFRegistry, SSFMatch
+from ..ssf.registry import SSFRegistry
 from ..ssf.composition import SSFComposer, SSFStep, CompositionResult
 
 logger = logging.getLogger(__name__)
@@ -191,7 +189,10 @@ class A0SSFIntegration:
         # find_ssf - Capability search
         tools.append(ToolDefinition(
             name="find_ssf",
-            description="Find SSFs that can accomplish a capability. Use this when you need to discover what SSFs are available for a task.",
+            description=(
+                "Find SSFs that can accomplish a capability. "
+                "Use this when you need to discover available SSFs."
+            ),
             parameters={
                 "capability": {
                     "type": "string",
@@ -208,7 +209,10 @@ class A0SSFIntegration:
         if persona.ssf_permissions.can_compose_ssfs:
             tools.append(ToolDefinition(
                 name="compose_ssfs",
-                description="Chain multiple SSFs into a workflow where outputs flow from one to the next. Use this for multi-step tasks.",
+                description=(
+                    "Chain multiple SSFs into a workflow where outputs flow "
+                    "from one to the next. Use this for multi-step tasks."
+                ),
                 parameters={
                     "steps": {
                         "type": "array",
@@ -228,7 +232,10 @@ class A0SSFIntegration:
         if persona.ssf_permissions.can_spawn_ssfs:
             tools.append(ToolDefinition(
                 name="spawn_ssf",
-                description="Create a new SSF for a capability not covered by existing SSFs. Subject to spawn constraints.",
+                description=(
+                    "Create a new SSF for a capability not covered by "
+                    "existing SSFs. Subject to spawn constraints."
+                ),
                 parameters={
                     "name": {
                         "type": "string",
