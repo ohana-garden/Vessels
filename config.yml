@@ -1,0 +1,91 @@
+# Vessels Platform Configuration
+# All settings for Agent Zero Core
+
+version: "1.0"
+
+# Core settings
+core:
+  name: "Vessels"
+  description: "Community-centered agent coordination platform"
+  default_vessel: "ohana"
+
+# Memory configuration
+memory:
+  backend: "in_memory"  # in_memory | falkordb | redis
+  embedding_model: "hash"  # hash | sentence_transformers | openai
+  max_memories: 10000
+  similarity_threshold: 0.7
+
+# AI routing configuration
+routing:
+  default_model: "claude-sonnet"
+  models:
+    claude-opus:
+      provider: "anthropic"
+      use_for: ["complex_reasoning", "code_generation"]
+    claude-sonnet:
+      provider: "anthropic"
+      use_for: ["general", "conversation"]
+    claude-haiku:
+      provider: "anthropic"
+      use_for: ["simple_tasks", "classification"]
+
+  # Intent-to-model routing
+  intent_routing:
+    grant_writing: "claude-opus"
+    grant_discovery: "claude-sonnet"
+    elder_care: "claude-sonnet"
+    volunteer_coordination: "claude-haiku"
+    community_coordination: "claude-sonnet"
+    resource_management: "claude-haiku"
+
+# A2A (Agent-to-Agent) protocol
+a2a:
+  enabled: true
+  discovery:
+    method: "local"  # local | dns | registry
+    broadcast_interval: 60
+  security:
+    require_auth: false
+    encryption: "none"  # none | tls
+
+# MCP (Model Context Protocol)
+mcp:
+  enabled: true
+  servers_config: "tools/mcp_servers.yml"
+  auto_discover: true
+  capability_cache_ttl: 300
+
+# Agent defaults
+agents:
+  definitions_path: "agents/"
+  default_autonomy: "high"
+  default_communication_style: "collaborative"
+  max_concurrent: 50
+
+# SSF (Structured Semantic Functions)
+ssf:
+  definitions_path: "ssf/"
+  enable_composition: true
+
+# Projects
+projects:
+  definitions_path: "projects/"
+  default_privacy: "private"
+  default_governance: "solo"
+
+# Prompts
+prompts:
+  templates_path: "prompts/"
+  system_prompt: "prompts/system.md"
+
+# Kala value system
+kala:
+  enabled: true
+  base_rate: 1.0  # 1 kala = $1 USD
+  community_fund_percentage: 0.10
+
+# Logging
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
