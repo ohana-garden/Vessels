@@ -1,4 +1,4 @@
-"""Action gating layer for moral constraint enforcement."""
+"""Action gating - events and types only. Gating logic is in AgentZeroCore."""
 
 from .events import SecurityEvent, StateTransition
 

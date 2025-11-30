@@ -1,0 +1,129 @@
+# Native Tool Definitions
+# Built-in tools that don't require external MCP servers
+
+version: "1.0"
+
+tools:
+  # Agent spawning
+  spawn_agent:
+    name: "spawn_agent"
+    description: "Spawn a new agent with specified capabilities"
+    category: "agent_coordination"
+    risk_level: "medium"
+    input_schema:
+      type: "object"
+      properties:
+        name:
+          type: "string"
+          description: "Name for the new agent"
+        capabilities:
+          type: "array"
+          items:
+            type: "string"
+          description: "List of capabilities the agent needs"
+        autonomy_level:
+          type: "string"
+          enum: ["low", "medium", "high"]
+          default: "medium"
+      required: ["name", "capabilities"]
+
+  # Message sending between agents
+  send_message:
+    name: "send_message"
+    description: "Send a message to another agent"
+    category: "communication"
+    risk_level: "low"
+    input_schema:
+      type: "object"
+      properties:
+        to_agent_id:
+          type: "string"
+          description: "ID of the target agent"
+        message:
+          type: "string"
+          description: "Message content"
+        priority:
+          type: "string"
+          enum: ["low", "normal", "high", "urgent"]
+          default: "normal"
+      required: ["to_agent_id", "message"]
+
+  # Memory operations
+  store_memory:
+    name: "store_memory"
+    description: "Store information in shared memory"
+    category: "memory_operations"
+    risk_level: "low"
+    input_schema:
+      type: "object"
+      properties:
+        key:
+          type: "string"
+          description: "Memory key"
+        value:
+          type: "object"
+          description: "Value to store"
+        namespace:
+          type: "string"
+          default: "default"
+      required: ["key", "value"]
+
+  retrieve_memory:
+    name: "retrieve_memory"
+    description: "Retrieve information from shared memory"
+    category: "data_retrieval"
+    risk_level: "low"
+    input_schema:
+      type: "object"
+      properties:
+        key:
+          type: "string"
+          description: "Memory key to retrieve"
+        namespace:
+          type: "string"
+          default: "default"
+      required: ["key"]
+
+  # Scheduling
+  schedule_task:
+    name: "schedule_task"
+    description: "Schedule a task for future execution"
+    category: "scheduling"
+    risk_level: "medium"
+    input_schema:
+      type: "object"
+      properties:
+        task_name:
+          type: "string"
+        execute_at:
+          type: "string"
+          format: "date-time"
+        ssf_id:
+          type: "string"
+          description: "SSF to execute"
+        inputs:
+          type: "object"
+      required: ["task_name", "execute_at", "ssf_id"]
+
+  # Notifications
+  notify_user:
+    name: "notify_user"
+    description: "Send a notification to a user"
+    category: "communication"
+    risk_level: "medium"
+    input_schema:
+      type: "object"
+      properties:
+        user_id:
+          type: "string"
+        message:
+          type: "string"
+        channel:
+          type: "string"
+          enum: ["in_app", "email", "sms"]
+          default: "in_app"
+        priority:
+          type: "string"
+          enum: ["low", "normal", "high"]
+          default: "normal"
+      required: ["user_id", "message"]

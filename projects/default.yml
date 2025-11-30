@@ -1,0 +1,58 @@
+# Default Project Configuration
+# Template for new projects
+
+name: "default"
+description: "Default project template"
+
+# Privacy settings
+privacy:
+  level: "private"  # private | shared | public | federated
+  allowed_members: []
+  cross_project_access: false
+
+# Governance
+governance:
+  type: "solo"  # solo | council | consensus
+  decision_threshold: 0.5
+  require_approval_for:
+    - "budget_changes"
+    - "member_changes"
+    - "privacy_changes"
+
+# Resource allocation
+resources:
+  max_agents: 10
+  max_memory_mb: 512
+  max_ssf_executions_per_hour: 100
+
+# Agent configuration
+agents:
+  default_autonomy: "medium"
+  allowed_categories:
+    - "data_retrieval"
+    - "computation"
+    - "communication"
+    - "scheduling"
+
+# SSF permissions
+ssf:
+  can_spawn: false
+  can_compose: true
+  max_composition_length: 5
+  blocked_categories: []
+
+# Memory namespaces
+memory:
+  namespaces:
+    - "project"
+    - "agents"
+    - "tasks"
+  isolation: true  # Isolate from other projects
+
+# Kala tracking
+kala:
+  track_contributions: true
+  contribution_types:
+    - "time"
+    - "skills"
+    - "resources"
