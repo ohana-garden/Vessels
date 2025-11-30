@@ -4,10 +4,10 @@ Commercial Agent Builder
 Provides a template-based system for creating commercial agents with
 standardized ethical constraints and disclosure requirements.
 
-A0 INTEGRATION:
-- Commercial agents are spawned through AgentZeroCore when available
-- A0 provides vessel-scoped resources (memory, tools, action gate)
-- Falls back to config-only mode when A0 is not available
+REQUIRES AgentZeroCore - all commercial agents are spawned through A0.
+A0 provides vessel-scoped resources (memory, tools, action gate).
+
+DEPRECATED: Standalone operation without A0 is no longer supported.
 """
 
 import logging

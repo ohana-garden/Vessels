@@ -14,10 +14,11 @@ Supports:
 - Conditional routing (if X then A else B)
 - Error handling and recovery
 
-A0 INTEGRATION:
+REQUIRES AgentZeroCore - all agent operations go through A0.
 - Orchestrator registers with AgentZeroCore as a system-level coordinator
-- Uses A0's spawn_agents for creating pipeline agents when available
-- Falls back to local AgentFactory when A0 is not configured
+- Uses A0's spawn_agents for creating pipeline agents
+
+DEPRECATED: Standalone operation without A0 is no longer supported.
 """
 
 import logging
@@ -109,12 +110,19 @@ class PipelineExecution:
 
 class AgentFactory:
     """
-    Factory for creating agent instances.
+    DEPRECATED: Use AgentZeroCore.spawn_agents() instead.
 
-    Agents can be registered by type and instantiated on demand.
+    This factory is no longer used - all agents are spawned through A0.
+    Kept for backward compatibility but will be removed in future versions.
     """
 
     def __init__(self):
+        import warnings
+        warnings.warn(
+            "AgentFactory is deprecated. Use AgentZeroCore.spawn_agents() instead.",
+            DeprecationWarning,
+            stacklevel=2
+        )
         self._agent_classes: Dict[AgentType, type] = {}
         self._agent_configs: Dict[AgentType, Dict[str, Any]] = {}
 
@@ -676,9 +684,10 @@ def create_orchestrator_with_a0(
     community_memory=None
 ) -> Orchestrator:
     """
-    Factory function to create an Orchestrator integrated with A0.
+    DEPRECATED: Just use Orchestrator(agent_zero, ...) directly.
 
-    This is the preferred way to create an Orchestrator when A0 is available.
+    This factory function is no longer needed since Orchestrator
+    now requires AgentZeroCore by default.
 
     Args:
         agent_zero: AgentZeroCore instance
@@ -688,11 +697,14 @@ def create_orchestrator_with_a0(
     Returns:
         Orchestrator instance registered with A0
     """
-    orchestrator = Orchestrator(
+    import warnings
+    warnings.warn(
+        "create_orchestrator_with_a0 is deprecated. Use Orchestrator(agent_zero, ...) directly.",
+        DeprecationWarning,
+        stacklevel=2
+    )
+    return Orchestrator(
         agent_zero=agent_zero,
         vessel_id=vessel_id,
-        community_memory=community_memory or agent_zero.memory_system
+        community_memory=community_memory
     )
-
-    logger.info("Created Orchestrator with A0 integration")
-    return orchestrator

@@ -259,26 +259,23 @@ class ParableBrowserAgent:
 
 class MockSearchTool:
     """
-    Mock search tool for testing and development.
+    DEPRECATED: Use A0-integrated search tools instead.
 
-    Returns placeholder results to demonstrate the browser agent
-    without making real API calls.
+    Mock search tool for testing - returns placeholder results.
+    All production search should go through A0's tool registry.
     """
 
+    def __init__(self):
+        import warnings
+        warnings.warn(
+            "MockSearchTool is deprecated. Use A0-integrated search tools.",
+            DeprecationWarning,
+            stacklevel=2
+        )
+
     def execute(self, query: str, limit: int = 5) -> List[Dict]:
-        """
-        Return mock search results.
-
-        Args:
-            query: Search query (logged but not used)
-            limit: Number of results to return
-
-        Returns:
-            List of mock search results
-        """
-        logger.debug(f"MockSearchTool: Query '{query}' (limit={limit})")
-
-        # Return placeholder results
+        """Return mock search results (deprecated)."""
+        logger.debug(f"MockSearchTool (DEPRECATED): Query '{query}' (limit={limit})")
         return [
             {
                 "title": f"Example Article on '{query}'",
