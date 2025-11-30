@@ -3,6 +3,13 @@ Coordination SSFs - A2A Delegation, Agent Spawning, Multi-Agent Coordination.
 
 These SSFs handle inter-agent communication and coordination,
 implementing the A2A protocol for safe agent delegation.
+
+AGENT ZERO HIERARCHY MODEL:
+- Implements superior-subordinate agent hierarchy
+- Supports call_subordinate for task delegation
+- Bidirectional communication: instructions down, results up
+- Chain processing for response propagation
+See: docs/agent_zero_subagent_hierarchy.md
 """
 
 from typing import Dict, Any, List, Optional
@@ -21,6 +28,15 @@ from ...schema import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Reference to AgentZeroCore instance (set during initialization)
+_agent_zero_core = None
+
+
+def set_agent_zero_core(core) -> None:
+    """Set the AgentZeroCore instance for SSF handlers."""
+    global _agent_zero_core
+    _agent_zero_core = core
 
 
 # ============================================================================
@@ -58,6 +74,79 @@ async def handle_delegate_to_agent(
     }
 
 
+async def handle_call_subordinate(
+    agent_id: str,
+    message: str,
+    reset: bool = False,
+    profile: Optional[str] = None,
+    **kwargs
+) -> Dict[str, Any]:
+    """
+    Call a subordinate agent to delegate a task.
+
+    Implements Agent Zero's call_subordinate pattern where agents can
+    delegate tasks to child agents while maintaining hierarchy context.
+
+    Args:
+        agent_id: ID of the parent agent calling subordinate
+        message: Task instructions for the subordinate
+        reset: If True, create new subordinate; if False, continue with existing
+        profile: Optional prompt profile for subordinate customization
+
+    Returns:
+        Dict with subordinate response and metadata
+    """
+    logger.info(f"call_subordinate from {agent_id}: {message[:50]}...")
+
+    if _agent_zero_core is None:
+        return {
+            "success": False,
+            "error": "AgentZeroCore not initialized",
+        }
+
+    return _agent_zero_core.call_subordinate(
+        agent_id=agent_id,
+        message=message,
+        reset=reset,
+        profile=profile,
+    )
+
+
+async def handle_intervene(
+    agent_id: str,
+    message: str,
+    pause: bool = False,
+    **kwargs
+) -> Dict[str, Any]:
+    """
+    Intervene in an agent's execution.
+
+    Allows real-time human oversight by interrupting agent execution
+    with new instructions or corrections.
+
+    Args:
+        agent_id: Agent to intervene on
+        message: Intervention message/instruction
+        pause: If True, pause agent before intervention
+
+    Returns:
+        Dict with intervention status
+    """
+    logger.info(f"Intervention for agent {agent_id}: {message[:50]}...")
+
+    if _agent_zero_core is None:
+        return {
+            "success": False,
+            "error": "AgentZeroCore not initialized",
+        }
+
+    return _agent_zero_core.intervene(
+        agent_id=agent_id,
+        message=message,
+        pause=pause,
+    )
+
+
 async def handle_spawn_sub_agent(
     purpose: str,
     capabilities: List[str],
@@ -69,10 +158,13 @@ async def handle_spawn_sub_agent(
     """
     Spawn a subordinate agent for a specific task.
 
+    This is the SSF wrapper for creating subordinate agents within
+    the Agent Zero hierarchy. Uses call_subordinate internally.
+
     Args:
-        purpose: Agent's purpose
+        purpose: Agent's purpose (becomes the initial message)
         capabilities: Required capabilities
-        parent_persona_id: Parent persona for constraint inheritance
+        parent_persona_id: Parent agent ID for hierarchy
         inherit_constraints: Whether to inherit parent's constraints
         max_lifetime_seconds: Maximum agent lifetime
 
@@ -81,12 +173,42 @@ async def handle_spawn_sub_agent(
     """
     logger.info(f"Spawning sub-agent: {purpose}")
 
+    if _agent_zero_core is None:
+        # Fallback if core not available
+        return {
+            "agent_id": str(uuid4()),
+            "purpose": purpose,
+            "status": "spawned",
+            "parent_persona_id": parent_persona_id,
+            "hierarchy_level": 1,
+            "expires_at": datetime.utcnow().isoformat(),
+        }
+
+    # Use call_subordinate with reset=True to create new subordinate
+    result = _agent_zero_core.call_subordinate(
+        agent_id=parent_persona_id,
+        message=f"You are a subordinate agent with purpose: {purpose}. Capabilities: {capabilities}",
+        reset=True,
+        profile=None,
+    )
+
+    if result.get("success"):
+        return {
+            "agent_id": result.get("subordinate_id"),
+            "purpose": purpose,
+            "status": "spawned",
+            "parent_persona_id": parent_persona_id,
+            "hierarchy_level": result.get("hierarchy_level", 1),
+            "response": result.get("response"),
+            "expires_at": datetime.utcnow().isoformat(),
+        }
+
     return {
         "agent_id": str(uuid4()),
         "purpose": purpose,
-        "status": "spawned",
+        "status": "error",
+        "error": result.get("error", "Unknown error"),
         "parent_persona_id": parent_persona_id,
-        "expires_at": datetime.utcnow().isoformat(),
     }
 
 
@@ -407,11 +529,144 @@ def _create_request_human_input_ssf() -> SSFDefinition:
     )
 
 
+def _create_call_subordinate_ssf() -> SSFDefinition:
+    """
+    Create the call_subordinate SSF definition.
+
+    This is the core A0 hierarchy tool - allows agents to delegate
+    tasks to subordinate agents while maintaining context.
+    """
+    return SSFDefinition(
+        id=uuid4(),
+        name="call_subordinate",
+        version="1.0.0",
+        category=SSFCategory.AGENT_COORDINATION,
+        tags=["subordinate", "hierarchy", "delegation", "a0", "agent-zero"],
+        description="Delegate a task to a subordinate agent in the hierarchy.",
+        description_for_llm="""Use this tool to delegate tasks to a subordinate agent.
+
+Key arguments:
+- message: Detailed instructions for the subordinate. Include:
+  * The role they should play (scientist, coder, writer, etc.)
+  * The specific task to accomplish
+  * Context about the higher-level goal
+  * Any constraints or requirements
+- reset: Use 'true' for brand new tasks, 'false' to continue with existing subordinate
+
+The subordinate will execute their own reasoning loop and return results.
+Results are automatically added to your context as a tool result.""",
+        handler=SSFHandler.module(
+            module_path="vessels.ssf.builtins.coordination",
+            function_name="handle_call_subordinate",
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "agent_id": {
+                    "type": "string",
+                    "description": "ID of the calling agent (parent)",
+                },
+                "message": {
+                    "type": "string",
+                    "description": "Task instructions for subordinate",
+                },
+                "reset": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "True = new subordinate, False = continue existing",
+                },
+                "profile": {
+                    "type": "string",
+                    "description": "Optional prompt profile for subordinate",
+                },
+            },
+            "required": ["agent_id", "message"],
+        },
+        output_schema={
+            "type": "object",
+            "properties": {
+                "success": {"type": "boolean"},
+                "subordinate_id": {"type": "string"},
+                "hierarchy_level": {"type": "integer"},
+                "response": {"type": "string"},
+                "parent_id": {"type": "string"},
+            },
+        },
+        timeout_seconds=300,  # Subordinate may need time to work
+        memory_mb=512,
+        risk_level=RiskLevel.MEDIUM,
+        side_effects=[
+            "Creates subordinate agent instance",
+            "Consumes compute resources",
+            "May create further subordinates (recursive)",
+        ],
+        reversible=True,
+        constraint_binding=ConstraintBindingConfig(
+            mode=ConstraintBindingMode.FULL,
+            validate_inputs=True,
+            validate_outputs=True,
+            on_boundary_approach=BoundaryBehavior.ESCALATE,
+        ),
+    )
+
+
+def _create_intervene_ssf() -> SSFDefinition:
+    """Create the intervene SSF for human oversight."""
+    return SSFDefinition(
+        id=uuid4(),
+        name="intervene",
+        version="1.0.0",
+        category=SSFCategory.AGENT_COORDINATION,
+        tags=["intervention", "oversight", "human", "control", "hierarchy"],
+        description="Intervene in an agent's execution with new instructions.",
+        description_for_llm="Use this to interrupt an agent with new instructions or corrections. The agent will process the intervention and adjust its behavior.",
+        handler=SSFHandler.module(
+            module_path="vessels.ssf.builtins.coordination",
+            function_name="handle_intervene",
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "agent_id": {
+                    "type": "string",
+                    "description": "Agent to intervene on",
+                },
+                "message": {
+                    "type": "string",
+                    "description": "Intervention message/instruction",
+                },
+                "pause": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Pause agent before intervention",
+                },
+            },
+            "required": ["agent_id", "message"],
+        },
+        output_schema={
+            "type": "object",
+            "properties": {
+                "success": {"type": "boolean"},
+                "agent_id": {"type": "string"},
+                "message": {"type": "string"},
+            },
+        },
+        timeout_seconds=30,
+        memory_mb=128,
+        risk_level=RiskLevel.LOW,
+        side_effects=["Interrupts agent execution"],
+        reversible=False,
+        constraint_binding=ConstraintBindingConfig.permissive(),
+    )
+
+
 def get_builtin_ssfs() -> List[SSFDefinition]:
     """Get all built-in coordination SSFs."""
     return [
         _create_delegate_to_agent_ssf(),
         _create_spawn_sub_agent_ssf(),
+        _create_call_subordinate_ssf(),  # A0 hierarchy core
+        _create_intervene_ssf(),  # A0 human oversight
         _create_broadcast_to_community_ssf(),
         _create_request_human_input_ssf(),
     ]

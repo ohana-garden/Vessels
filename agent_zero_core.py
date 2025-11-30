@@ -12,10 +12,19 @@ VESSEL-NATIVE DESIGN:
   * Action gate (enforcing privacy/moral constraints)
   * Tools (with permission-based access)
 - No global memory/tool system - all resources come from vessels
+
+AGENT ZERO HIERARCHY MODEL:
+- Implements superior-subordinate agent hierarchy (unified with A0 framework)
+- Every agent has a superior (human for Agent 0, another agent for subordinates)
+- Agents can spawn subordinates via call_subordinate tool
+- Bidirectional communication: instructions flow down, results flow up
+- Each agent runs independent monologue loop with context isolation
+- Real-time intervention allows human oversight at any hierarchy level
 """
 
 import logging
 import uuid
+import copy
 from datetime import datetime
 from typing import Dict, List, Any, Optional, Callable
 from dataclasses import dataclass, field
@@ -52,14 +61,56 @@ class AgentSpecification:
     specialization: str = "general"
 
 
+class InterventionException(Exception):
+    """Raised when human intervention interrupts agent execution."""
+    def __init__(self, message: Any):
+        self.intervention_message = message
+        super().__init__(str(message))
+
+
+@dataclass
+class LoopData:
+    """Data for a single iteration of an agent's monologue loop."""
+    user_message: Optional[str] = None
+    tool_results: List[Dict[str, Any]] = field(default_factory=list)
+    reasoning: str = ""
+    response: str = ""
+
+
+@dataclass
+class AgentConfig:
+    """
+    Agent configuration that gets deep-copied for subordinates.
+
+    Prevents the bug where subordinate config changes affect superior.
+    See: https://github.com/agent0ai/agent-zero/issues/674
+    """
+    prompt_profile: str = "default"
+    tools_enabled: List[str] = field(default_factory=list)
+    max_iterations: int = 50
+    context_window_size: int = 8000
+    compression_enabled: bool = True
+    custom_instructions: str = ""
+    temperature: float = 0.7
+
+
 @dataclass
 class AgentInstance:
-    """Live agent instance with vessel-scoped resources"""
+    """
+    Live agent instance with vessel-scoped resources and hierarchy tracking.
+
+    Implements Agent Zero's superior-subordinate model where:
+    - Every agent has exactly one superior (human or agent)
+    - Agents can have multiple subordinates
+    - Results flow up, instructions flow down
+    """
     id: str
     specification: AgentSpecification
     status: AgentStatus
     created_at: datetime
     last_active: datetime
+
+    # Vessel integration
     vessel_id: Optional[str] = None  # Vessel this agent belongs to
     memory: Dict[str, Any] = field(default_factory=dict)
     memory_backend: Optional[Any] = None  # Vessel-injected memory backend
@@ -68,6 +119,27 @@ class AgentInstance:
     connections: List[str] = field(default_factory=list)
     message_queue: queue.Queue = field(default_factory=queue.Queue)
     active_consultation: Optional[Any] = None
+
+    # === AGENT ZERO HIERARCHY FIELDS ===
+    # These implement the A0 superior-subordinate model
+
+    hierarchy_number: int = 0  # 0 = Agent Zero (human is superior), 1+ = subordinates
+    superior_id: Optional[str] = None  # ID of parent agent (None = human is superior)
+    subordinate_ids: List[str] = field(default_factory=list)  # IDs of child agents
+
+    # Agent configuration (deep-copied for subordinates)
+    config: AgentConfig = field(default_factory=AgentConfig)
+
+    # Conversation history for context
+    history: List[Dict[str, Any]] = field(default_factory=list)
+
+    # Intervention support for real-time human oversight
+    intervention: Optional[Any] = None  # Pending intervention message
+    paused: bool = False  # Whether agent is paused for intervention
+
+    # Monologue loop state
+    loop_data: Optional[LoopData] = None
+    last_user_message: Optional[str] = None
 
 
 class AgentZeroCore:
@@ -971,6 +1043,486 @@ class AgentZeroCore:
         if project:
             return list(project.vessel_ids)
         return []
+
+    # =========================================================================
+    # AGENT ZERO HIERARCHY OPERATIONS
+    # Implements A0's superior-subordinate model for multi-agent coordination
+    # See: docs/agent_zero_subagent_hierarchy.md
+    # =========================================================================
+
+    def call_subordinate(
+        self,
+        agent_id: str,
+        message: str,
+        reset: bool = False,
+        profile: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Create or communicate with a subordinate agent.
+
+        Implements Agent Zero's call_subordinate pattern where agents can
+        delegate tasks to child agents while maintaining hierarchy context.
+
+        Args:
+            agent_id: ID of the parent agent calling subordinate
+            message: Task instructions for the subordinate
+            reset: If True, create new subordinate; if False, continue with existing
+            profile: Optional prompt profile for subordinate customization
+
+        Returns:
+            Dict with subordinate response and metadata
+        """
+        if agent_id not in self.agents:
+            return {"error": f"Agent {agent_id} not found", "success": False}
+
+        parent = self.agents[agent_id]
+
+        # Check if subordinate exists and if we should reuse it
+        existing_sub_id = parent.subordinate_ids[-1] if parent.subordinate_ids else None
+        subordinate = None
+
+        if existing_sub_id and not reset:
+            subordinate = self.agents.get(existing_sub_id)
+
+        if subordinate is None or reset:
+            # Create new subordinate agent
+            subordinate = self._create_subordinate(parent, profile)
+            logger.info(
+                f"Created subordinate agent {subordinate.id} "
+                f"(level {subordinate.hierarchy_number}) for parent {agent_id}"
+            )
+
+        # Add user message to subordinate's history
+        self._add_user_message(subordinate, message)
+
+        # Execute subordinate's monologue and get response
+        response = self._execute_monologue(subordinate)
+
+        return {
+            "success": True,
+            "subordinate_id": subordinate.id,
+            "hierarchy_level": subordinate.hierarchy_number,
+            "response": response,
+            "parent_id": agent_id,
+        }
+
+    def _create_subordinate(
+        self,
+        parent: AgentInstance,
+        profile: Optional[str] = None,
+    ) -> AgentInstance:
+        """
+        Create a subordinate agent with proper hierarchy setup.
+
+        CRITICAL: Deep-copies parent config to prevent shared state bugs.
+        See: https://github.com/agent0ai/agent-zero/issues/674
+        """
+        sub_id = str(uuid.uuid4())
+
+        # DEEP COPY CONFIG - prevents subordinate changes from affecting parent
+        sub_config = copy.deepcopy(parent.config)
+        if profile:
+            sub_config.prompt_profile = profile
+
+        # Create subordinate specification based on parent's specialization
+        sub_spec = AgentSpecification(
+            name=f"{parent.specification.name}_sub_{parent.hierarchy_number + 1}",
+            description=f"Subordinate of {parent.specification.name}",
+            capabilities=parent.specification.capabilities.copy(),
+            tools_needed=parent.specification.tools_needed.copy(),
+            communication_style=parent.specification.communication_style,
+            autonomy_level=parent.specification.autonomy_level,
+            specialization=parent.specification.specialization,
+        )
+
+        # Create subordinate instance
+        subordinate = AgentInstance(
+            id=sub_id,
+            specification=sub_spec,
+            status=AgentStatus.IDLE,
+            created_at=datetime.now(),
+            last_active=datetime.now(),
+            vessel_id=parent.vessel_id,
+            memory_backend=parent.memory_backend,
+            action_gate=parent.action_gate,
+            tools=parent.tools.copy(),
+
+            # Hierarchy setup
+            hierarchy_number=parent.hierarchy_number + 1,
+            superior_id=parent.id,
+            config=sub_config,
+        )
+
+        # Establish bidirectional reference
+        parent.subordinate_ids.append(sub_id)
+
+        # Register subordinate
+        self.agents[sub_id] = subordinate
+        self.agent_specifications[sub_id] = sub_spec
+
+        return subordinate
+
+    def _add_user_message(self, agent: AgentInstance, message: str) -> None:
+        """Add a user message to agent's conversation history."""
+        agent.history.append({
+            "role": "user",
+            "content": message,
+            "timestamp": datetime.now().isoformat(),
+        })
+        agent.last_user_message = message
+
+    def _add_tool_result(
+        self,
+        agent: AgentInstance,
+        tool_name: str,
+        result: Any,
+    ) -> None:
+        """Add a tool result to agent's conversation history."""
+        agent.history.append({
+            "role": "tool",
+            "tool_name": tool_name,
+            "content": str(result),
+            "timestamp": datetime.now().isoformat(),
+        })
+
+    def _add_assistant_message(self, agent: AgentInstance, message: str) -> None:
+        """Add an assistant message to agent's conversation history."""
+        agent.history.append({
+            "role": "assistant",
+            "content": message,
+            "timestamp": datetime.now().isoformat(),
+        })
+
+    def _execute_monologue(self, agent: AgentInstance) -> str:
+        """
+        Execute an agent's monologue loop until task completion.
+
+        This is the core reasoning loop where the agent:
+        1. Prepares prompt with context
+        2. Calls LLM for reasoning
+        3. Processes any tool calls
+        4. Returns result to superior (or user)
+
+        Returns:
+            Final response from the agent
+        """
+        agent.status = AgentStatus.PROCESSING
+        agent.loop_data = LoopData(user_message=agent.last_user_message)
+
+        iterations = 0
+        max_iterations = agent.config.max_iterations
+
+        try:
+            while iterations < max_iterations:
+                iterations += 1
+
+                # Check for intervention
+                self._handle_intervention(agent)
+
+                # Prepare prompt from history
+                prompt = self._prepare_prompt(agent)
+
+                # Call LLM (if available)
+                if self.llm_call:
+                    response = self.llm_call(prompt)
+                else:
+                    # Fallback for testing without LLM
+                    response = f"[Agent {agent.specification.name}] Processed: {agent.last_user_message}"
+
+                # Check if response contains tool calls
+                tool_calls = self._extract_tool_calls(response)
+
+                if tool_calls:
+                    # Process tools and add results to history
+                    for tool_call in tool_calls:
+                        tool_result = self._process_tool_call(agent, tool_call)
+
+                        # Check if tool signals completion (like response tool)
+                        if tool_call.get("tool_name") == "response":
+                            agent.status = AgentStatus.COMPLETED
+                            self._add_assistant_message(agent, tool_result)
+                            return tool_result
+
+                        self._add_tool_result(agent, tool_call["tool_name"], tool_result)
+
+                        # If tool is call_subordinate, process subordinate response
+                        if tool_call.get("tool_name") == "call_subordinate":
+                            # Subordinate result becomes part of parent's context
+                            self._add_tool_result(
+                                agent,
+                                "call_subordinate",
+                                tool_result.get("response", ""),
+                            )
+                else:
+                    # No tool calls - this is the final response
+                    agent.status = AgentStatus.COMPLETED
+                    self._add_assistant_message(agent, response)
+                    return response
+
+            # Max iterations reached
+            logger.warning(f"Agent {agent.id} reached max iterations ({max_iterations})")
+            agent.status = AgentStatus.COMPLETED
+            return f"[Max iterations reached] Last response: {response}"
+
+        except InterventionException as e:
+            # Handle human intervention
+            agent.status = AgentStatus.PAUSED_FOR_CONSULTATION
+            self._add_user_message(agent, str(e.intervention_message))
+            # Re-run monologue with new instructions
+            return self._execute_monologue(agent)
+
+        except Exception as e:
+            agent.status = AgentStatus.ERROR
+            logger.error(f"Monologue error for agent {agent.id}: {e}")
+            return f"Error: {str(e)}"
+
+        finally:
+            agent.last_active = datetime.now()
+
+    def _prepare_prompt(self, agent: AgentInstance) -> str:
+        """Prepare prompt for LLM from agent's history and context."""
+        # Build context from history
+        context_parts = []
+
+        # System context
+        context_parts.append(f"You are {agent.specification.name}, a {agent.specification.specialization} agent.")
+        context_parts.append(f"Hierarchy level: {agent.hierarchy_number}")
+
+        if agent.superior_id:
+            superior = self.agents.get(agent.superior_id)
+            if superior:
+                context_parts.append(f"Your superior is: {superior.specification.name}")
+        else:
+            context_parts.append("Your superior is the human user.")
+
+        context_parts.append(f"Available tools: {', '.join(agent.tools)}")
+        context_parts.append(f"Custom instructions: {agent.config.custom_instructions}")
+        context_parts.append("\n--- Conversation History ---\n")
+
+        # Add history
+        for msg in agent.history[-20:]:  # Last 20 messages for context window
+            role = msg.get("role", "unknown")
+            content = msg.get("content", "")
+
+            if role == "user":
+                context_parts.append(f"User: {content}")
+            elif role == "assistant":
+                context_parts.append(f"You: {content}")
+            elif role == "tool":
+                tool_name = msg.get("tool_name", "unknown")
+                context_parts.append(f"[Tool Result - {tool_name}]: {content}")
+
+        return "\n".join(context_parts)
+
+    def _extract_tool_calls(self, response: str) -> List[Dict[str, Any]]:
+        """
+        Extract tool calls from LLM response.
+
+        Looks for JSON-formatted tool calls in the response.
+        Format: {"tool_name": "...", "tool_args": {...}}
+        """
+        import json
+        import re
+
+        tool_calls = []
+
+        # Look for JSON objects in the response
+        json_pattern = r'\{[^{}]*"tool_name"[^{}]*\}'
+        matches = re.findall(json_pattern, response, re.DOTALL)
+
+        for match in matches:
+            try:
+                tool_call = json.loads(match)
+                if "tool_name" in tool_call:
+                    tool_calls.append(tool_call)
+            except json.JSONDecodeError:
+                continue
+
+        return tool_calls
+
+    def _process_tool_call(
+        self,
+        agent: AgentInstance,
+        tool_call: Dict[str, Any],
+    ) -> Any:
+        """Process a tool call and return result."""
+        tool_name = tool_call.get("tool_name")
+        tool_args = tool_call.get("tool_args", {})
+
+        # Handle call_subordinate specially
+        if tool_name == "call_subordinate":
+            return self.call_subordinate(
+                agent_id=agent.id,
+                message=tool_args.get("message", ""),
+                reset=tool_args.get("reset", "false").lower() == "true",
+                profile=tool_args.get("profile"),
+            )
+
+        # Handle response tool (signals completion)
+        if tool_name == "response":
+            return tool_args.get("message", "")
+
+        # Try SSF integration first
+        if self.ssf_integration:
+            try:
+                result = self.ssf_integration.execute_tool(tool_name, tool_args)
+                return result
+            except Exception as e:
+                logger.warning(f"SSF execution failed for {tool_name}: {e}")
+
+        # Fallback to vessel tools
+        if agent.vessel_id and self.vessel_registry:
+            vessel = self.vessel_registry.get_vessel(agent.vessel_id)
+            if vessel:
+                tool_impl = vessel.get_tool(tool_name)
+                if tool_impl:
+                    return tool_impl(**tool_args)
+
+        return {"error": f"Tool '{tool_name}' not found"}
+
+    def _handle_intervention(self, agent: AgentInstance) -> None:
+        """
+        Handle real-time human intervention.
+
+        Allows humans to interrupt agent execution at any point
+        to redirect behavior or provide additional guidance.
+        """
+        # Check if paused
+        while agent.paused:
+            threading.Event().wait(0.1)
+
+        # Check for pending intervention
+        if agent.intervention:
+            msg = agent.intervention
+            agent.intervention = None
+            raise InterventionException(msg)
+
+    def intervene(
+        self,
+        agent_id: str,
+        message: str,
+        pause: bool = False,
+    ) -> Dict[str, Any]:
+        """
+        Intervene in an agent's execution.
+
+        Args:
+            agent_id: Agent to intervene on
+            message: Intervention message/instruction
+            pause: If True, pause agent before intervention
+
+        Returns:
+            Dict with intervention status
+        """
+        if agent_id not in self.agents:
+            return {"error": f"Agent {agent_id} not found", "success": False}
+
+        agent = self.agents[agent_id]
+
+        if pause:
+            agent.paused = True
+
+        agent.intervention = message
+
+        if pause:
+            agent.paused = False  # Unpause to process intervention
+
+        logger.info(f"Intervention sent to agent {agent_id}")
+
+        return {
+            "success": True,
+            "agent_id": agent_id,
+            "message": "Intervention queued",
+        }
+
+    def get_agent_hierarchy(self, agent_id: str) -> Dict[str, Any]:
+        """
+        Get the full hierarchy for an agent.
+
+        Returns:
+            Dict with superior chain and subordinates tree
+        """
+        if agent_id not in self.agents:
+            return {"error": f"Agent {agent_id} not found"}
+
+        agent = self.agents[agent_id]
+
+        # Build superior chain (up to human)
+        superior_chain = []
+        current_id = agent.superior_id
+        while current_id:
+            if current_id in self.agents:
+                sup = self.agents[current_id]
+                superior_chain.append({
+                    "id": sup.id,
+                    "name": sup.specification.name,
+                    "level": sup.hierarchy_number,
+                })
+                current_id = sup.superior_id
+            else:
+                break
+
+        # Build subordinate tree (recursive)
+        def get_subordinate_tree(agent_instance: AgentInstance) -> List[Dict]:
+            tree = []
+            for sub_id in agent_instance.subordinate_ids:
+                if sub_id in self.agents:
+                    sub = self.agents[sub_id]
+                    tree.append({
+                        "id": sub.id,
+                        "name": sub.specification.name,
+                        "level": sub.hierarchy_number,
+                        "subordinates": get_subordinate_tree(sub),
+                    })
+            return tree
+
+        return {
+            "agent_id": agent_id,
+            "agent_name": agent.specification.name,
+            "hierarchy_level": agent.hierarchy_number,
+            "superior_chain": list(reversed(superior_chain)),  # Root to parent
+            "subordinates": get_subordinate_tree(agent),
+        }
+
+    def process_chain_response(
+        self,
+        agent_id: str,
+        response: str,
+    ) -> Optional[str]:
+        """
+        Process a response through the agent hierarchy chain.
+
+        When a subordinate completes, this passes the result back up
+        to the superior as a tool result. Implements A0's chain processing.
+
+        Args:
+            agent_id: Agent that completed
+            response: Response from the agent
+
+        Returns:
+            Final response after chain processing, or None if no superior
+        """
+        if agent_id not in self.agents:
+            return response
+
+        agent = self.agents[agent_id]
+
+        # If no superior, return response directly (to human)
+        if not agent.superior_id:
+            return response
+
+        # Add result to superior's history as tool result
+        superior = self.agents.get(agent.superior_id)
+        if superior:
+            self._add_tool_result(superior, "call_subordinate", response)
+
+            # Continue superior's monologue
+            superior_response = self._execute_monologue(superior)
+
+            # Recursively process up the chain
+            return self.process_chain_response(superior.id, superior_response)
+
+        return response
 
     # =========================================================================
     # MCP CAPABILITY PROVISIONING
