@@ -17,6 +17,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("VesselsMain")
 
+
 def main():
     """
     Main entry point for Vessels platform.

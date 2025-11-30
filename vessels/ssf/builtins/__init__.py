@@ -15,7 +15,6 @@ common coordination and operational needs:
 from typing import Dict, List
 from uuid import UUID
 
-from ..schema import SSFDefinition
 from ..registry import SSFRegistry
 
 

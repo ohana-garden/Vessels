@@ -93,7 +93,7 @@ class VesselsConfig:
         if os.path.exists(config_path):
             try:
                 with open(config_path, 'r') as f:
-                    yaml_config = yaml.safe_load(f)
+                    yaml.safe_load(f)  # Load to validate, config applied via env
                 logger.info(f"Loaded configuration from {config_path}")
             except Exception as e:
                 logger.warning(f"Failed to load config from {config_path}: {e}")

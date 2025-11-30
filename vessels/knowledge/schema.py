@@ -5,7 +5,6 @@ Defines the node types, relationship types, and properties for the
 Vessels temporal knowledge graph backed by FalkorDB.
 """
 
-from dataclasses import dataclass
 from typing import List, Dict, Any
 from enum import Enum
 
@@ -78,7 +77,7 @@ class RelationType(str, Enum):
     SOLVES_PROBLEM = "SOLVES_PROBLEM"   # Tool -[SOLVES_PROBLEM]-> description
     USES_TOOL = "USES_TOOL"             # Agent/Vessel -[USES_TOOL]-> Tool
     CONNECTED_TO = "CONNECTED_TO"       # Vessel -[CONNECTED_TO]-> MCPServer
-    RECOMMENDED_FOR = "RECOMMENDED_FOR" # Tool -[RECOMMENDED_FOR]-> vessel_type
+    RECOMMENDED_FOR = "RECOMMENDED_FOR"  # Tool -[RECOMMENDED_FOR]-> vessel_type
 
     # Vessel relationships
     HOSTS = "HOSTS"                     # Project -[HOSTS]-> Vessel

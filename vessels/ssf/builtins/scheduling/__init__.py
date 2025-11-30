@@ -7,7 +7,6 @@ management, reminders, and calendar interactions.
 
 from typing import Dict, Any, List, Optional
 from uuid import uuid4
-from datetime import datetime
 import logging
 
 from ...schema import (

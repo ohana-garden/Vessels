@@ -5,9 +5,8 @@ All vessels are stored in AgentZeroCore. No external database needed.
 """
 import logging
 from typing import Dict, List, Optional, TYPE_CHECKING
-from datetime import datetime
 
-from .vessel import Vessel, PrivacyLevel
+from .vessel import Vessel
 
 if TYPE_CHECKING:
     from agent_zero_core import AgentZeroCore

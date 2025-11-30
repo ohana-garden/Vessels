@@ -7,15 +7,10 @@ A Vessel represents a complete, isolated environment for coordinating community 
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Dict, List, Optional, Any, TYPE_CHECKING
+from typing import Dict, List, Optional, Any
 import uuid
 
 from vessels.knowledge.schema import CommunityPrivacy
-
-# Avoid circular imports by using TYPE_CHECKING
-if TYPE_CHECKING:
-    from vessels.gating.gate import ActionGate
-    from vessels.knowledge.memory_backend import GraphitiMemoryBackend
 
 
 class PrivacyLevel(Enum):
